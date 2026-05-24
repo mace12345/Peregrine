@@ -246,9 +246,9 @@ ATOMIC_MASSES = {
 class Atom:
     def __init__(
         self,
-        Label: str,
         AtomicSymbol: str,
         Coordinates: np.ndarray,
+        Label: str | None,
         FormalCharge: int = 0,
         Multiplicity: int = 1,
         SubstructureIndex: int = 1,

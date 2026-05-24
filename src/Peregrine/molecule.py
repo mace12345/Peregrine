@@ -133,13 +133,15 @@ class Molecule:
             out=np.zeros_like(self.BondOrderMatrix),
             where=(self.BondOrderMatrix != 0),
         )
-        self.AtomsDict = {Atom.Label: Atom for Atom in self.AtomsList}
-        self.NumberOfAtoms = len(self.AtomsList)
         self.NumberOfBonds = int(self.ConnectivityMatrix.sum().sum() / 2)
+        self.NormaliseAtomLabels()
+        self.AtomsDict = {
+            Atom.Label: [idx, Atom] for idx, Atom in enumerate(self.AtomsList)
+        }
+        self.NumberOfAtoms = len(self.AtomsList)
         self.GetFormalCharge()
         self.GetMultiplicity()
         self.NormaliseSubstructureIndicies()
-        self.NormaliseAtomLabels()
 
     def NormaliseAtomLabels(self):
         """
@@ -289,7 +291,7 @@ class Molecule:
         mol_str += f" 0 0 0 0 0 999 V3000\nM V30 BEGIN CTAB\nM V30 COUNTS {self.NumberOfAtoms} {self.NumberOfBonds} {self.NumberOfSubstructures} 0 0\nM V30 BEGIN ATOM\n"
         # specify atoms
         for idx, atomObj in enumerate(self.AtomsList):
-            mol_str += f"M V30 {idx+1} {atomObj.AtomicSymbol} {atomObj.Coordinates[0]} {atomObj.Coordinates[1]} {atomObj.Coordinates[2]} 0"
+            mol_str += f"M V30 {idx+1} {atomObj.AtomicSymbol} {round(atomObj.Coordinates[0], 10)} {round(atomObj.Coordinates[1], 10)} {round(atomObj.Coordinates[2], 10)} 0"
             if atomObj.Multiplicity != 1:
                 mol_str += f" RAD={atomObj.Multiplicity}"
             if atomObj.FormalCharge != 0:
@@ -432,10 +434,59 @@ class Molecule:
                 # Convert bond type 4 (aromatic) to 1.5
                 bond_order = 1.5 if bond_type == 4 else float(bond_type)
 
-                bond_order_matrix[atom1_idx - 1][atom2_idx - 1] = bond_order
-                bond_order_matrix[atom2_idx - 1][atom1_idx - 1] = bond_order
+                bond_order_matrix[atom1_idx][atom2_idx] = bond_order
+                bond_order_matrix[atom2_idx][atom1_idx] = bond_order
 
         return cls(identifier, atoms_list, bond_order_matrix)
 
-    def AddAtom(self):
-        pass
+    def AddAtom(
+        self,
+        AtomicSymbol: str,
+        Coordinates: np.ndarray,
+        Label: str | None,
+        FormalCharge: int = 0,
+        Multiplicity: int = 1,
+        SubstructureIndex: int = 1,
+    ):
+        self.AtomsList.append(
+            Atom(
+                AtomicSymbol=AtomicSymbol,
+                Coordinates=Coordinates,
+                Label=Label,
+                FormalCharge=FormalCharge,
+                Multiplicity=Multiplicity,
+                SubstructureIndex=SubstructureIndex,
+            )
+        )
+        self.BondOrderMatrix = np.pad(self.BondOrderMatrix, ((0, 1), (0, 1)))
+        self.DeriveBasicAttributes()
+
+    def AddBond(
+        self,
+        AtomLabels: list[str] | None = None,
+        AtomIndicies: list[int] | None = None,
+        AtomObjects: list[Atom] | None = None,
+        BondOrder: float = 1,
+    ):
+        if AtomIndicies is not None:
+            atomIdx1, atomIdx2 = AtomIndicies
+        elif AtomLabels is not None:
+            atomIdx1 = self.AtomsDict[AtomLabels[0]][0]
+            atomIdx2 = self.AtomsDict[AtomLabels[1]][0]
+        elif AtomObjects is not None:
+            atomIdx1 = self.AtomsDict[AtomObjects[0].Label][0]
+            atomIdx2 = self.AtomsDict[AtomObjects[1].Label][0]
+        else:
+            raise ValueError(
+                "AddBond requires AtomLabels, AtomIndicies, or AtomObjects"
+            )
+        self.BondOrderMatrix[atomIdx1][atomIdx2] = BondOrder
+        self.BondOrderMatrix[atomIdx2][atomIdx1] = BondOrder
+        self.ConnectivityMatrix = np.floor_divide(
+            self.BondOrderMatrix,
+            self.BondOrderMatrix,
+            out=np.zeros_like(self.BondOrderMatrix),
+            where=(self.BondOrderMatrix != 0),
+        )
+        self.NumberOfBonds = int(self.ConnectivityMatrix.sum().sum() / 2)
+        self.NormaliseSubstructureIndicies()

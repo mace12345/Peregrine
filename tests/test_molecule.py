@@ -1,5 +1,6 @@
 import numpy as np
 from pathlib import Path
+from copy import deepcopy
 
 from Peregrine.molecule import Molecule
 from Peregrine.atom import Atom
@@ -236,17 +237,17 @@ def test_write_molecule():
         ],
         BondOrderMatrix=np.array(
             [
-                [0, 1, 1, 0, 0, 0],
-                [1, 0, 0, 1, 0, 0],
-                [1, 0, 0, 0, 1, 0],
-                [0, 1, 0, 0, 0, 1],
-                [0, 0, 1, 0, 0, 1],
-                [0, 0, 0, 1, 1, 0],
+                [0, 1.5, 1.5, 0, 0, 0],
+                [1.5, 0, 0, 1.5, 0, 0],
+                [1.5, 0, 0, 0, 1.5, 0],
+                [0, 1.5, 0, 0, 0, 1.5],
+                [0, 0, 1.5, 0, 0, 1.5],
+                [0, 0, 0, 1.5, 1.5, 0],
             ]
         ),
     )
     benzene_str = benzene.WriteMolString()
-    with open(f"{Path(__file__).parent}/benzene.mol", "w") as f:
+    with open(f"{Path(__file__).parent}/benzene_stripped.mol", "w") as f:
         f.write(benzene_str)
         f.close()
 
@@ -261,6 +262,7 @@ def test_read_molecule():
     assert water_triplet.NumberOfSubstructures == 1
     assert water_triplet.NumberOfBonds == 2
     assert water_triplet.NumberOfAtoms == 3
+    assert water_triplet.MolecularMass == 18.015
 
     with open(f"{Path(__file__).parent}/water_cation.mol", "r") as f:
         wc_mol_string = f.read()
@@ -271,7 +273,41 @@ def test_read_molecule():
     assert water_cation.NumberOfSubstructures == 2
     assert water_cation.NumberOfBonds == 2
     assert water_cation.NumberOfAtoms == 4
+    assert water_cation.MolecularMass == 19.023
 
 
-def test_add_atoms_to_molecule():
-    pass
+def test_add_atoms_and_bonds_to_molecule():
+    with open(f"{Path(__file__).parent}/benzene_stripped.mol", "r") as f:
+        benzene_string = f.read()
+        f.close()
+    benzene = Molecule.ReadMolString(benzene_string)
+    for atomObj in deepcopy(benzene.AtomsList):
+        coor = atomObj.Coordinates
+        norm_coor = coor / np.linalg.norm(coor)
+        H_coor = norm_coor * 3
+        benzene.AddAtom(
+            AtomicSymbol="H",
+            Coordinates=H_coor,
+            Label=None,
+        )
+    benzene.AddBond(AtomLabels=["C1", "H1"])
+    benzene.AddBond(AtomIndicies=[1, 7])
+    benzene.AddBond(
+        AtomObjects=[
+            benzene.AtomsList[2],
+            benzene.AtomsList[8],
+        ]
+    )
+    benzene.AddBond(AtomLabels=["C4", "H4"])
+    benzene.AddBond(AtomLabels=["C5", "H5"])
+    benzene.AddBond(AtomLabels=["C6", "H6"])
+    benzene_str = benzene.WriteMolString()
+    with open(f"{Path(__file__).parent}/benzene.mol", "w") as f:
+        f.write(benzene_str)
+        f.close()
+    assert benzene.FormalCharge == 0
+    assert benzene.Multiplicity == 1
+    assert benzene.NumberOfSubstructures == 1
+    assert benzene.NumberOfBonds == 12
+    assert benzene.NumberOfAtoms == 12
+    assert round(benzene.MolecularMass, 1) == 78.1
