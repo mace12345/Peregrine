@@ -1,4 +1,5 @@
 import numpy as np
+from pathlib import Path
 
 from Peregrine.molecule import Molecule
 from Peregrine.atom import Atom
@@ -43,13 +44,13 @@ def test_molecule_initialization():
             Atom(Label="O1", AtomicSymbol="O", Coordinates=np.array([0, 0, 0])),
             Atom(Label="H2", AtomicSymbol="H", Coordinates=np.array([0, 1, 0])),
         ],
-        BondMatrix=None,
+        BondOrderMatrix=None,
     )
     assert molObj.Identifier == "Water"
     assert molObj.NumberOfAtoms == 3
     assert molObj.NumberOfBonds == 0
     assert len(molObj.AtomsDict) == 3
-    assert molObj.BondMatrix.shape == (3, 3)
+    assert molObj.BondOrderMatrix.shape == (3, 3)
     assert molObj.ConnectivityMatrix.shape == (3, 3)
     assert molObj.NumberOfSubstructures == 3
 
@@ -60,7 +61,7 @@ def test_molecule_initialization():
             Atom(Label="O1", AtomicSymbol="O", Coordinates=np.array([0, 0, 0])),
             Atom(Label="H2", AtomicSymbol="H", Coordinates=np.array([0, 1, 0])),
         ],
-        BondMatrix=np.array(
+        BondOrderMatrix=np.array(
             [
                 [0, 1, 0],
                 [1, 0, 0],
@@ -69,15 +70,24 @@ def test_molecule_initialization():
         ),
     )
     assert molObj.NumberOfSubstructures == 2
+    assert molObj.NumberOfBonds == 1
+    assert molObj.FormalCharge == 0
+    assert molObj.Multiplicity == 1
 
     molObj = Molecule(
         Identifier="Water",
         AtomsList=[
             Atom(Label="H1", AtomicSymbol="H", Coordinates=np.array([-1, 0, 0])),
-            Atom(Label="O1", AtomicSymbol="O", Coordinates=np.array([0, 0, 0])),
+            Atom(
+                Label="O1",
+                AtomicSymbol="O",
+                Coordinates=np.array([0, 0, 0]),
+                Multiplicity=2,
+                FormalCharge=1,
+            ),
             Atom(Label="H2", AtomicSymbol="H", Coordinates=np.array([0, 1, 0])),
         ],
-        BondMatrix=np.array(
+        BondOrderMatrix=np.array(
             [
                 [0, 1, 0],
                 [1, 0, 1],
@@ -85,4 +95,183 @@ def test_molecule_initialization():
             ]
         ),
     )
+    assert molObj.FormalCharge == 1
+    assert molObj.Multiplicity == 2
+
+    molObj = Molecule(
+        Identifier="Water",
+        AtomsList=[
+            Atom(
+                Label="H1", AtomicSymbol="H", Coordinates=np.array([-1.09, 0.05, 0.02])
+            ),
+            Atom(
+                Label="O1",
+                AtomicSymbol="O",
+                Coordinates=np.array([0.00123, 0.0034, 0.0087]),
+                FormalCharge=1,
+            ),
+            Atom(
+                Label="H2",
+                AtomicSymbol="H",
+                Coordinates=np.array([0.08, 1.00064, 0.076]),
+            ),
+            Atom(
+                Label="H2",
+                AtomicSymbol="H",
+                Coordinates=np.array([0.0062, 0.078, 1.088]),
+            ),
+        ],
+        BondOrderMatrix=np.array(
+            [
+                [0, 1, 0, 0],
+                [1, 0, 1, 1],
+                [0, 1, 0, 0],
+                [0, 1, 0, 0],
+            ]
+        ),
+    )
     assert molObj.NumberOfSubstructures == 1
+    assert molObj.NumberOfBonds == 3
+    assert molObj.FormalCharge == 1
+    assert molObj.Multiplicity == 1
+
+
+def test_write_molecule():
+    water_triplet = Molecule(
+        Identifier="Water",
+        AtomsList=[
+            Atom(Label="H1", AtomicSymbol="H", Coordinates=np.array([-1, 0, 0])),
+            Atom(
+                Label="O1",
+                AtomicSymbol="O",
+                Coordinates=np.array([0, 0, 0]),
+                Multiplicity=2,
+                FormalCharge=1,
+            ),
+            Atom(Label="H2", AtomicSymbol="H", Coordinates=np.array([0, 1, 0])),
+        ],
+        BondOrderMatrix=np.array(
+            [
+                [0, 1, 0],
+                [1, 0, 1],
+                [0, 1, 0],
+            ]
+        ),
+    )
+    wt_mol_str = water_triplet.WriteMolString()
+    with open(f"{Path(__file__).parent}/water_triplet.mol", "w") as f:
+        f.write(wt_mol_str)
+        f.close()
+
+    water_cation = Molecule(
+        Identifier="Water",
+        AtomsList=[
+            Atom(
+                Label="H1", AtomicSymbol="H", Coordinates=np.array([-1.09, 0.05, 0.02])
+            ),
+            Atom(
+                Label="O1",
+                AtomicSymbol="O",
+                Coordinates=np.array([0.00123, 0.0034, 0.0087]),
+                FormalCharge=1,
+            ),
+            Atom(
+                Label="H2",
+                AtomicSymbol="H",
+                Coordinates=np.array([0.08, 1.00064, 0.076]),
+            ),
+            Atom(
+                Label="H2",
+                AtomicSymbol="H",
+                Coordinates=np.array([0.0062, 0.078, 1.088]),
+            ),
+        ],
+        BondOrderMatrix=np.array(
+            [
+                [0, 1, 0, 0],
+                [1, 0, 1, 0],
+                [0, 1, 0, 0],
+                [0, 0, 0, 0],
+            ]
+        ),
+    )
+    wc_mol_str = water_cation.WriteMolString()
+    with open(f"{Path(__file__).parent}/water_cation.mol", "w") as f:
+        f.write(wc_mol_str)
+        f.close()
+
+    benzene = Molecule(
+        Identifier="Benzene",
+        AtomsList=[
+            Atom(
+                Label="C1",
+                AtomicSymbol="C",
+                Coordinates=np.array([-1.2131, -0.6884, 0.0004]),
+            ),
+            Atom(
+                Label="C2",
+                AtomicSymbol="C",
+                Coordinates=np.array([-1.2028, 0.7064, 0.0001]),
+            ),
+            Atom(
+                Label="C3",
+                AtomicSymbol="C",
+                Coordinates=np.array([-0.0103, -1.3948, 0.0002]),
+            ),
+            Atom(
+                Label="C4",
+                AtomicSymbol="C",
+                Coordinates=np.array([0.0104, 1.3948, 0.0001]),
+            ),
+            Atom(
+                Label="C5",
+                AtomicSymbol="C",
+                Coordinates=np.array([1.2028, -0.7063, 0.0006]),
+            ),
+            Atom(
+                Label="C6",
+                AtomicSymbol="C",
+                Coordinates=np.array([1.2131, 0.6884, 0.0004]),
+            ),
+        ],
+        BondOrderMatrix=np.array(
+            [
+                [0, 1, 1, 0, 0, 0],
+                [1, 0, 0, 1, 0, 0],
+                [1, 0, 0, 0, 1, 0],
+                [0, 1, 0, 0, 0, 1],
+                [0, 0, 1, 0, 0, 1],
+                [0, 0, 0, 1, 1, 0],
+            ]
+        ),
+    )
+    benzene_str = benzene.WriteMolString()
+    with open(f"{Path(__file__).parent}/benzene.mol", "w") as f:
+        f.write(benzene_str)
+        f.close()
+
+
+def test_read_molecule():
+    with open(f"{Path(__file__).parent}/water_triplet.mol", "r") as f:
+        wt_mol_string = f.read()
+        f.close()
+    water_triplet = Molecule.ReadMolString(wt_mol_string)
+    assert water_triplet.FormalCharge == 1
+    assert water_triplet.Multiplicity == 2
+    assert water_triplet.NumberOfSubstructures == 1
+    assert water_triplet.NumberOfBonds == 2
+    assert water_triplet.NumberOfAtoms == 3
+
+    with open(f"{Path(__file__).parent}/water_cation.mol", "r") as f:
+        wc_mol_string = f.read()
+        f.close()
+    water_cation = Molecule.ReadMolString(wc_mol_string)
+    assert water_cation.FormalCharge == 1
+    assert water_cation.Multiplicity == 1
+    assert water_cation.NumberOfSubstructures == 2
+    assert water_cation.NumberOfBonds == 2
+    assert water_cation.NumberOfAtoms == 4
+
+
+def test_add_atoms_to_molecule():
+    pass
