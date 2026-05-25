@@ -262,7 +262,7 @@ def test_read_molecule():
     assert water_triplet.NumberOfSubstructures == 1
     assert water_triplet.NumberOfBonds == 2
     assert water_triplet.NumberOfAtoms == 3
-    assert water_triplet.MolecularMass == 18.015
+    assert water_triplet.MolecularMass == 18.02
 
     with open(f"{Path(__file__).parent}/water_cation.mol", "r") as f:
         wc_mol_string = f.read()
@@ -273,7 +273,7 @@ def test_read_molecule():
     assert water_cation.NumberOfSubstructures == 2
     assert water_cation.NumberOfBonds == 2
     assert water_cation.NumberOfAtoms == 4
-    assert water_cation.MolecularMass == 19.023
+    assert water_cation.MolecularMass == 19.02
 
 
 def test_add_atoms_and_bonds_to_molecule():
@@ -281,7 +281,7 @@ def test_add_atoms_and_bonds_to_molecule():
         benzene_string = f.read()
         f.close()
     benzene = Molecule.ReadMolString(benzene_string)
-    for atomObj in deepcopy(benzene.AtomsList):
+    for idx, atomObj in enumerate(deepcopy(benzene.AtomsList)):
         coor = atomObj.Coordinates
         norm_coor = coor / np.linalg.norm(coor)
         H_coor = norm_coor * 3
@@ -290,7 +290,9 @@ def test_add_atoms_and_bonds_to_molecule():
             Coordinates=H_coor,
             Label=None,
         )
+        assert benzene.NumberOfSubstructures == 2 + idx
     benzene.AddBond(AtomLabels=["C1", "H1"])
+    assert benzene.NumberOfSubstructures == 6
     benzene.AddBond(AtomIndicies=[1, 7])
     benzene.AddBond(
         AtomObjects=[
@@ -298,6 +300,7 @@ def test_add_atoms_and_bonds_to_molecule():
             benzene.AtomsList[8],
         ]
     )
+    assert benzene.NumberOfSubstructures == 4
     benzene.AddBond(AtomLabels=["C4", "H4"])
     benzene.AddBond(AtomLabels=["C5", "H5"])
     benzene.AddBond(AtomLabels=["C6", "H6"])
@@ -310,4 +313,23 @@ def test_add_atoms_and_bonds_to_molecule():
     assert benzene.NumberOfSubstructures == 1
     assert benzene.NumberOfBonds == 12
     assert benzene.NumberOfAtoms == 12
-    assert round(benzene.MolecularMass, 1) == 78.1
+    assert benzene.MolecularMass == 78.11
+
+
+def test_add_molecule_to_molecule():
+    with open(f"{Path(__file__).parent}/benzene.mol", "r") as f:
+        benzene_string = f.read()
+        f.close()
+    benzene = Molecule.ReadMolString(benzene_string)
+    with open(f"{Path(__file__).parent}/water_cation.mol", "r") as f:
+        wc_mol_string = f.read()
+        f.close()
+    water_cation = Molecule.ReadMolString(wc_mol_string)
+
+    benzene.AddMolecule(
+        MoleculeToAdd=water_cation,
+    )
+    benzene_string = benzene.WriteMolString()
+    with open(f"{Path(__file__).parent}/benzene_water_cation.mol", "w") as f:
+        f.write(benzene_string)
+        f.close()

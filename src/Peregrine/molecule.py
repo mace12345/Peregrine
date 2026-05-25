@@ -1,4 +1,6 @@
 import numpy as np
+from typing import Self
+from copy import deepcopy
 from .atom import Atom, ATOMIC_MASSES
 
 
@@ -195,6 +197,7 @@ class Molecule:
                 atomic_symbol_count_dict[atomObj.AtomicSymbol] += 1
                 atomObj.Label = f"{atomObj.AtomicSymbol}{atomic_symbol_count_dict[atomObj.AtomicSymbol]}"
             self.MolecularMass += ATOMIC_MASSES[atomObj.AtomicSymbol]
+        self.MolecularMass = round(self.MolecularMass, 2)
 
     def NormaliseSubstructureIndicies(self):
         """
@@ -306,10 +309,15 @@ class Molecule:
                 BondOrder = self.BondOrderMatrix[i_idx][j_idx]
                 if BondOrder == 0:
                     continue
-                elif BondOrder == 1.5:
-                    mol_str += f"M V30 {idx} 4 {i_idx+1} {j_idx+1}\n"
-                elif BondOrder != 0:
-                    mol_str += f"M V30 {idx} {BondOrder} {i_idx+1} {j_idx+1}\n"
+                elif BondOrder % 1 == 0.5:
+                    if BondOrder == 1.5:  # Likely Aromatic bond
+                        mol_str += f"M V30 {idx} 4 {i_idx+1} {j_idx+1}\n"
+                    else:
+                        print(
+                            "Will need to go back and deal with aromaticity etc correctly"
+                        )
+                else:
+                    mol_str += f"M V30 {idx} {int(BondOrder)} {i_idx+1} {j_idx+1}\n"
                 idx += 1
         mol_str += "M V30 END BOND\nM V30 END CTAB\nM END\n"
         return mol_str
@@ -490,3 +498,40 @@ class Molecule:
         )
         self.NumberOfBonds = int(self.ConnectivityMatrix.sum().sum() / 2)
         self.NormaliseSubstructureIndicies()
+
+    def AddMolecule(
+        self,
+        MoleculeToAdd: Self,
+    ):
+        og_NumberOfAtoms = deepcopy(self.NumberOfAtoms)
+        # Add Atoms
+        for atomObj in MoleculeToAdd.AtomsList:
+            self.AddAtom(
+                AtomicSymbol=atomObj.AtomicSymbol,
+                Coordinates=atomObj.Coordinates,
+                FormalCharge=atomObj.FormalCharge,
+                Multiplicity=atomObj.Multiplicity,
+                Label=atomObj.Label,
+            )
+        # Add Bonds
+        for atomIdx1 in range(MoleculeToAdd.NumberOfAtoms):
+            new_atomIdx1 = atomIdx1 + og_NumberOfAtoms
+            for atomIdx2 in range(MoleculeToAdd.NumberOfAtoms):
+                new_atomIdx2 = atomIdx2 + og_NumberOfAtoms
+                if MoleculeToAdd.BondOrderMatrix[atomIdx1][atomIdx2] != 0:
+                    self.AddBond(
+                        AtomIndicies=[
+                            new_atomIdx1,
+                            new_atomIdx2,
+                        ],
+                        BondOrder=MoleculeToAdd.BondOrderMatrix[atomIdx1][atomIdx2],
+                    )
+
+    def RemoveMolecule(self):
+        pass
+
+    def RemoveBond(self):
+        pass
+
+    def RemoveAtom(self):
+        pass
