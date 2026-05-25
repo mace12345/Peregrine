@@ -325,7 +325,14 @@ def test_add_molecule_to_molecule():
         wc_mol_string = f.read()
         f.close()
     water_cation = Molecule.ReadMolString(wc_mol_string)
-
+    water_cation.TranslateMolecule(
+        TranslationVector=np.array([0, 0, 2]),
+        Displacement=3,
+    )
+    water_cation.RotateMolecule(
+        RotationVector=np.array([0,1,1]),
+        RotationAngle=1,
+    )
     benzene.AddMolecule(
         MoleculeToAdd=water_cation,
     )
@@ -333,3 +340,13 @@ def test_add_molecule_to_molecule():
     with open(f"{Path(__file__).parent}/benzene_water_cation.mol", "w") as f:
         f.write(benzene_string)
         f.close()
+    assert benzene.FormalCharge == 1
+    assert benzene.Multiplicity == 1
+    assert benzene.NumberOfSubstructures == 3
+    assert benzene.NumberOfBonds == 14
+    assert benzene.NumberOfAtoms == 16
+    assert benzene.MolecularMass == 97.14
+
+
+def test_remove_molecule_from_molecule():
+    pass

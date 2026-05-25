@@ -1,6 +1,16 @@
 import numpy as np
 from typing import Self
 from copy import deepcopy
+
+from rdkit import Chem
+from rdkit.Chem import rdmolops
+from rdkit.Chem import AllChem
+import rdkit.Chem
+from rdkit.Geometry import Point3D
+from rdkit.Chem import SanitizeMol, SanitizeFlags
+from rdkit import RDLogger
+import rdkit
+
 from .atom import Atom, ATOMIC_MASSES
 
 
@@ -333,6 +343,37 @@ class Molecule:
         xyz_str += self.WriteXYZBlock()
         return xyz_str
 
+    def MoleculeToSMILES(self):
+        """
+        MoleculeToSMILES converts a custom Molecule object into a SMILES string.
+        Parameters:
+            allHsExplicit (bool): If True, all hydrogen atoms are explicitly included in the SMILES string.
+        Returns:
+            str: The SMILES representation of the molecule.
+        """
+        # Create an empty RDKit molecule
+        rdkit_mol = Chem.RWMol()
+
+        # Add atoms to the RDKit molecule
+        atom_indices = []
+        for atomObj in self.AtomsList:
+            rdkit_atom = Chem.Atom(atomObj.AtomicSymbol)
+            rdkit_atom.SetFormalCharge(atomObj.FormalCharge)
+            atom_idx = rdkit_mol.AddAtom(rdkit_atom)
+            atom_indices.append(atom_idx)
+
+        # Add bonds based on the connectivity matrix
+        if self.ConnectivityMatrix is not None:
+            for i in range(self.NumberOfAtoms):
+                for j in range(i + 1, self.NumberOfAtoms):
+                    if self.ConnectivityMatrix[i][j] > 0:  # Bond exists
+                        bond_type = self.GetRDKitBondType(self.BondOrderMatrix[i][j])
+                        rdkit_mol.AddBond(i, j, bond_type)
+
+        # Finalize the molecule
+        rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
+        return Chem.MolToSmiles(rdkit_mol)
+
     @classmethod
     def ReadMolString(cls, mol_string: str) -> "Molecule":
         """
@@ -447,6 +488,10 @@ class Molecule:
 
         return cls(identifier, atoms_list, bond_order_matrix)
 
+    @classmethod
+    def ReadSMILES(cls, SMILES: str) -> "Molecule":
+        pass
+
     def AddAtom(
         self,
         AtomicSymbol: str,
@@ -527,7 +572,12 @@ class Molecule:
                         BondOrder=MoleculeToAdd.BondOrderMatrix[atomIdx1][atomIdx2],
                     )
 
-    def RemoveMolecule(self):
+    def RemoveMolecule(
+        self,
+        SMILES: str | None=None,
+        SubstructureIndex: int | None=None,
+        AtomIndicies: list[int] | None=None,
+    ):
         pass
 
     def RemoveBond(self):
@@ -535,3 +585,63 @@ class Molecule:
 
     def RemoveAtom(self):
         pass
+
+    def TranslateMolecule(
+        self,
+        TranslationVector: np.ndarray,
+        Displacement: float,
+    ):
+        TranslationVector = TranslationVector / np.linalg.norm(TranslationVector)
+        TranslationVector = TranslationVector * Displacement
+        for atomObj in self.AtomsList:
+            atomObj.Coordinates = atomObj.Coordinates + TranslationVector
+    
+    def GetRotationMatrix(self, rotation_axis: np.array, theta: float):
+        """
+        pass for now
+        """
+        x, y, z = rotation_axis[0], rotation_axis[1], rotation_axis[2]
+        rotation_matrix = np.array(
+            [
+                [
+                    np.cos(theta) + (x**2) * (1 - np.cos(theta)),
+                    x * y * (1 - np.cos(theta)) - z * np.sin(theta),
+                    x * z * (1 - np.cos(theta)) + y * np.sin(theta),
+                ],
+                [
+                    y * x * (1 - np.cos(theta)) + z * np.sin(theta),
+                    np.cos(theta) + (y**2) * (1 - np.cos(theta)),
+                    y * z * (1 - np.cos(theta)) - x * np.sin(theta),
+                ],
+                [
+                    z * x * (1 - np.cos(theta)) - y * np.sin(theta),
+                    z * y * (1 - np.cos(theta)) + x * np.sin(theta),
+                    np.cos(theta) + (z**2) * (1 - np.cos(theta)),
+                ],
+            ]
+        ).reshape((3, 3))
+        return rotation_matrix
+
+    def RotateMolecule(
+        self,
+        RotationVector: np.ndarray,
+        RotationAngle: float,
+    ):
+        # Find geometric midpoint of molecule
+        geometric_midpoint = np.array([0.0, 0.0, 0.0])
+        for atomObj in self.AtomsList:
+            geometric_midpoint += atomObj.Coordinates
+        geometric_midpoint = geometric_midpoint / self.NumberOfAtoms
+        # Translate to molecule to origin
+        for atomObj in self.AtomsList:
+            atomObj.Coordinates = atomObj.Coordinates - geometric_midpoint
+        # Rotate molecule atom by atom
+        RotationMatrix = self.GetRotationMatrix(
+            rotation_axis=RotationVector/np.linalg.norm(RotationVector),
+            theta=RotationAngle,
+        )
+        for atomObj in self.AtomsList:
+            atomObj.Coordinates = RotationMatrix @ atomObj.Coordinates
+        # Translate back to original position
+        for atomObj in self.AtomsList:
+            atomObj.Coordinates = atomObj.Coordinates + geometric_midpoint
