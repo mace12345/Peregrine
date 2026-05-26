@@ -13,6 +13,20 @@ import rdkit
 
 from .atom import Atom, ATOMIC_MASSES
 
+RDKIT_BONDTYPE_TRANSLATION = {
+    1: Chem.BondType.SINGLE,
+    1.5: Chem.BondType.AROMATIC,
+    2: Chem.BondType.DOUBLE,
+    2.5: Chem.BondType.TWOANDAHALF,
+    3: Chem.BondType.TRIPLE,
+    3.5: Chem.BondType.THREEANDAHALF,
+    4: Chem.BondType.QUADRUPLE,
+    4.5: Chem.BondType.FOURANDAHALF,
+    5: Chem.BondType.QUINTUPLE,
+    5.5: Chem.BondType.FIVEANDAHALF,
+    6: Chem.BondType.HEXTUPLE,
+}
+
 
 class Molecule:
     def __init__(
@@ -20,6 +34,7 @@ class Molecule:
         Identifier: str,
         AtomsList: list[Atom],
         BondOrderMatrix: np.ndarray | None,
+        UpdateAtomLabels: bool = True,
     ):
         """
         Initialize a Molecule instance.
@@ -90,7 +105,10 @@ class Molecule:
             self.BondOrderMatrix = np.zeros((len(self.AtomsList), len(self.AtomsList)))
 
         # Derived Basic Attributes
-        self.DeriveBasicAttributes()
+        self.DeriveBasicAttributes(UpdateAtomLabels=UpdateAtomLabels)
+
+        # Optional SMILES Attributes
+        self.AssociatedMoleculeSMILES = None
 
         # Check Attributes
         if self.BondOrderMatrix.shape != (self.NumberOfAtoms, self.NumberOfAtoms):
@@ -105,7 +123,10 @@ class Molecule:
         if len(self.AtomsList) == 0:
             raise ValueError("No atoms in AtomsList")
 
-    def DeriveBasicAttributes(self):
+    def DeriveBasicAttributes(
+        self,
+        UpdateAtomLabels: bool = True,
+    ):
         """
         Derive and calculate basic molecular attributes from bond order matrix and atom list.
 
@@ -146,7 +167,8 @@ class Molecule:
             where=(self.BondOrderMatrix != 0),
         )
         self.NumberOfBonds = int(self.ConnectivityMatrix.sum().sum() / 2)
-        self.NormaliseAtomLabels()
+        if UpdateAtomLabels == True:
+            self.NormaliseAtomLabels()
         self.AtomsDict = {
             Atom.Label: [idx, Atom] for idx, Atom in enumerate(self.AtomsList)
         }
@@ -154,6 +176,68 @@ class Molecule:
         self.GetFormalCharge()
         self.GetMultiplicity()
         self.NormaliseSubstructureIndicies()
+
+    def DeriveMoleculeSMILES(self):
+        """
+        MoleculeToSMILES converts a custom Molecule object into a SMILES string.
+        Parameters:
+            allHsExplicit (bool): If True, all hydrogen atoms are explicitly included in the SMILES string.
+        Returns:
+            str: The SMILES representation of the molecule.
+        """
+
+        def GenerateSMILESString(Molecule: Molecule):
+            # Create an empty RDKit molecule
+            rdkit_mol = Chem.RWMol()
+            # Add atoms to the RDKit molecule
+            for atomObj in Molecule.AtomsList:
+                rdkit_atom = Chem.Atom(atomObj.AtomicSymbol)
+                rdkit_atom.SetFormalCharge(atomObj.FormalCharge)
+                atom_idx = rdkit_mol.AddAtom(rdkit_atom)
+            # Add bonds based on the connectivity matrix
+            if self.ConnectivityMatrix is not None:
+                for i in range(Molecule.NumberOfAtoms):
+                    for j in range(i + 1, Molecule.NumberOfAtoms):
+                        if self.ConnectivityMatrix[i][j] > 0:  # Bond exists
+                            bond_type = RDKIT_BONDTYPE_TRANSLATION[
+                                self.BondOrderMatrix[i][j]
+                            ]
+                            rdkit_mol.AddBond(i, j, bond_type)
+            # Finalize the molecule and make SMILES string
+            rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
+            SMILES_str = Chem.MolToSmiles(rdkit_mol)
+            return SMILES_str
+
+        # Split substructuures into their own molecule objects
+        self.SplitMoleculeIntoComponents(UpdateAtomLabels=False)
+
+    def SplitMoleculeIntoComponents(self, UpdateAtomLabels: bool = True):
+        # Split substructuures into their own molecule objects
+        new_Molecules = []
+        substructure_dict = {i + 1: [] for i in range(self.NumberOfSubstructures)}
+        for atomObj in self.AtomsList:
+            substructure_dict[atomObj.SubstructureIndex] += [deepcopy(atomObj)]
+        for substructure_idx in substructure_dict:
+            new_AtomsList = substructure_dict[substructure_idx]
+            new_Identifier = self.Identifier + f"_{substructure_idx}"
+            new_BondOrderMatrix = np.zeros((len(new_AtomsList), len(new_AtomsList)))
+            for new_atomIdx1, atomObj1 in enumerate(new_AtomsList):
+                old_atomIdx1 = self.AtomsDict[atomObj1.Label][0]
+                for new_atomIdx2, atomObj2 in enumerate(new_AtomsList):
+                    old_atomIdx2 = self.AtomsDict[atomObj2.Label][0]
+                    if self.BondOrderMatrix[old_atomIdx1][old_atomIdx2] != 0:
+                        new_BondOrderMatrix[new_atomIdx1][new_atomIdx2] = (
+                            self.BondOrderMatrix[old_atomIdx1][old_atomIdx2]
+                        )
+            new_Molecules.append(
+                Molecule(
+                    Identifier=new_Identifier,
+                    AtomsList=new_AtomsList,
+                    BondOrderMatrix=new_BondOrderMatrix,
+                    UpdateAtomLabels=UpdateAtomLabels,
+                )
+            )
+        return new_Molecules
 
     def NormaliseAtomLabels(self):
         """
@@ -343,36 +427,8 @@ class Molecule:
         xyz_str += self.WriteXYZBlock()
         return xyz_str
 
-    def MoleculeToSMILES(self):
-        """
-        MoleculeToSMILES converts a custom Molecule object into a SMILES string.
-        Parameters:
-            allHsExplicit (bool): If True, all hydrogen atoms are explicitly included in the SMILES string.
-        Returns:
-            str: The SMILES representation of the molecule.
-        """
-        # Create an empty RDKit molecule
-        rdkit_mol = Chem.RWMol()
-
-        # Add atoms to the RDKit molecule
-        atom_indices = []
-        for atomObj in self.AtomsList:
-            rdkit_atom = Chem.Atom(atomObj.AtomicSymbol)
-            rdkit_atom.SetFormalCharge(atomObj.FormalCharge)
-            atom_idx = rdkit_mol.AddAtom(rdkit_atom)
-            atom_indices.append(atom_idx)
-
-        # Add bonds based on the connectivity matrix
-        if self.ConnectivityMatrix is not None:
-            for i in range(self.NumberOfAtoms):
-                for j in range(i + 1, self.NumberOfAtoms):
-                    if self.ConnectivityMatrix[i][j] > 0:  # Bond exists
-                        bond_type = self.GetRDKitBondType(self.BondOrderMatrix[i][j])
-                        rdkit_mol.AddBond(i, j, bond_type)
-
-        # Finalize the molecule
-        rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
-        return Chem.MolToSmiles(rdkit_mol)
+    def WriteSMILESString(self):
+        pass
 
     @classmethod
     def ReadMolString(cls, mol_string: str) -> "Molecule":
@@ -500,6 +556,7 @@ class Molecule:
         FormalCharge: int = 0,
         Multiplicity: int = 1,
         SubstructureIndex: int = 1,
+        UpdateAtomLabels: bool = True,
     ):
         self.AtomsList.append(
             Atom(
@@ -574,9 +631,9 @@ class Molecule:
 
     def RemoveMolecule(
         self,
-        SMILES: str | None=None,
-        SubstructureIndex: int | None=None,
-        AtomIndicies: list[int] | None=None,
+        SMILES: str | None = None,
+        SubstructureIndex: int | None = None,
+        AtomIndicies: list[int] | None = None,
     ):
         pass
 
@@ -595,7 +652,7 @@ class Molecule:
         TranslationVector = TranslationVector * Displacement
         for atomObj in self.AtomsList:
             atomObj.Coordinates = atomObj.Coordinates + TranslationVector
-    
+
     def GetRotationMatrix(self, rotation_axis: np.array, theta: float):
         """
         pass for now
@@ -637,7 +694,7 @@ class Molecule:
             atomObj.Coordinates = atomObj.Coordinates - geometric_midpoint
         # Rotate molecule atom by atom
         RotationMatrix = self.GetRotationMatrix(
-            rotation_axis=RotationVector/np.linalg.norm(RotationVector),
+            rotation_axis=RotationVector / np.linalg.norm(RotationVector),
             theta=RotationAngle,
         )
         for atomObj in self.AtomsList:

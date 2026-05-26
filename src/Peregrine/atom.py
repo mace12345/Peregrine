@@ -294,6 +294,7 @@ class Atom:
         self.FormalCharge = FormalCharge
         self.SubstructureIndex = SubstructureIndex
         self.Multiplicity = Multiplicity
+        self.AssociatedAtomSMILES = None
         self.Update()
 
     def Update(self):

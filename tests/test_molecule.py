@@ -330,7 +330,7 @@ def test_add_molecule_to_molecule():
         Displacement=3,
     )
     water_cation.RotateMolecule(
-        RotationVector=np.array([0,1,1]),
+        RotationVector=np.array([0, 1, 1]),
         RotationAngle=1,
     )
     benzene.AddMolecule(
@@ -346,6 +346,29 @@ def test_add_molecule_to_molecule():
     assert benzene.NumberOfBonds == 14
     assert benzene.NumberOfAtoms == 16
     assert benzene.MolecularMass == 97.14
+
+
+def test_SplitMoleculeIntoComponents():
+    # Benzene, Water, and Proton
+    with open(f"{Path(__file__).parent}/benzene_water_cation.mol", "r") as f:
+        benzene_str = f.read()
+        f.close()
+    benzene_water_cat = Molecule.ReadMolString(benzene_str)
+    benzene_water_cat.AtomsDict["O1"][1].FormalCharge = 0
+    benzene_water_cat.AtomsDict["H9"][1].FormalCharge = 1
+    components = benzene_water_cat.SplitMoleculeIntoComponents()
+    print(components)
+
+
+def test_DeriveMoleculeSmiles():
+    # Benzene, Water, and Proton
+    with open(f"{Path(__file__).parent}/benzene_water_cation.mol", "r") as f:
+        benzene_str = f.read()
+        f.close()
+    benzene_water_cat = Molecule.ReadMolString(benzene_str)
+    benzene_water_cat.AtomsDict["O1"][1].FormalCharge = 0
+    benzene_water_cat.AtomsDict["H9"][1].FormalCharge = 1
+    benzene_water_cat.DeriveMoleculeSMILES()
 
 
 def test_remove_molecule_from_molecule():
