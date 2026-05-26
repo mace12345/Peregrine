@@ -10,6 +10,7 @@ from rdkit.Geometry import Point3D
 from rdkit.Chem import SanitizeMol, SanitizeFlags
 from rdkit import RDLogger
 import rdkit
+from rdkit import rdBase
 
 from .atom import Atom, ATOMIC_MASSES
 
@@ -167,8 +168,7 @@ class Molecule:
             where=(self.BondOrderMatrix != 0),
         )
         self.NumberOfBonds = int(self.ConnectivityMatrix.sum().sum() / 2)
-        if UpdateAtomLabels == True:
-            self.NormaliseAtomLabels()
+        self.NormaliseAtomLabels(UpdateAtomLabels=UpdateAtomLabels)
         self.AtomsDict = {
             Atom.Label: [idx, Atom] for idx, Atom in enumerate(self.AtomsList)
         }
@@ -178,40 +178,15 @@ class Molecule:
         self.NormaliseSubstructureIndicies()
 
     def DeriveMoleculeSMILES(self):
-        """
-        MoleculeToSMILES converts a custom Molecule object into a SMILES string.
-        Parameters:
-            allHsExplicit (bool): If True, all hydrogen atoms are explicitly included in the SMILES string.
-        Returns:
-            str: The SMILES representation of the molecule.
-        """
-
-        def GenerateSMILESString(Molecule: Molecule):
-            # Create an empty RDKit molecule
-            rdkit_mol = Chem.RWMol()
-            # Add atoms to the RDKit molecule
-            for atomObj in Molecule.AtomsList:
-                rdkit_atom = Chem.Atom(atomObj.AtomicSymbol)
-                rdkit_atom.SetFormalCharge(atomObj.FormalCharge)
-                atom_idx = rdkit_mol.AddAtom(rdkit_atom)
-            # Add bonds based on the connectivity matrix
-            if self.ConnectivityMatrix is not None:
-                for i in range(Molecule.NumberOfAtoms):
-                    for j in range(i + 1, Molecule.NumberOfAtoms):
-                        if self.ConnectivityMatrix[i][j] > 0:  # Bond exists
-                            bond_type = RDKIT_BONDTYPE_TRANSLATION[
-                                self.BondOrderMatrix[i][j]
-                            ]
-                            rdkit_mol.AddBond(i, j, bond_type)
-            # Finalize the molecule and make SMILES string
-            rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
-            SMILES_str = Chem.MolToSmiles(rdkit_mol)
-            return SMILES_str
-
         # Split substructuures into their own molecule objects
-        self.SplitMoleculeIntoComponents(UpdateAtomLabels=False)
+        Components = self.SplitMoleculeIntoComponents(UpdateAtomLabels=False)
+        for component in Components:
+            SMILES_str = component.WriteSMILESString()
+            for atomObj in component.AtomsList:
+                self.AtomsDict[atomObj.Label][1].AssociatedAtomSMILES = SMILES_str
+        self.AssociatedMoleculeSMILES = self.WriteSMILESString()
 
-    def SplitMoleculeIntoComponents(self, UpdateAtomLabels: bool = True):
+    def SplitMoleculeIntoComponents(self, UpdateAtomLabels: bool = True) -> list[Self]:
         # Split substructuures into their own molecule objects
         new_Molecules = []
         substructure_dict = {i + 1: [] for i in range(self.NumberOfSubstructures)}
@@ -239,7 +214,7 @@ class Molecule:
             )
         return new_Molecules
 
-    def NormaliseAtomLabels(self):
+    def NormaliseAtomLabels(self, UpdateAtomLabels: bool = True):
         """
         Normalize atom labels to a standard format and calculate molecular mass.
 
@@ -286,10 +261,12 @@ class Molecule:
         for atomObj in self.AtomsList:
             if atomObj.AtomicSymbol not in atomic_symbol_count_dict:
                 atomic_symbol_count_dict[atomObj.AtomicSymbol] = 1
-                atomObj.Label = f"{atomObj.AtomicSymbol}1"
+                if UpdateAtomLabels == True:
+                    atomObj.Label = f"{atomObj.AtomicSymbol}1"
             else:
                 atomic_symbol_count_dict[atomObj.AtomicSymbol] += 1
-                atomObj.Label = f"{atomObj.AtomicSymbol}{atomic_symbol_count_dict[atomObj.AtomicSymbol]}"
+                if UpdateAtomLabels == True:
+                    atomObj.Label = f"{atomObj.AtomicSymbol}{atomic_symbol_count_dict[atomObj.AtomicSymbol]}"
             self.MolecularMass += ATOMIC_MASSES[atomObj.AtomicSymbol]
         self.MolecularMass = round(self.MolecularMass, 2)
 
@@ -428,6 +405,28 @@ class Molecule:
         return xyz_str
 
     def WriteSMILESString(self):
+        # Create an empty RDKit molecule
+        rdkit_mol = Chem.RWMol()
+        # Add atoms to the RDKit molecule
+        for atomObj in self.AtomsList:
+            rdkit_atom = Chem.Atom(atomObj.AtomicSymbol)
+            rdkit_atom.SetFormalCharge(atomObj.FormalCharge)
+            atom_idx = rdkit_mol.AddAtom(rdkit_atom)
+        # Add bonds based on the connectivity matrix
+        if self.ConnectivityMatrix is not None:
+            for i in range(self.NumberOfAtoms):
+                for j in range(i + 1, self.NumberOfAtoms):
+                    if self.ConnectivityMatrix[i][j] > 0:  # Bond exists
+                        bond_type = RDKIT_BONDTYPE_TRANSLATION[
+                            self.BondOrderMatrix[i][j]
+                        ]
+                        rdkit_mol.AddBond(i, j, bond_type)
+        # Finalize the molecule and make SMILES string
+        rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
+        SMILES_str = Chem.MolToSmiles(rdkit_mol)
+        return SMILES_str
+
+    def MoleculeToRDKitMol(self):
         pass
 
     @classmethod
@@ -574,12 +573,12 @@ class Molecule:
     def AddBond(
         self,
         AtomLabels: list[str] | None = None,
-        AtomIndicies: list[int] | None = None,
+        AtomIndices: list[int] | None = None,
         AtomObjects: list[Atom] | None = None,
         BondOrder: float = 1,
     ):
-        if AtomIndicies is not None:
-            atomIdx1, atomIdx2 = AtomIndicies
+        if AtomIndices is not None:
+            atomIdx1, atomIdx2 = AtomIndices
         elif AtomLabels is not None:
             atomIdx1 = self.AtomsDict[AtomLabels[0]][0]
             atomIdx2 = self.AtomsDict[AtomLabels[1]][0]
@@ -622,7 +621,7 @@ class Molecule:
                 new_atomIdx2 = atomIdx2 + og_NumberOfAtoms
                 if MoleculeToAdd.BondOrderMatrix[atomIdx1][atomIdx2] != 0:
                     self.AddBond(
-                        AtomIndicies=[
+                        AtomIndices=[
                             new_atomIdx1,
                             new_atomIdx2,
                         ],
@@ -632,16 +631,291 @@ class Molecule:
     def RemoveMolecule(
         self,
         SMILES: str | None = None,
+        SMARTS: str | None = None,
         SubstructureIndex: int | None = None,
-        AtomIndicies: list[int] | None = None,
     ):
-        pass
+        """
+        SMILES: Checks to see if molecule is equivelent to SMILES
+        SMARTS: Checks to see if molecule contains SMARTS
+        """
+        if SMILES is not None:
+            for component in self.SplitMoleculeIntoComponents(UpdateAtomLabels=False):
+                comp_SMILES = component.WriteSMILESString()
+                with rdBase.BlockLogs():
+                    if (
+                        self.EquivelentMoleculeInchi(
+                            SMILES,
+                            comp_SMILES,
+                        )
+                        == True
+                    ):
+                        AtomLabels_to_remove = [
+                            atomObj.Label for atomObj in component.AtomsList
+                        ]
+                        for AtomLabel in AtomLabels_to_remove:
+                            self.RemoveAtom(
+                                AtomLabel=AtomLabel,
+                                UpdateAtomLabels=False,
+                            )
+        elif SMARTS is not None:
+            for component in self.SplitMoleculeIntoComponents(UpdateAtomLabels=False):
+                comp_SMILES = component.WriteSMILESString()
+                SMILES_rdkitObj = Chem.MolFromSmiles(comp_SMILES)
+                SMARTS_rdkitObj = Chem.MolFromSmarts(SMARTS)
 
-    def RemoveBond(self):
-        pass
 
-    def RemoveAtom(self):
-        pass
+        self.DeriveBasicAttributes()
+
+    def RemoveBond(
+        self,
+        AtomLabels: list[str] | None = None,
+        AtomIndices: list[int] | None = None,
+        AtomObjects: list[Atom] | None = None,
+    ):
+        """
+        Remove a bond between two atoms in the molecule.
+
+        Parameters:
+            AtomLabels (list[str] | None): Labels of the two atoms (e.g., ['H1', 'C1'])
+            AtomIndices (list[int] | None): Indices of the two atoms in AtomsList
+            AtomObjects (list[Atom] | None): Direct references to the two Atom objects
+
+        Raises:
+            ValueError: If no identifier provided or invalid atom specification
+            IndexError: If atom indices are out of bounds
+            ValueError: If no bond exists between the specified atoms
+
+        Notes:
+            - Removing a bond may change the number of substructures if it disconnects
+            previously bonded atoms
+            - Derived attributes (NumberOfBonds, NumberOfSubstructures) are updated automatically
+        """
+        # Determine atom indices
+        if AtomIndices is not None:
+            if len(AtomIndices) != 2:
+                raise ValueError("AtomIndices must contain exactly 2 indices")
+            atomIdx1, atomIdx2 = AtomIndices
+            if not (
+                0 <= atomIdx1 < self.NumberOfAtoms
+                and 0 <= atomIdx2 < self.NumberOfAtoms
+            ):
+                raise IndexError(f"Atom indices out of bounds: {atomIdx1}, {atomIdx2}")
+        elif AtomLabels is not None:
+            if len(AtomLabels) != 2:
+                raise ValueError("AtomLabels must contain exactly 2 labels")
+            if AtomLabels[0] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[0]}' not found")
+            if AtomLabels[1] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[1]}' not found")
+            atomIdx1 = self.AtomsDict[AtomLabels[0]][0]
+            atomIdx2 = self.AtomsDict[AtomLabels[1]][0]
+        elif AtomObjects is not None:
+            if len(AtomObjects) != 2:
+                raise ValueError("AtomObjects must contain exactly 2 objects")
+            try:
+                atomIdx1 = self.AtomsDict[AtomObjects[0].Label][0]
+                atomIdx2 = self.AtomsDict[AtomObjects[1].Label][0]
+            except KeyError as e:
+                raise ValueError(f"Atom object not found in molecule: {e}")
+        else:
+            raise ValueError(
+                "RemoveBond requires AtomLabels, AtomIndices, or AtomObjects"
+            )
+
+        # Check if bond exists
+        if self.BondOrderMatrix[atomIdx1][atomIdx2] == 0:
+            raise ValueError(
+                f"No bond exists between atoms at indices {atomIdx1} and {atomIdx2}"
+            )
+
+        # Remove bond by setting to 0
+        self.BondOrderMatrix[atomIdx1][atomIdx2] = 0
+        self.BondOrderMatrix[atomIdx2][atomIdx1] = 0
+        self.ConnectivityMatrix[atomIdx1][atomIdx2] = 0
+        self.ConnectivityMatrix[atomIdx2][atomIdx1] = 0
+        self.NumberOfBonds -= 1
+        self.NormaliseSubstructureIndicies()
+
+    def RemoveAtom(
+        self,
+        AtomLabel: str | None = None,
+        AtomIndex: int | None = None,
+        AtomObject: Atom | None = None,
+        UpdateAtomLabels: bool = True,
+    ):
+        """
+        Remove an atom from the molecule and all its associated bonds.
+
+        Parameters:
+            AtomLabel (str | None): Label of the atom to remove (e.g., 'H1', 'C2')
+            AtomIndex (int | None): Index of the atom in AtomsList
+            AtomObject (Atom | None): Direct reference to the Atom object
+
+        Raises:
+            ValueError: If no identifier provided or atom not found in molecule
+            IndexError: If AtomIndex is out of bounds
+
+        Notes:
+            - Removing an atom automatically removes all bonds involving it
+            - Substructure indices are recalculated after removal
+            - Derived attributes (MolecularMass, NumberOfBonds, etc.) are updated
+        """
+        # Determine which atom to remove
+        if AtomIndex is not None:
+            if not 0 <= AtomIndex < self.NumberOfAtoms:
+                raise IndexError(
+                    f"Atom index {AtomIndex} out of bounds (0-{self.NumberOfAtoms-1})"
+                )
+            atom_idx_to_remove = AtomIndex
+        elif AtomLabel is not None:
+            if AtomLabel not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabel}' not found in molecule")
+            atom_idx_to_remove = self.AtomsDict[AtomLabel][0]
+        elif AtomObject is not None:
+            try:
+                atom_idx_to_remove = self.AtomsDict[AtomObject.Label][0]
+            except KeyError:
+                raise ValueError(
+                    f"Atom object with label '{AtomObject.Label}' not found in molecule"
+                )
+        else:
+            raise ValueError("Must provide AtomLabel, AtomIndex, or AtomObject")
+
+        # Remove atom from AtomsList
+        self.AtomsList.pop(atom_idx_to_remove)
+
+        # Remove row and column from bond order matrix
+        self.BondOrderMatrix = np.delete(
+            self.BondOrderMatrix, atom_idx_to_remove, axis=0
+        )
+        self.BondOrderMatrix = np.delete(
+            self.BondOrderMatrix, atom_idx_to_remove, axis=1
+        )
+
+        # Recalculate all derived attributes
+        self.DeriveBasicAttributes(UpdateAtomLabels=UpdateAtomLabels)
+
+    def ChangeAtom(
+        self,
+        NewAtomicSymbol: str,
+        NewFormalCharge: int = 0,
+        NewMultiplicity: int = 1,
+        AtomLabel: str | None = None,
+        AtomIndex: int | None = None,
+        UpdateAtomLabels: bool = True,
+    ):
+        """
+        Change the atomic symbol of an atom in the molecule.
+
+        Parameters:
+            NewAtomicSymbol (str): The new atomic symbol (e.g., 'C', 'N', 'O')
+            AtomLabel (str | None): Label of the atom to change (e.g., 'H1', 'C2')
+            AtomIndex (int | None): Index of the atom to change in AtomsList
+
+        Raises:
+            ValueError: If neither AtomLabel nor AtomIndex provided, if AtomLabel not found,
+                    if AtomIndex out of bounds, or if NewAtomicSymbol is invalid
+        """
+
+        # Validate that exactly one identifier is provided
+        if AtomLabel is None and AtomIndex is None:
+            raise ValueError("Must provide either AtomLabel or AtomIndex")
+
+        # Get atom object
+        if AtomLabel is not None:
+            if AtomLabel not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabel}' not found in molecule")
+            atomObj = self.AtomsDict[AtomLabel][1]
+        else:  # AtomIndex is not None
+            if not 0 <= AtomIndex < self.NumberOfAtoms:
+                raise ValueError(
+                    f"Atom index {AtomIndex} out of bounds (0-{self.NumberOfAtoms-1})"
+                )
+            atomObj = self.AtomsList[AtomIndex]
+
+        # Change atom and update molecular properties
+        atomObj.AtomicSymbol = NewAtomicSymbol
+        atomObj.Update()
+        self.DeriveBasicAttributes(
+            UpdateAtomLabels=UpdateAtomLabels
+        )  # Updates MolecularMass
+
+    def ChangeBond(
+        self,
+        NewBondOrder: float,
+        AtomLabels: list[str] | None = None,
+        AtomIndices: list[int] | None = None,
+        AtomObjects: list[Atom] | None = None,
+    ):
+        """
+        Change the bond order between two atoms in the molecule.
+
+        Parameters:
+            NewBondOrder (float): The new bond order (e.g., 1.0, 1.5, 2.0, 3.0)
+                                 - 1.0: Single bond
+                                 - 1.5: Aromatic bond
+                                 - 2.0: Double bond
+                                 - 3.0: Triple bond
+            AtomLabels (list[str] | None): Labels of the two atoms (e.g., ['C1', 'C2'])
+            AtomIndices (list[int] | None): Indices of the two atoms in AtomsList
+            AtomObjects (list[Atom] | None): Direct references to the two Atom objects
+
+        Raises:
+            ValueError: If no identifier provided, invalid atom specification, or no bond exists
+            IndexError: If atom indices are out of bounds
+            ValueError: If NewBondOrder is invalid (negative or zero)
+
+        Notes:
+            - Setting NewBondOrder to 0 is equivalent to RemoveBond()
+            - Changing bond order does not affect substructure connectivity (only presence/absence)
+            - Derived attributes are minimally updated for efficiency
+        """
+
+        # Validate bond order
+        if NewBondOrder <= 0:
+            raise ValueError(f"Bond order must be positive, got {NewBondOrder}")
+
+        # Determine atom indices
+        if AtomIndices is not None:
+            if len(AtomIndices) != 2:
+                raise ValueError("AtomIndices must contain exactly 2 indices")
+            atomIdx1, atomIdx2 = AtomIndices
+            if not (
+                0 <= atomIdx1 < self.NumberOfAtoms
+                and 0 <= atomIdx2 < self.NumberOfAtoms
+            ):
+                raise IndexError(f"Atom indices out of bounds: {atomIdx1}, {atomIdx2}")
+        elif AtomLabels is not None:
+            if len(AtomLabels) != 2:
+                raise ValueError("AtomLabels must contain exactly 2 labels")
+            if AtomLabels[0] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[0]}' not found")
+            if AtomLabels[1] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[1]}' not found")
+            atomIdx1 = self.AtomsDict[AtomLabels[0]][0]
+            atomIdx2 = self.AtomsDict[AtomLabels[1]][0]
+        elif AtomObjects is not None:
+            if len(AtomObjects) != 2:
+                raise ValueError("AtomObjects must contain exactly 2 objects")
+            try:
+                atomIdx1 = self.AtomsDict[AtomObjects[0].Label][0]
+                atomIdx2 = self.AtomsDict[AtomObjects[1].Label][0]
+            except KeyError as e:
+                raise ValueError(f"Atom object not found in molecule: {e}")
+        else:
+            raise ValueError(
+                "ChangeBond requires AtomLabels, AtomIndices, or AtomObjects"
+            )
+
+        # Check if bond exists
+        if self.BondOrderMatrix[atomIdx1][atomIdx2] == 0:
+            raise ValueError(
+                f"No bond exists between atoms at indices {atomIdx1} and {atomIdx2}"
+            )
+
+        # Update bond order
+        self.BondOrderMatrix[atomIdx1][atomIdx2] = NewBondOrder
+        self.BondOrderMatrix[atomIdx2][atomIdx1] = NewBondOrder
 
     def TranslateMolecule(
         self,
@@ -702,3 +976,19 @@ class Molecule:
         # Translate back to original position
         for atomObj in self.AtomsList:
             atomObj.Coordinates = atomObj.Coordinates + geometric_midpoint
+
+    def EquivelentMoleculeInchi(self, SMILES1: str, SMILES2: str) -> bool:
+        SMILES1_rdkitObj = Chem.MolFromSmiles(SMILES1)
+        SMILES2_rdkitObj = Chem.MolFromSmiles(SMILES2)
+        if SMILES1_rdkitObj is None:
+            print(f"Could not generate rdkitObj from SMILES string: {SMILES1}")
+            return False
+        if SMILES2_rdkitObj is None:
+            print(f"Could not generate rdkitObj from SMILES string: {SMILES2}")
+            return False
+        else:
+            return Chem.MolToInchi(SMILES1_rdkitObj) == Chem.MolToInchi(
+                SMILES2_rdkitObj
+            )
+
+    def SMARTSMatchesSMILES(self, )

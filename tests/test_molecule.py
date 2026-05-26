@@ -293,7 +293,7 @@ def test_add_atoms_and_bonds_to_molecule():
         assert benzene.NumberOfSubstructures == 2 + idx
     benzene.AddBond(AtomLabels=["C1", "H1"])
     assert benzene.NumberOfSubstructures == 6
-    benzene.AddBond(AtomIndicies=[1, 7])
+    benzene.AddBond(AtomIndices=[1, 7])
     benzene.AddBond(
         AtomObjects=[
             benzene.AtomsList[2],
@@ -357,7 +357,27 @@ def test_SplitMoleculeIntoComponents():
     benzene_water_cat.AtomsDict["O1"][1].FormalCharge = 0
     benzene_water_cat.AtomsDict["H9"][1].FormalCharge = 1
     components = benzene_water_cat.SplitMoleculeIntoComponents()
-    print(components)
+    assert components[0].MolecularMass == 78.11
+    assert components[0].NumberOfAtoms == 12
+    assert components[0].NumberOfBonds == 12
+    assert components[0].NumberOfSubstructures == 1
+    assert components[0].FormalCharge == 0
+    assert components[0].Multiplicity == 1
+    assert components[0].WriteSMILESString() == "[H]C1=C([H])C([H])=C([H])C([H])=C1[H]"
+    assert components[1].MolecularMass == 18.02
+    assert components[1].NumberOfAtoms == 3
+    assert components[1].NumberOfBonds == 2
+    assert components[1].NumberOfSubstructures == 1
+    assert components[1].FormalCharge == 0
+    assert components[1].Multiplicity == 1
+    assert components[1].WriteSMILESString() == "[H]O[H]"
+    assert components[2].MolecularMass == 1.01
+    assert components[2].NumberOfAtoms == 1
+    assert components[2].NumberOfBonds == 0
+    assert components[2].NumberOfSubstructures == 1
+    assert components[2].FormalCharge == 1
+    assert components[2].Multiplicity == 1
+    assert components[2].WriteSMILESString() == "[H+]"
 
 
 def test_DeriveMoleculeSmiles():
@@ -369,7 +389,105 @@ def test_DeriveMoleculeSmiles():
     benzene_water_cat.AtomsDict["O1"][1].FormalCharge = 0
     benzene_water_cat.AtomsDict["H9"][1].FormalCharge = 1
     benzene_water_cat.DeriveMoleculeSMILES()
+    assert (
+        benzene_water_cat.AssociatedMoleculeSMILES
+        == "[H+].[H]C1=C([H])C([H])=C([H])C([H])=C1[H].[H]O[H]"
+    )
 
 
-def test_remove_molecule_from_molecule():
-    pass
+def test_ChangeAtom():
+    with open(f"{Path(__file__).parent}/benzene_water_cation.mol", "r") as f:
+        benzene_str = f.read()
+        f.close()
+    benzene_water_cat = Molecule.ReadMolString(benzene_str)
+    components = benzene_water_cat.SplitMoleculeIntoComponents()
+    benzene = components[0]
+    benzene.ChangeAtom(
+        AtomLabel="C1",
+        NewAtomicSymbol="N",
+    )
+    benzene.ChangeAtom(
+        AtomIndex=2,
+        NewAtomicSymbol="N",
+    )
+    benzene.TranslateMolecule(TranslationVector=np.array([0, 0, 1]), Displacement=6)
+    benzene_water_cat.AddMolecule(benzene)
+    benzene_water_cat.AtomsDict["O1"][1].FormalCharge = 0
+    benzene_water_cat.AtomsDict["H9"][1].FormalCharge = 1
+    benzene_water_cat_str = benzene_water_cat.WriteMolString()
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+        f.write(benzene_water_cat_str)
+        f.close()
+    assert benzene_water_cat.MolecularMass == 179.24
+    assert benzene_water_cat.NumberOfAtoms == 28
+    assert benzene_water_cat.NumberOfBonds == 26
+    assert benzene_water_cat.NumberOfSubstructures == 4
+    assert benzene_water_cat.FormalCharge == 1
+    assert benzene_water_cat.Multiplicity == 1
+    assert benzene.MolecularMass == 82.11
+
+
+def test_RemoveAtom():
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+        aromatic_sandwich_str = f.read()
+        f.close()
+    aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
+    aromatic_sandwich.RemoveAtom(AtomLabel="C7")
+    aromatic_sandwich.RemoveAtom(AtomIndex=21)
+    aromatic_sandwich.RemoveAtom(AtomObject=aromatic_sandwich.AtomsDict["H10"][1])
+    aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+        f.write(aromatic_sandwich_str)
+        f.close()
+    assert aromatic_sandwich.MolecularMass == 165.22
+    assert aromatic_sandwich.NumberOfAtoms == 25
+    assert aromatic_sandwich.NumberOfBonds == 22
+    assert aromatic_sandwich.NumberOfSubstructures == 4
+    assert aromatic_sandwich.FormalCharge == 1
+    assert aromatic_sandwich.Multiplicity == 1
+
+
+def test_RemoveBond():
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+        aromatic_sandwich_str = f.read()
+        f.close()
+    aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
+    aromatic_sandwich.RemoveBond(AtomLabels=["C7", "C9"])
+    aromatic_sandwich.RemoveBond(AtomIndices=[20, 19])
+    assert aromatic_sandwich.NumberOfBonds == 20
+    assert aromatic_sandwich.NumberOfSubstructures == 6
+    aromatic_sandwich.AddBond(AtomLabels=["C7", "C9"])
+    aromatic_sandwich.AddBond(AtomIndices=[20, 19], BondOrder=2)
+    aromatic_sandwich.AddBond(AtomIndices=[16, 18])
+    assert aromatic_sandwich.NumberOfBonds == 23
+    assert aromatic_sandwich.NumberOfSubstructures == 4
+    aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+        f.write(aromatic_sandwich_str)
+        f.close()
+
+
+def test_ChangeBond():
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+        aromatic_sandwich_str = f.read()
+        f.close()
+    aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
+    aromatic_sandwich.ChangeBond(NewBondOrder=1, AtomIndices=[16, 17])
+    aromatic_sandwich.ChangeBond(NewBondOrder=1, AtomIndices=[19, 17])
+    aromatic_sandwich.ChangeBond(NewBondOrder=2, AtomIndices=[16, 18])
+    aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+        f.write(aromatic_sandwich_str)
+        f.close()
+
+
+def test_RemoveMolecule():
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+        aromatic_sandwich_str = f.read()
+        f.close()
+    aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
+    aromatic_sandwich.RemoveMolecule(SMILES="O")
+    aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+        f.write(aromatic_sandwich_str)
+        f.close()
