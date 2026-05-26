@@ -127,6 +127,7 @@ class Molecule:
     def DeriveBasicAttributes(
         self,
         UpdateAtomLabels: bool = True,
+        UpdateSubstructureIndices: bool = True,
     ):
         """
         Derive and calculate basic molecular attributes from bond order matrix and atom list.
@@ -175,7 +176,8 @@ class Molecule:
         self.NumberOfAtoms = len(self.AtomsList)
         self.GetFormalCharge()
         self.GetMultiplicity()
-        self.NormaliseSubstructureIndicies()
+        if UpdateSubstructureIndices == True:
+            self.NormaliseSubstructureIndicies()
 
     def DeriveMoleculeSMILES(self):
         # Split substructuures into their own molecule objects
@@ -656,14 +658,34 @@ class Molecule:
                             self.RemoveAtom(
                                 AtomLabel=AtomLabel,
                                 UpdateAtomLabels=False,
+                                UpdateSubstructureIndices=False,
                             )
         elif SMARTS is not None:
             for component in self.SplitMoleculeIntoComponents(UpdateAtomLabels=False):
                 comp_SMILES = component.WriteSMILESString()
-                SMILES_rdkitObj = Chem.MolFromSmiles(comp_SMILES)
-                SMARTS_rdkitObj = Chem.MolFromSmarts(SMARTS)
-
-
+                with rdBase.BlockLogs():
+                    matches = self.SMARTSMatchesSMILES(comp_SMILES, SMARTS)
+                    if matches != ():
+                        AtomLabels_to_remove = [
+                            atomObj.Label for atomObj in component.AtomsList
+                        ]
+                        for AtomLabel in AtomLabels_to_remove:
+                            self.RemoveAtom(
+                                AtomLabel=AtomLabel,
+                                UpdateAtomLabels=False,
+                                UpdateSubstructureIndices=False,
+                            )
+        elif SubstructureIndex is not None:
+            atom_labels = []
+            for atomObj in self.AtomsList:
+                if atomObj.SubstructureIndex == SubstructureIndex:
+                    atom_labels.append(atomObj.Label)
+            for atom_label in atom_labels:
+                self.RemoveAtom(
+                    AtomLabel=atom_label,
+                    UpdateAtomLabels=False,
+                    UpdateSubstructureIndices=False,
+                )
         self.DeriveBasicAttributes()
 
     def RemoveBond(
@@ -742,6 +764,7 @@ class Molecule:
         AtomIndex: int | None = None,
         AtomObject: Atom | None = None,
         UpdateAtomLabels: bool = True,
+        UpdateSubstructureIndices: bool = True,
     ):
         """
         Remove an atom from the molecule and all its associated bonds.
@@ -793,7 +816,10 @@ class Molecule:
         )
 
         # Recalculate all derived attributes
-        self.DeriveBasicAttributes(UpdateAtomLabels=UpdateAtomLabels)
+        self.DeriveBasicAttributes(
+            UpdateAtomLabels=UpdateAtomLabels,
+            UpdateSubstructureIndices=UpdateSubstructureIndices,
+        )
 
     def ChangeAtom(
         self,
@@ -923,7 +949,7 @@ class Molecule:
         Displacement: float,
     ):
         TranslationVector = TranslationVector / np.linalg.norm(TranslationVector)
-        TranslationVector = TranslationVector * Displacement
+        TranslationVector = TranslationVector * abs(Displacement)
         for atomObj in self.AtomsList:
             atomObj.Coordinates = atomObj.Coordinates + TranslationVector
 
@@ -991,4 +1017,14 @@ class Molecule:
                 SMILES2_rdkitObj
             )
 
-    def SMARTSMatchesSMILES(self, )
+    def SMARTSMatchesSMILES(self, SMILES: str, SMARTS: str) -> tuple:
+        SMILES_rdkitObj = Chem.MolFromSmiles(SMILES)
+        SMARTS_rdkitObj = Chem.MolFromSmarts(SMARTS)
+        if SMILES_rdkitObj is None:
+            print(f"Could not generate rdkitObj from SMILES string: {SMILES}")
+            return False
+        if SMARTS_rdkitObj is None:
+            print(f"Could not generate rdkitObj from SMARTS string: {SMARTS}")
+            return False
+        matches = SMILES_rdkitObj.GetSubstructMatches(SMARTS_rdkitObj)
+        return matches

@@ -487,6 +487,23 @@ def test_RemoveMolecule():
         f.close()
     aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
     aromatic_sandwich.RemoveMolecule(SMILES="O")
+    aromatic_sandwich.RemoveMolecule(SMARTS="[#6][#6][#6][#6]")
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+        aromatic_sandwich_str = f.read()
+        f.close()
+    aromatic_sandwich_2 = Molecule.ReadMolString(aromatic_sandwich_str)
+    aromatic_sandwich_2.TranslateMolecule(
+        TranslationVector=np.array([0, 0, -1]), Displacement=4
+    )
+    aromatic_sandwich.AddMolecule(MoleculeToAdd=aromatic_sandwich_2)
+    assert aromatic_sandwich.MolecularMass == 234.3
+    assert aromatic_sandwich.NumberOfAtoms == 35
+    assert aromatic_sandwich.NumberOfBonds == 32
+    assert aromatic_sandwich.NumberOfSubstructures == 6
+    assert aromatic_sandwich.FormalCharge == 2
+    assert aromatic_sandwich.Multiplicity == 1
+    aromatic_sandwich.RemoveMolecule(SubstructureIndex=4)
+    assert aromatic_sandwich.NumberOfSubstructures == 5
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
     with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
         f.write(aromatic_sandwich_str)
