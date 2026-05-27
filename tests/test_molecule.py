@@ -515,9 +515,13 @@ def test_OptimiseGeometry():
         aromatic_sandwich_str = f.read()
         f.close()
     aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
+    print(aromatic_sandwich.GetMoleculeVolume())
     aromatic_sandwich.OptimiseGeometry(
         SimpleLennardJonesPotential=True,
+        SimpleLennardJonesPotential_settings={"Max Steps": 150},
+        MolecularMechanics=True,
     )
+    print(aromatic_sandwich.GetMoleculeVolume())
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
     with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
         f.write(aromatic_sandwich_str)

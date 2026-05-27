@@ -1,6 +1,10 @@
-import numpy as np
 from typing import Self
 from copy import deepcopy
+from pathlib import Path
+import os
+
+import numpy as np
+from scipy.spatial import ConvexHull
 
 from rdkit import Chem
 from rdkit.Chem import rdmolops
@@ -12,7 +16,10 @@ from rdkit import RDLogger
 import rdkit
 from rdkit import rdBase
 
-from .atom import Atom, ATOMIC_MASSES
+from openbabel import pybel
+from openbabel import openbabel as ob
+
+from .atom import Atom
 
 RDKIT_BONDTYPE_TRANSLATION = {
     1: Chem.BondType.SINGLE,
@@ -269,7 +276,7 @@ class Molecule:
                 atomic_symbol_count_dict[atomObj.AtomicSymbol] += 1
                 if UpdateAtomLabels == True:
                     atomObj.Label = f"{atomObj.AtomicSymbol}{atomic_symbol_count_dict[atomObj.AtomicSymbol]}"
-            self.MolecularMass += ATOMIC_MASSES[atomObj.AtomicSymbol]
+            self.MolecularMass += atomObj.AtomicMass
         self.MolecularMass = round(self.MolecularMass, 2)
 
     def NormaliseSubstructureIndicies(self):
@@ -345,6 +352,11 @@ class Molecule:
             if test_radius > radius:
                 radius = test_radius
         return radius
+
+    def GetMoleculeVolume(self) -> float:
+        points = [atomObj.Coordinates for atomObj in self.AtomsList]
+        hull = ConvexHull(points)
+        return round(hull.volume, 2)
 
     def WriteMolString(self):
         """
@@ -1167,11 +1179,11 @@ class Molecule:
 
     def OptimiseGeometry_SimpleLJ(
         self,
-        n_steps: int = 1000,
-        max_en_diff: float = 1e-6,
+        n_steps: int = 100,
+        max_en_diff: float = 1e-1,
         max_step_size: float = 0.1,
         time_step: float = 1.0,
-    ):
+    ) -> float:
         # Calculate initial forces that the substructures place on each other
         ForcesDict = self.ForcesDict_SimpleLJ()
         OG_LJ_en = self.CalculateTotalLennardJonesPotential(
@@ -1191,12 +1203,110 @@ class Molecule:
             if en_diff < max_en_diff:
                 break
             OG_LJ_en = NEW_LJ_en
+        return OG_LJ_en
+
+    def OptimiseGeometry_UFF(
+        self,
+        fixed_atoms: list | None = None,
+        max_steps: int = 700,
+        energy_tol: float = 1e-6,
+        force_field: str = "UFF",
+    ) -> float:
+        # Read pybel file
+        temp_mol_str = self.WriteMolString()
+        with open(f"{Path(__file__).parent}/{self.Identifier}_temp.mol", "w") as f:
+            f.write(temp_mol_str)
+            f.close()
+        molPybelObj = pybel.readfile(
+            "mol", f"{Path(__file__).parent}/{self.Identifier}_temp.mol"
+        )
+        molPybelObj = next(molPybelObj)
+        os.remove(f"{Path(__file__).parent}/{self.Identifier}_temp.mol")
+        # Set up constraints
+        if fixed_atoms:
+            constrs = ob.OBFFConstraints()
+            for atom_idx in fixed_atoms:
+                constrs.AddAtomConstraint(atom_idx + 1)
+        # Set up force field
+        ff = ob.OBForceField.FindForceField(force_field)
+        if not ff:
+            raise ValueError(f"Could not find {force_field} forcefield")
+        # Setup minimization
+        if fixed_atoms:
+            ff.Setup(molPybelObj.OBMol, constrs)
+            ff.SetConstraints(constrs)
+        else:
+            ff.Setup(molPybelObj.OBMol)
+        # Run minimization
+        max_steps = int((max_steps) / 4) + 1
+        ff.ConjugateGradients(max_steps, energy_tol)
+        ff.SteepestDescent(max_steps, energy_tol)
+        ff.ConjugateGradients(max_steps, energy_tol)
+        ff.SteepestDescent(max_steps, energy_tol)
+        # Update coordinates
+        ff.GetCoordinates(molPybelObj.OBMol)
+        for ob_atom, atomObj in zip(molPybelObj, self.AtomsList):
+            atomObj.Coordinates = np.array(ob_atom.coords)
+        return ff.Energy()
+
+    def OptimiseGeometry_gxTB(self):
+        pass
 
     def OptimiseGeometry(
         self,
         SimpleLennardJonesPotential: bool | None = None,
-        MolecularMechanicsUFF: bool | None = None,
+        SimpleLennardJonesPotential_settings: dict | None = None,
+        MolecularMechanics: bool | None = None,
+        MolecularMechanics_settings: dict | None = None,
         SemiEmpiricalgxTB: bool | None = None,
     ):
+        lj_defaults = {
+            "Max Steps": 100,
+            "Max Energy Difference": 1e-1,
+            "Max Step Size": 0.1,
+            "Time Step": 1,
+        }
+        mm_defaults = {
+            "Max Steps": 700,
+            "Max Energy Difference": 1e-6,
+            "Method": "UFF",
+            "ConstrainedAtomLabels": None,
+            "ConstrainedAtomIndices": None,
+        }
+
+        lj_settings = {**lj_defaults, **(SimpleLennardJonesPotential_settings or {})}
+        mm_settings = {**mm_defaults, **(MolecularMechanics_settings or {})}
         if SimpleLennardJonesPotential == True:
-            self.OptimiseGeometry_SimpleLJ()
+            self.OptimiseGeometry_SimpleLJ(
+                n_steps=lj_settings["Max Steps"],
+                max_en_diff=lj_settings["Max Energy Difference"],
+                max_step_size=lj_settings["Max Step Size"],
+                time_step=lj_settings["Time Step"],
+            )
+        if MolecularMechanics == True:
+            if mm_defaults["ConstrainedAtomLabels"] is not None:
+                fixed_atoms = [
+                    self.AtomsDict[Label][0]
+                    for Label in mm_defaults["ConstrainedAtomIndices"]
+                ]
+                self.OptimiseGeometry_UFF(
+                    fixed_atoms=fixed_atoms,
+                    max_steps=mm_defaults["Max Steps"],
+                    energy_tol=mm_defaults["Max Energy Difference"],
+                    force_field=mm_defaults["Method"],
+                )
+            elif mm_defaults["ConstrainedAtomIndices"] is not None:
+                self.OptimiseGeometry_UFF(
+                    fixed_atoms=mm_defaults["ConstrainedAtomIndices"],
+                    max_steps=mm_defaults["Max Steps"],
+                    energy_tol=mm_defaults["Max Energy Difference"],
+                    force_field=mm_defaults["Method"],
+                )
+            else:
+                self.OptimiseGeometry_UFF(
+                    max_steps=mm_defaults["Max Steps"],
+                    energy_tol=mm_defaults["Max Energy Difference"],
+                    force_field=mm_defaults["Method"],
+                )
+        if SemiEmpiricalgxTB == True:
+            self.OptimiseGeometry_gxTB()
