@@ -508,3 +508,17 @@ def test_RemoveMolecule():
     with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
         f.write(aromatic_sandwich_str)
         f.close()
+
+
+def test_OptimiseGeometry():
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+        aromatic_sandwich_str = f.read()
+        f.close()
+    aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
+    aromatic_sandwich.OptimiseGeometry(
+        SimpleLennardJonesPotential=True,
+    )
+    aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+        f.write(aromatic_sandwich_str)
+        f.close()

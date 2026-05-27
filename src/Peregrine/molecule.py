@@ -329,6 +329,23 @@ class Molecule:
                 unpaired_electrons += (atomObj.Multiplicity - 1) / 2
         self.Multiplicity = (2 * unpaired_electrons) + 1
 
+    def GetCentreOfMass(self) -> np.ndarray:
+        centre = np.array([0.0, 0.0, 0.0])
+        for atomObj in self.AtomsList:
+            centre += atomObj.Coordinates * atomObj.AtomicMass
+        return centre / self.MolecularMass
+
+    def GetMoleculeRadius(self) -> float:
+        radius = 0
+        mid_point = self.GetCentreOfMass()
+        for atomObj in self.AtomsList:
+            test_radius = (
+                np.linalg.norm(atomObj.Coordinates - mid_point) + atomObj.AtomicRadii
+            )
+            if test_radius > radius:
+                radius = test_radius
+        return radius
+
     def WriteMolString(self):
         """
         Generate a .MOL file string in V3000 format.
@@ -1028,3 +1045,158 @@ class Molecule:
             return False
         matches = SMILES_rdkitObj.GetSubstructMatches(SMARTS_rdkitObj)
         return matches
+
+    # === Optimise Geometries Functions ===
+
+    def LennardJonesPotential(
+        self,
+        sigma_a: float,
+        sigma_b: float,
+        coordinates_a: np.array,
+        coordinates_b: np.array,
+        epsilon_a=1,
+        epsilon_b=1,
+    ):
+        epsilon = (epsilon_a * epsilon_b) ** 0.5
+        sigma = (sigma_a + sigma_b) / 2
+        r = np.linalg.norm(coordinates_a - coordinates_b)
+        V_r = 4 * epsilon * (((sigma / r) ** 12) - ((sigma / r) ** 6))
+        return V_r
+
+    def LennardJonesGradient(
+        self,
+        sigma_a: float,
+        sigma_b: float,
+        coordinates_a: np.array,
+        coordinates_b: np.array,
+        epsilon_a=1,
+        epsilon_b=1,
+        step=0.1,
+    ):
+        # Calculate energy gradient between coordinates
+        direction_vector = coordinates_a - coordinates_b
+        direction_vector = direction_vector / np.linalg.norm(direction_vector)
+        translation_vector = direction_vector * step
+        step0_LJPotEn = self.LennardJonesPotential(
+            sigma_a=sigma_a,
+            sigma_b=sigma_b,
+            coordinates_a=coordinates_a,
+            coordinates_b=coordinates_b,
+            epsilon_a=epsilon_a,
+            epsilon_b=epsilon_b,
+        )
+        step1_LJPotEn = self.LennardJonesPotential(
+            sigma_a=sigma_a,
+            sigma_b=sigma_b,
+            coordinates_a=coordinates_a,
+            coordinates_b=coordinates_b + translation_vector,
+            epsilon_a=epsilon_a,
+            epsilon_b=epsilon_b,
+        )
+        gradient = step0_LJPotEn - step1_LJPotEn
+        return gradient, direction_vector
+
+    def CalculateTotalLennardJonesPotential(
+        self,
+        ForcesDict: dict,
+    ) -> float:
+        total_LJ_pot = 0
+        for Identifier1 in ForcesDict:
+            for Identifier2 in ForcesDict:
+                if Identifier1 == Identifier2:
+                    continue
+                LJ_pot = self.LennardJonesPotential(
+                    sigma_a=ForcesDict[Identifier1]["Radius"],
+                    sigma_b=ForcesDict[Identifier2]["Radius"],
+                    coordinates_a=ForcesDict[Identifier1]["Centre of Mass"],
+                    coordinates_b=ForcesDict[Identifier2]["Centre of Mass"],
+                )
+                total_LJ_pot += LJ_pot
+        return total_LJ_pot
+
+    def MoveSubStructures(
+        self,
+        ForcesDict: dict,
+    ):
+        for Identifier in ForcesDict:
+            translation_vector = (
+                ForcesDict[Identifier]["Displacement"]
+                * ForcesDict[Identifier]["Direction"]
+                * -1
+            )
+            for atomObj in self.AtomsList:
+                if str(atomObj.SubstructureIndex) == Identifier.split("_")[-1]:
+                    atomObj.Coordinates += translation_vector
+
+    def ForcesDict_SimpleLJ(
+        self, max_step_size: float = 0.1, time_step: float = 1.0
+    ) -> dict:
+        ForcesDict = {}
+        components = self.SplitMoleculeIntoComponents(UpdateAtomLabels=False)
+        for component in components:
+            ForcesDict[component.Identifier] = {
+                "Centre of Mass": component.GetCentreOfMass(),
+                "Radius": component.GetMoleculeRadius(),
+                "Molecular Mass": component.MolecularMass,
+            }
+        # Append forces dict with LJ potential gradient and direction of force
+        for Identifier1 in ForcesDict:
+            force_vector = np.array([0.0, 0.0, 0.0])
+            for Identifier2 in ForcesDict:
+                if Identifier1 == Identifier2:
+                    continue
+                else:
+                    grad, dir_vec = self.LennardJonesGradient(
+                        sigma_a=ForcesDict[Identifier1]["Radius"],
+                        sigma_b=ForcesDict[Identifier2]["Radius"],
+                        coordinates_a=ForcesDict[Identifier1]["Centre of Mass"],
+                        coordinates_b=ForcesDict[Identifier2]["Centre of Mass"],
+                    )
+                    force_vector += dir_vec * grad
+            force_mag = np.linalg.norm(force_vector)
+            distance_travel = (force_mag * (time_step**2)) / ForcesDict[Identifier1][
+                "Molecular Mass"
+            ]
+            if distance_travel > max_step_size:
+                distance_travel = max_step_size
+            ForcesDict[Identifier1]["Displacement"] = distance_travel
+            ForcesDict[Identifier1]["Direction"] = force_vector / np.linalg.norm(
+                force_vector
+            )
+        return ForcesDict
+
+    def OptimiseGeometry_SimpleLJ(
+        self,
+        n_steps: int = 1000,
+        max_en_diff: float = 1e-6,
+        max_step_size: float = 0.1,
+        time_step: float = 1.0,
+    ):
+        # Calculate initial forces that the substructures place on each other
+        ForcesDict = self.ForcesDict_SimpleLJ()
+        OG_LJ_en = self.CalculateTotalLennardJonesPotential(
+            ForcesDict=ForcesDict,
+        )
+        for _ in range(n_steps):
+            self.MoveSubStructures(
+                ForcesDict=ForcesDict,
+            )
+            ForcesDict = self.ForcesDict_SimpleLJ(
+                max_step_size=max_step_size, time_step=time_step
+            )
+            NEW_LJ_en = self.CalculateTotalLennardJonesPotential(
+                ForcesDict=ForcesDict,
+            )
+            en_diff = abs(OG_LJ_en - NEW_LJ_en)
+            if en_diff < max_en_diff:
+                break
+            OG_LJ_en = NEW_LJ_en
+
+    def OptimiseGeometry(
+        self,
+        SimpleLennardJonesPotential: bool | None = None,
+        MolecularMechanicsUFF: bool | None = None,
+        SemiEmpiricalgxTB: bool | None = None,
+    ):
+        if SimpleLennardJonesPotential == True:
+            self.OptimiseGeometry_SimpleLJ()
