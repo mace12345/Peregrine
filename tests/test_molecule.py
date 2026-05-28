@@ -517,7 +517,6 @@ def test_OptimiseGeometry():
         aromatic_sandwich_str = f.read()
         f.close()
     aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
-    print(aromatic_sandwich.GetMoleculeVolume())
     aromatic_sandwich.OptimiseGeometry(
         SimpleLennardJonesPotential=True,
         SimpleLennardJonesPotential_settings={"Max Steps": 150},
@@ -530,8 +529,18 @@ def test_OptimiseGeometry():
         },
         xtb_binary_path=xtb_binary_path,
     )
-    print(aromatic_sandwich.GetMoleculeVolume())
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
     with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
         f.write(aromatic_sandwich_str)
         f.close()
+
+
+def test_ReadXYZFile():
+    radical_butene = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/01_1R.xyz",
+        charge=0,
+        multiplicity=2,
+    )
+    # with open(f"{Path(__file__).parent}/TS/RadicalButene.mol", "w") as f:
+    #    f.write(radical_butene.WriteMolString())
+    #    f.close()

@@ -21,6 +21,8 @@ from rdkit import rdBase
 from openbabel import pybel
 from openbabel import openbabel as ob
 
+from xyzgraph import build_graph
+
 from .atom import Atom
 
 RDKIT_BONDTYPE_TRANSLATION = {
@@ -580,14 +582,41 @@ class Molecule:
         return cls(identifier, atoms_list, bond_order_matrix)
 
     @classmethod
-    def ReadSMILES(cls, SMILES: str) -> "Molecule":
+    def ReadXYZFile(cls, xyz_file: str, charge: int, multiplicity: int) -> "Molecule":
+        G_full = build_graph(
+            atoms=xyz_file,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+        atoms = [
+            {
+                "index": i,
+                "symbol": d["symbol"],
+                "formal_charge": d.get("formal_charge", 0),
+                "valence": d.get("valence"),
+            }
+            for i, d in G_full.nodes(data=True)
+        ]
+        bonds = [
+            {
+                "i": i,
+                "j": j,
+                "order": d["bond_order"],  # 1.0, 1.5 (aromatic), 2.0, 3.0
+                "type": d.get("bond_type"),
+                "metal_coord": d.get("metal_coord", False),
+            }
+            for i, j, d in G_full.edges(data=True)
+        ]
+
+    @classmethod
+    def ReadSMILESString(cls, SMILES: str) -> "Molecule":
         pass
 
     @classmethod
     def ReadORCAOutput(cls, ORCA_output) -> "Molecule":
         pass
 
-    def ReadXYZFile(self, xyz_file: str) -> list[list[str]]:
+    def XYZFileToCoords(self, xyz_file: str) -> list[list[str]]:
         with open(xyz_file, "r") as f:
             xyz_file = f.read()
             f.close()
@@ -597,7 +626,7 @@ class Molecule:
         ]
 
     def ReadXYZFileMapCoords(self, xyz_file: str):
-        xyz_file_list = self.ReadXYZFile(xyz_file=xyz_file)
+        xyz_file_list = self.XYZFileToCoords(xyz_file=xyz_file)
         for line, atomObj in zip(xyz_file_list, self.AtomsList):
             atomObj.Coordinates = np.array(
                 [

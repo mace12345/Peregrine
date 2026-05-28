@@ -392,7 +392,9 @@ class Atom:
         self.SubstructureIndex = SubstructureIndex
         self.Multiplicity = Multiplicity
         self.SMARTSAtom = SMARTSAtom
+        self.SMARTSIndex = None
         self.AssociatedSMILES = None
+        self.AssociatedSMARTS = None
         self.Update()
 
     def Update(self):
