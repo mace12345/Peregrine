@@ -2,6 +2,8 @@ from typing import Self
 from copy import deepcopy
 from pathlib import Path
 import os
+import warnings
+import subprocess
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -578,6 +580,26 @@ class Molecule:
     def ReadSMILES(cls, SMILES: str) -> "Molecule":
         pass
 
+    def ReadXYZFile(self, xyz_file: str) -> list[list[str]]:
+        with open(xyz_file, "r") as f:
+            xyz_file = f.read()
+            f.close()
+        return [
+            [coor for coor in line.split(" ") if coor != ""]
+            for line in xyz_file.split("\n")[2:]
+        ]
+
+    def ReadXYZFileMapCoords(self, xyz_file: str):
+        xyz_file_list = self.ReadXYZFile(xyz_file=xyz_file)
+        for line, atomObj in zip(xyz_file_list, self.AtomsList):
+            atomObj.Coordinates = np.array(
+                [
+                    float(line[1]),
+                    float(line[2]),
+                    float(line[3]),
+                ]
+            )
+
     def AddAtom(
         self,
         AtomicSymbol: str,
@@ -1126,7 +1148,7 @@ class Molecule:
                 total_LJ_pot += LJ_pot
         return total_LJ_pot
 
-    def MoveSubStructures(
+    def MoveSubStructures_SimpleLJ(
         self,
         ForcesDict: dict,
     ):
@@ -1190,7 +1212,7 @@ class Molecule:
             ForcesDict=ForcesDict,
         )
         for _ in range(n_steps):
-            self.MoveSubStructures(
+            self.MoveSubStructures_SimpleLJ(
                 ForcesDict=ForcesDict,
             )
             ForcesDict = self.ForcesDict_SimpleLJ(
@@ -1207,11 +1229,14 @@ class Molecule:
 
     def OptimiseGeometry_UFF(
         self,
-        fixed_atoms: list | None = None,
+        fixed_atoms: list[int] | None = None,
         max_steps: int = 700,
         energy_tol: float = 1e-6,
         force_field: str = "UFF",
+        suppress_warnings: bool = True,
     ) -> float:
+        if suppress_warnings:
+            ob.obErrorLog.SetOutputLevel(0)
         # Read pybel file
         temp_mol_str = self.WriteMolString()
         with open(f"{Path(__file__).parent}/{self.Identifier}_temp.mol", "w") as f:
@@ -1249,8 +1274,99 @@ class Molecule:
             atomObj.Coordinates = np.array(ob_atom.coords)
         return ff.Energy()
 
-    def OptimiseGeometry_gxTB(self):
-        pass
+    def OptimiseGeometry_gxTB(
+        self,
+        xtb_binary_path: str,
+        solvent_model: str | None = None,
+        solvent: str | None = None,
+        opt_tol: str | None = None,
+        opt_cycles: int | None = None,
+        xtb_method: str = "gxtb",
+        fixed_atoms: list[int] | None = None,
+    ):
+        xyz_string = self.WriteXYZString()
+        cmd = [
+            f"{xtb_binary_path}/xtb",
+            f"{Path(__file__).parent}/{self.Identifier}_temp.xyz",
+        ]
+        with open(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz", "w") as f:
+            f.write(xyz_string)
+            f.close()
+
+        if fixed_atoms:
+            atom_string = ""
+            for atom_idx in fixed_atoms[:-1]:
+                atom_string += f"{int(atom_idx+1)}, "
+            atom_string += f"{int(fixed_atoms[-1]+1)}"
+            input_string = f"""$fix
+    atoms: {atom_string}
+$end
+"""
+            with open(f"{Path(__file__).parent}/xtb.inp", "w") as f:
+                f.write(input_string)
+                f.close()
+            cmd += [
+                "--input",
+                f"{Path(__file__).parent}/xtb.inp",
+            ]
+
+        cmd += [
+            f"--{xtb_method}",
+            "--opt",
+            opt_tol,
+            "--charge",
+            str(self.FormalCharge),
+            "--uhf",
+            str(self.Multiplicity - 1),
+        ]
+
+        if solvent_model is not None and solvent is not None:
+            cmd += [
+                f"--{solvent_model}",
+                solvent,
+            ]
+        if opt_cycles is not None:
+            cmd += [
+                "--cycles",
+                str(opt_cycles),
+            ]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=f"{Path(__file__).parent}",
+        )
+        if result.returncode != 0:
+            print(result.stderr)
+            return result.stdout
+
+        # Read output xyz files and update coordinates
+        self.ReadXYZFileMapCoords(xyz_file=f"{Path(__file__).parent}/xtbopt.xyz")
+
+        # Remove all output files
+        for stringObj in [
+            "charges",
+            "energy",
+            "gradient",
+            "wbo",
+            "xtbrestart",
+            "xtbtopo.mol",
+            "temp_input_xtb.engrad",
+            "temp_input_xtb.xyz",
+            "xtblast.xyz",
+            "xtbopt.log",
+            "xtbopt.xyz",
+            ".xtboptok",
+            "xtb.inp",
+            f"{self.Identifier}_temp.xyz",
+        ]:
+            try:
+                os.remove(f"{Path(__file__).parent}/{stringObj}")
+            except FileNotFoundError:
+                pass
+            except PermissionError:
+                pass
 
     def OptimiseGeometry(
         self,
@@ -1258,7 +1374,9 @@ class Molecule:
         SimpleLennardJonesPotential_settings: dict | None = None,
         MolecularMechanics: bool | None = None,
         MolecularMechanics_settings: dict | None = None,
-        SemiEmpiricalgxTB: bool | None = None,
+        SemiEmpiricalxTB: bool | None = None,
+        SemiEmpiricalxTB_settings: dict | None = None,
+        xtb_binary_path: str | None = None,
     ):
         lj_defaults = {
             "Max Steps": 100,
@@ -1273,9 +1391,19 @@ class Molecule:
             "ConstrainedAtomLabels": None,
             "ConstrainedAtomIndices": None,
         }
+        xtb_defaults = {
+            "Solvent Model": None,
+            "Solvent": None,
+            "Optimisation Level": "tight",
+            "Optimisation Cycles": None,
+            "xTB Method": "gxtb",
+            "ConstrainedAtomLabels": None,
+            "ConstrainedAtomIndices": None,
+        }
 
         lj_settings = {**lj_defaults, **(SimpleLennardJonesPotential_settings or {})}
         mm_settings = {**mm_defaults, **(MolecularMechanics_settings or {})}
+        xtb_settings = {**xtb_defaults, **(SemiEmpiricalxTB_settings or {})}
         if SimpleLennardJonesPotential == True:
             self.OptimiseGeometry_SimpleLJ(
                 n_steps=lj_settings["Max Steps"],
@@ -1284,29 +1412,37 @@ class Molecule:
                 time_step=lj_settings["Time Step"],
             )
         if MolecularMechanics == True:
-            if mm_defaults["ConstrainedAtomLabels"] is not None:
+            if mm_settings["ConstrainedAtomLabels"] is not None:
                 fixed_atoms = [
                     self.AtomsDict[Label][0]
                     for Label in mm_defaults["ConstrainedAtomIndices"]
                 ]
-                self.OptimiseGeometry_UFF(
-                    fixed_atoms=fixed_atoms,
-                    max_steps=mm_defaults["Max Steps"],
-                    energy_tol=mm_defaults["Max Energy Difference"],
-                    force_field=mm_defaults["Method"],
-                )
-            elif mm_defaults["ConstrainedAtomIndices"] is not None:
-                self.OptimiseGeometry_UFF(
-                    fixed_atoms=mm_defaults["ConstrainedAtomIndices"],
-                    max_steps=mm_defaults["Max Steps"],
-                    energy_tol=mm_defaults["Max Energy Difference"],
-                    force_field=mm_defaults["Method"],
-                )
+            elif mm_settings["ConstrainedAtomIndices"] is not None:
+                fixed_atoms = mm_settings["ConstrainedAtomIndices"]
             else:
-                self.OptimiseGeometry_UFF(
-                    max_steps=mm_defaults["Max Steps"],
-                    energy_tol=mm_defaults["Max Energy Difference"],
-                    force_field=mm_defaults["Method"],
-                )
-        if SemiEmpiricalgxTB == True:
-            self.OptimiseGeometry_gxTB()
+                fixed_atoms = None
+            self.OptimiseGeometry_UFF(
+                fixed_atoms=fixed_atoms,
+                max_steps=mm_settings["Max Steps"],
+                energy_tol=mm_settings["Max Energy Difference"],
+                force_field=mm_settings["Method"],
+            )
+        if SemiEmpiricalxTB == True:
+            if xtb_settings["ConstrainedAtomLabels"] is not None:
+                fixed_atoms = [
+                    self.AtomsDict[Label][0]
+                    for Label in mm_defaults["ConstrainedAtomIndices"]
+                ]
+            elif xtb_settings["ConstrainedAtomIndices"] is not None:
+                fixed_atoms = mm_settings["ConstrainedAtomIndices"]
+            else:
+                fixed_atoms = None
+            self.OptimiseGeometry_gxTB(
+                xtb_binary_path=xtb_binary_path,
+                solvent_model=xtb_settings["Solvent Model"],
+                solvent=xtb_settings["Solvent"],
+                opt_tol=xtb_settings["Optimisation Level"],
+                opt_cycles=xtb_settings["Optimisation Cycles"],
+                xtb_method=xtb_settings["xTB Method"],
+                fixed_atoms=fixed_atoms,
+            )

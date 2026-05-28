@@ -5,6 +5,8 @@ from copy import deepcopy
 from Peregrine.molecule import Molecule
 from Peregrine.atom import Atom
 
+xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin"
+
 
 def test_atom_initialization():
     """Test basic atom initialization with required parameters."""
@@ -520,6 +522,13 @@ def test_OptimiseGeometry():
         SimpleLennardJonesPotential=True,
         SimpleLennardJonesPotential_settings={"Max Steps": 150},
         MolecularMechanics=True,
+        SemiEmpiricalxTB=True,
+        SemiEmpiricalxTB_settings={
+            "Solvent Model": "gbe",
+            "Solvent": "ethanol",
+            "Optimisation Cycles": 2,
+        },
+        xtb_binary_path=xtb_binary_path,
     )
     print(aromatic_sandwich.GetMoleculeVolume())
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
