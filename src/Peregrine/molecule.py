@@ -459,6 +459,9 @@ class Molecule:
         SMILES_str = Chem.MolToSmiles(rdkit_mol)
         return SMILES_str
 
+    def WriteORCAInput(self):
+        pass
+
     def MoleculeToRDKitMol(self):
         pass
 
@@ -578,6 +581,10 @@ class Molecule:
 
     @classmethod
     def ReadSMILES(cls, SMILES: str) -> "Molecule":
+        pass
+
+    @classmethod
+    def ReadORCAOutput(cls, ORCA_output) -> "Molecule":
         pass
 
     def ReadXYZFile(self, xyz_file: str) -> list[list[str]]:
