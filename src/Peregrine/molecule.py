@@ -194,7 +194,7 @@ class Molecule:
         for component in Components:
             SMILES_str = component.WriteSMILESString()
             for atomObj in component.AtomsList:
-                self.AtomsDict[atomObj.Label][1].AssociatedAtomSMILES = SMILES_str
+                self.AtomsDict[atomObj.Label][1].AssociatedSMILES = SMILES_str
         self.AssociatedMoleculeSMILES = self.WriteSMILESString()
 
     def SplitMoleculeIntoComponents(self, UpdateAtomLabels: bool = True) -> list[Self]:

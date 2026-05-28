@@ -348,6 +348,7 @@ class Atom:
         FormalCharge: int = 0,
         Multiplicity: int = 1,
         SubstructureIndex: int = 1,
+        SMARTSAtom: str | None = None,
     ):
         """
         Initialize an Atom instance.
@@ -390,7 +391,8 @@ class Atom:
         self.FormalCharge = FormalCharge
         self.SubstructureIndex = SubstructureIndex
         self.Multiplicity = Multiplicity
-        self.AssociatedAtomSMILES = None
+        self.SMARTSAtom = SMARTSAtom
+        self.AssociatedSMILES = None
         self.Update()
 
     def Update(self):
