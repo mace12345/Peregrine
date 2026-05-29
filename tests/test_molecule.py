@@ -536,21 +536,140 @@ def test_OptimiseGeometry():
 
 
 def test_ReadXYZFile():
-    radical_butene = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/01_1R.xyz",
-        identifier="01_1R",
+    # Radical Rearrangment
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/01_3R.xyz",
+        identifier="RadPentene",
         charge=0,
         multiplicity=2,
     )
-    with open(f"{Path(__file__).parent}/TS/RadicalButene_Reac.mol", "w") as f:
-        f.write(radical_butene.WriteMolString())
+    with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_Reac.mol", "w") as f:
+        f.write(molObj.WriteMolString())
         f.close()
-    radical_pentene = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/01_3R.xyz",
-        identifier="01_1R",
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/01_3TS.xyz",
+        identifier="RadPentene",
         charge=0,
         multiplicity=2,
     )
-    with open(f"{Path(__file__).parent}/TS/RadicalPentene_Reac.mol", "w") as f:
-        f.write(radical_butene.WriteMolString())
+    with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_TS.mol", "w") as f:
+        f.write(molObj.WriteMolString())
         f.close()
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/01_3P.xyz",
+        identifier="RadPentene",
+        charge=0,
+        multiplicity=2,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_Prod.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+
+    # Radical Addition
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/01_9P.xyz",
+        identifier="RadThiol",
+        charge=0,
+        multiplicity=2,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/RadicalAddition_Prod.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/01_9TS.xyz",
+        identifier="RadThiol",
+        charge=0,
+        multiplicity=2,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/RadicalAddition_TS.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj.OptimiseGeometry(
+        MolecularMechanics=True,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/RadicalAddition_Reac.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+
+    # Pericyclic [4+2]
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/02_11P.xyz",
+        identifier="Peri42",
+        charge=0,
+        multiplicity=1,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic42_Prod.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/02_11R.xyz",
+        identifier="Peri42",
+        charge=0,
+        multiplicity=1,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic42_Reac.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/02_11TS.xyz",
+        identifier="Peri42",
+        charge=0,
+        multiplicity=1,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic42_TS.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+
+    # Pericyclic [3+2]
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/02_56P.xyz",
+        identifier="Peri32",
+        charge=0,
+        multiplicity=1,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Prod.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/02_56TS.xyz",
+        identifier="Peri32",
+        charge=0,
+        multiplicity=1,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_TS.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj.OptimiseGeometry(
+        MolecularMechanics=True,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Reac.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+
+    # Halogen Abstraction
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/BH9/03_7TS.xyz",
+        identifier="HalAbstract",
+        charge=0,
+        multiplicity=2,
+    )
+    molObj.AtomsDict["C1"][1].FormalCharge = 0
+    molObj.AtomsDict["F1"][1].FormalCharge = 0
+    molObj.AtomsDict["F1"][1].Multiplicity = 1
+    molObj.AtomsDict["S1"][1].FormalCharge = 2
+    with open(f"{Path(__file__).parent}/TS/BH9/HalAbstract_TS.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj.AddBond(AtomIndices=[1, 0])
+    molObj.RemoveBond(AtomIndices=[13, 1])
+    molObj.OptimiseGeometry(
+        SimpleLennardJonesPotential=True,
+        MolecularMechanics=True,
+    )
+    with open(f"{Path(__file__).parent}/TS/BH9/HalAbstract_Reac.mol", "w") as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+
+
+def test_WriteSMARTSString():
+    pass

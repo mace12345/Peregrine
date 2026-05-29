@@ -365,6 +365,9 @@ class Molecule:
         hull = ConvexHull(points)
         return round(hull.volume, 2)
 
+    def WriteSMARTSString(self) -> str:
+        pass
+
     def WriteMolString(self):
         """
         Generate a .MOL file string in V3000 format.
@@ -596,7 +599,7 @@ class Molecule:
         AtomsList = [
             Atom(
                 AtomicSymbol=d["symbol"],
-                Coordinates=d["position"],
+                Coordinates=np.array(d["position"]),
                 FormalCharge=d["formal_charge"],
             )
             for i, d in G_full.nodes(data=True)
