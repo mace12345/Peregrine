@@ -180,6 +180,9 @@ class Molecule:
             where=(self.BondOrderMatrix != 0),
         )
         self.NumberOfBonds = int(self.ConnectivityMatrix.sum().sum() / 2)
+        # Calculate Atomic Valence
+        for idx, atomObj in enumerate(self.AtomsList):
+            atomObj.Valence = self.BondOrderMatrix[idx].sum()
         self.NormaliseAtomLabels(UpdateAtomLabels=UpdateAtomLabels)
         self.AtomsDict = {
             Atom.Label: [idx, Atom] for idx, Atom in enumerate(self.AtomsList)
@@ -582,31 +585,44 @@ class Molecule:
         return cls(identifier, atoms_list, bond_order_matrix)
 
     @classmethod
-    def ReadXYZFile(cls, xyz_file: str, charge: int, multiplicity: int) -> "Molecule":
+    def ReadXYZFile(
+        cls, xyz_file: str, identifier: str, charge: int, multiplicity: int
+    ) -> "Molecule":
         G_full = build_graph(
             atoms=xyz_file,
             charge=charge,
             multiplicity=multiplicity,
         )
-        atoms = [
-            {
-                "index": i,
-                "symbol": d["symbol"],
-                "formal_charge": d.get("formal_charge", 0),
-                "valence": d.get("valence"),
-            }
+        AtomsList = [
+            Atom(
+                AtomicSymbol=d["symbol"],
+                Coordinates=d["position"],
+                FormalCharge=d["formal_charge"],
+            )
             for i, d in G_full.nodes(data=True)
         ]
-        bonds = [
-            {
-                "i": i,
-                "j": j,
-                "order": d["bond_order"],  # 1.0, 1.5 (aromatic), 2.0, 3.0
-                "type": d.get("bond_type"),
-                "metal_coord": d.get("metal_coord", False),
-            }
-            for i, j, d in G_full.edges(data=True)
-        ]
+        BondOrderMatrix = np.zeros((len(AtomsList), len(AtomsList)))
+        for i, j, d in G_full.edges(data=True):
+            BondOrderMatrix[i][j] = d["bond_order"]
+            BondOrderMatrix[j][i] = d["bond_order"]
+        molObj = Molecule(
+            Identifier=identifier,
+            AtomsList=AtomsList,
+            BondOrderMatrix=BondOrderMatrix,
+        )
+        if molObj.Multiplicity != multiplicity:
+            for atomObj in molObj.AtomsList:
+                atom_valence_electron_count = (
+                    atomObj.Valence
+                    + atomObj.AtomicValenceElectronCount
+                    + (-1 * atomObj.FormalCharge)
+                )
+                if atom_valence_electron_count % 2 == 1:
+                    atomObj.Multiplicity = 2
+            molObj.GetMultiplicity()
+            if molObj.Multiplicity != multiplicity:
+                print("Need to improve this multiplicity assigning function")
+        return molObj
 
     @classmethod
     def ReadSMILESString(cls, SMILES: str) -> "Molecule":

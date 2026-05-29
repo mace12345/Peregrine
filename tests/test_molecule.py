@@ -538,9 +538,19 @@ def test_OptimiseGeometry():
 def test_ReadXYZFile():
     radical_butene = Molecule.ReadXYZFile(
         xyz_file=f"{Path(__file__).parent}/TS/01_1R.xyz",
+        identifier="01_1R",
         charge=0,
         multiplicity=2,
     )
-    # with open(f"{Path(__file__).parent}/TS/RadicalButene.mol", "w") as f:
-    #    f.write(radical_butene.WriteMolString())
-    #    f.close()
+    with open(f"{Path(__file__).parent}/TS/RadicalButene_Reac.mol", "w") as f:
+        f.write(radical_butene.WriteMolString())
+        f.close()
+    radical_pentene = Molecule.ReadXYZFile(
+        xyz_file=f"{Path(__file__).parent}/TS/01_3R.xyz",
+        identifier="01_1R",
+        charge=0,
+        multiplicity=2,
+    )
+    with open(f"{Path(__file__).parent}/TS/RadicalPentene_Reac.mol", "w") as f:
+        f.write(radical_butene.WriteMolString())
+        f.close()
