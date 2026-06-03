@@ -521,23 +521,27 @@ class Molecule:
             rdkitAtomObj.SetAtomMapNum(rdkitAtomObj.GetIdx())
         SMARTS = Chem.MolToSmarts(rdkitMolObj)
         # Add 0th index to smarts
-        SMARTS = f"{SMARTS[:SMARTS.find("]")]}:0{SMARTS[SMARTS.find("]"):]}"
-        # Check for radicals
-        for rdkitAtomObj_idx in rdkitMolObj_to_molObj_atomIdx_dict:
-            atomObj_idx = rdkitMolObj_to_molObj_atomIdx_dict[rdkitAtomObj_idx]
-            atomObj = self.AtomsList[atomObj_idx]
-            if atomObj.Multiplicity == 2:
-                valence = int(self.BondOrderMatrix[atomObj_idx].sum())
-                if atomObj.FormalCharge >= 0:
-                    SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}+{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
-                else:
-                    SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
-
-        return SMARTS
-
-        # Convert rdkitMolObj to SMARTS string
+        for sub_SMARTS in SMARTS.split("]"):
+            if ":" not in sub_SMARTS:
+                new_sub_SMARTS = sub_SMARTS + ":0]"
+                old_sub_SMARTS = sub_SMARTS + "]"
+                break
+        SMARTS = SMARTS.replace(old_sub_SMARTS, new_sub_SMARTS)
+        # Check for radicals, adjust SMARTS for radicals
+        if self.Multiplicity >= 2:
+            for rdkitAtomObj_idx in rdkitMolObj_to_molObj_atomIdx_dict:
+                atomObj_idx = rdkitMolObj_to_molObj_atomIdx_dict[rdkitAtomObj_idx]
+                atomObj = self.AtomsList[atomObj_idx]
+                if atomObj.Multiplicity == 2:
+                    valence = int(self.BondOrderMatrix[atomObj_idx].sum())
+                    if atomObj.FormalCharge >= 0:
+                        SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}+{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
+                    else:
+                        SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
 
         # Edit SMARTS string
+
+        return SMARTS
 
     def WriteORCAInput(self):
         pass

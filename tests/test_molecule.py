@@ -694,4 +694,4 @@ def test_WriteSMARTSString():
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
-    print(molObj.WriteSMARTSString())
+    SMARTS_1 = molObj.WriteSMARTSString()
