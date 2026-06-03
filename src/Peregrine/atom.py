@@ -522,7 +522,6 @@ class Atom:
         self.FormalCharge = FormalCharge
         self.SubstructureIndex = SubstructureIndex
         self.Multiplicity = Multiplicity
-        self.Valence = None
         self.SMARTSCentre = SMARTSCentre
         self.SMARTSAtom = None
         self.SMARTSIndex = None

@@ -386,7 +386,7 @@ class Molecule:
         for atomObj in self.AtomsList:
             if atomObj.IsAromatic is None:
                 atomObj.IsAromatic = False
-        
+
     def WriteSMARTSString(self) -> str:
         pass
 
@@ -496,21 +496,44 @@ class Molecule:
         # Convert molObj to rdKitMolObj
         rdkitMolObj = Chem.EditableMol(Chem.Mol())
         molObj_to_rdkitMolObj_atomIdx_dict = {}
+        rdkitMolObj_to_molObj_atomIdx_dict = {}
         for atomObj_idx, atomObj in enumerate(self.AtomsList):
             if atomObj.SMARTSCentre == True:
                 rdkitAtomObj = Chem.Atom(atomObj.AtomicSymbol)
                 rdkitAtomObj.SetFormalCharge(atomObj.FormalCharge)
                 rdkitAtomObj.SetNumRadicalElectrons(atomObj.Multiplicity - 1)
-                rdkitAtomObj_index = rdkitMolObj.AddAtom(rdkitAtomObj)
-                molObj_to_rdkitMolObj_atomIdx_dict[atomObj_idx] = rdkitAtomObj_index
+                rdkitAtomObj_idx = rdkitMolObj.AddAtom(rdkitAtomObj)
+                molObj_to_rdkitMolObj_atomIdx_dict[atomObj_idx] = rdkitAtomObj_idx
+                rdkitMolObj_to_molObj_atomIdx_dict[rdkitAtomObj_idx] = atomObj_idx
         for i in range(self.NumberOfAtoms):
-            for j in range(i + 1, self.NumberOfAtoms):
-                if self.BondOrderMatrix[i][j] != 0:
-                    rdkitMolObj.AddBond(
-                        molObj_to_rdkitMolObj_atomIdx_dict[i],
-                        molObj_to_rdkitMolObj_atomIdx_dict[j],
-                        RDKIT_BONDTYPE_TRANSLATION[self.BondOrderMatrix[i][j]],
-                    )
+            if i in molObj_to_rdkitMolObj_atomIdx_dict:
+                for j in range(i + 1, self.NumberOfAtoms):
+                    if j in molObj_to_rdkitMolObj_atomIdx_dict:
+                        if self.BondOrderMatrix[i][j] != 0:
+                            rdkitMolObj.AddBond(
+                                molObj_to_rdkitMolObj_atomIdx_dict[i],
+                                molObj_to_rdkitMolObj_atomIdx_dict[j],
+                                RDKIT_BONDTYPE_TRANSLATION[self.BondOrderMatrix[i][j]],
+                            )
+        rdkitMolObj = rdkitMolObj.GetMol()
+        # convert rdkitMolObj to SMARTS string
+        for rdkitAtomObj in rdkitMolObj.GetAtoms():
+            rdkitAtomObj.SetAtomMapNum(rdkitAtomObj.GetIdx())
+        SMARTS = Chem.MolToSmarts(rdkitMolObj)
+        # Add 0th index to smarts
+        SMARTS = f"{SMARTS[:SMARTS.find("]")]}:0{SMARTS[SMARTS.find("]"):]}"
+        # Check for radicals
+        for rdkitAtomObj_idx in rdkitMolObj_to_molObj_atomIdx_dict:
+            atomObj_idx = rdkitMolObj_to_molObj_atomIdx_dict[rdkitAtomObj_idx]
+            atomObj = self.AtomsList[atomObj_idx]
+            if atomObj.Multiplicity == 2:
+                valence = int(self.BondOrderMatrix[atomObj_idx].sum())
+                if atomObj.FormalCharge >= 0:
+                    SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}+{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
+                else:
+                    SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
+
+        return SMARTS
 
         # Convert rdkitMolObj to SMARTS string
 

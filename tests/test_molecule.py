@@ -5,7 +5,7 @@ from copy import deepcopy
 from Peregrine.molecule import Molecule
 from Peregrine.atom import Atom
 
-xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin"
+xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin"
 
 
 def test_atom_initialization():
