@@ -365,6 +365,28 @@ class Molecule:
         hull = ConvexHull(points)
         return round(hull.volume, 2)
 
+    def GetAromaticAtoms(self):
+        # Convert to xyz file
+        xyz_string = self.WriteXYZString()
+        with open(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz", "w") as f:
+            f.write(xyz_string)
+            f.close()
+        G_full = build_graph(
+            atoms=f"{Path(__file__).parent}/{self.Identifier}_temp.xyz",
+            charge=self.FormalCharge,
+            multiplicity=self.Multiplicity,
+        )
+        os.remove(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz")
+        # Flatten all aromatic rings into a single set of atom indices
+        aromatic_atoms = {
+            idx for ring in G_full.graph.get("aromatic_rings", []) for idx in ring
+        }
+        for aromatic_index in aromatic_atoms:
+            self.AtomsList[aromatic_index].IsAromatic = True
+        for atomObj in self.AtomsList:
+            if atomObj.IsAromatic is None:
+                atomObj.IsAromatic = False
+        
     def WriteSMARTSString(self) -> str:
         pass
 
@@ -406,7 +428,10 @@ class Molecule:
         mol_str += f" 0 0 0 0 0 999 V3000\nM V30 BEGIN CTAB\nM V30 COUNTS {self.NumberOfAtoms} {self.NumberOfBonds} {self.NumberOfSubstructures} 0 0\nM V30 BEGIN ATOM\n"
         # specify atoms
         for idx, atomObj in enumerate(self.AtomsList):
-            mol_str += f"M V30 {idx+1} {atomObj.AtomicSymbol} {round(atomObj.Coordinates[0], 10)} {round(atomObj.Coordinates[1], 10)} {round(atomObj.Coordinates[2], 10)} 0"
+            if atomObj.SMARTSCentre == True:
+                mol_str += f"M V30 {idx+1} {atomObj.AtomicSymbol} {round(atomObj.Coordinates[0], 10)} {round(atomObj.Coordinates[1], 10)} {round(atomObj.Coordinates[2], 10)} 1"
+            else:
+                mol_str += f"M V30 {idx+1} {atomObj.AtomicSymbol} {round(atomObj.Coordinates[0], 10)} {round(atomObj.Coordinates[1], 10)} {round(atomObj.Coordinates[2], 10)} 0"
             if atomObj.Multiplicity != 1:
                 mol_str += f" RAD={atomObj.Multiplicity}"
             if atomObj.FormalCharge != 0:
@@ -440,12 +465,12 @@ class Molecule:
             xyz_block += f"{atomObj.AtomicSymbol} {atomObj.Coordinates[0]} {atomObj.Coordinates[1]} {atomObj.Coordinates[2]}\n"
         return xyz_block
 
-    def WriteXYZString(self):
+    def WriteXYZString(self) -> str:
         xyz_str = f"{self.NumberOfAtoms}\nIdentifier={self.Identifier} FormalCharge={self.FormalCharge} Multiplicity={self.Multiplicity}\n"
         xyz_str += self.WriteXYZBlock()
         return xyz_str
 
-    def WriteSMILESString(self):
+    def WriteSMILESString(self) -> str:
         # Create an empty RDKit molecule
         rdkit_mol = Chem.RWMol()
         # Add atoms to the RDKit molecule
@@ -466,6 +491,30 @@ class Molecule:
         rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
         SMILES_str = Chem.MolToSmiles(rdkit_mol)
         return SMILES_str
+
+    def WriteSMARTSString(self) -> str:
+        # Convert molObj to rdKitMolObj
+        rdkitMolObj = Chem.EditableMol(Chem.Mol())
+        molObj_to_rdkitMolObj_atomIdx_dict = {}
+        for atomObj_idx, atomObj in enumerate(self.AtomsList):
+            if atomObj.SMARTSCentre == True:
+                rdkitAtomObj = Chem.Atom(atomObj.AtomicSymbol)
+                rdkitAtomObj.SetFormalCharge(atomObj.FormalCharge)
+                rdkitAtomObj.SetNumRadicalElectrons(atomObj.Multiplicity - 1)
+                rdkitAtomObj_index = rdkitMolObj.AddAtom(rdkitAtomObj)
+                molObj_to_rdkitMolObj_atomIdx_dict[atomObj_idx] = rdkitAtomObj_index
+        for i in range(self.NumberOfAtoms):
+            for j in range(i + 1, self.NumberOfAtoms):
+                if self.BondOrderMatrix[i][j] != 0:
+                    rdkitMolObj.AddBond(
+                        molObj_to_rdkitMolObj_atomIdx_dict[i],
+                        molObj_to_rdkitMolObj_atomIdx_dict[j],
+                        RDKIT_BONDTYPE_TRANSLATION[self.BondOrderMatrix[i][j]],
+                    )
+
+        # Convert rdkitMolObj to SMARTS string
+
+        # Edit SMARTS string
 
     def WriteORCAInput(self):
         pass
@@ -544,6 +593,8 @@ class Molecule:
             y = float(parts[3])
             z = float(parts[4])
 
+            SMARTSCentre = True if float(parts[5]) == 1 else False
+
             formal_charge = 0
             multiplicity = 1
 
@@ -560,6 +611,7 @@ class Molecule:
                 Coordinates=np.array([x, y, z]),
                 FormalCharge=formal_charge,
                 Multiplicity=multiplicity,
+                SMARTSCentre=SMARTSCentre,
             )
             atom_indices[mol_idx] = len(atoms_list)
             atoms_list.append(atom)
@@ -596,6 +648,10 @@ class Molecule:
             charge=charge,
             multiplicity=multiplicity,
         )
+        # Flatten all aromatic rings into a single set of atom indices
+        aromatic_atoms = {
+            idx for ring in G_full.graph.get("aromatic_rings", []) for idx in ring
+        }
         AtomsList = [
             Atom(
                 AtomicSymbol=d["symbol"],
@@ -604,6 +660,8 @@ class Molecule:
             )
             for i, d in G_full.nodes(data=True)
         ]
+        for aromatic_index in aromatic_atoms:
+            AtomsList[aromatic_index].IsAromatic = True
         BondOrderMatrix = np.zeros((len(AtomsList), len(AtomsList)))
         for i, j, d in G_full.edges(data=True):
             BondOrderMatrix[i][j] = d["bond_order"]

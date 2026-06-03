@@ -5,7 +5,7 @@ from copy import deepcopy
 from Peregrine.molecule import Molecule
 from Peregrine.atom import Atom
 
-xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin"
+xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin"
 
 
 def test_atom_initialization():
@@ -543,6 +543,11 @@ def test_ReadXYZFile():
         charge=0,
         multiplicity=2,
     )
+    molObj.AtomsList[0].SMARTSCentre = True
+    molObj.AtomsList[1].SMARTSCentre = True
+    molObj.AtomsList[2].SMARTSCentre = True
+    molObj.AtomsList[3].SMARTSCentre = True
+    molObj.AtomsList[4].SMARTSCentre = True
     with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_Reac.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
@@ -671,5 +676,22 @@ def test_ReadXYZFile():
         f.close()
 
 
+def test_AtomIsAromatic():
+    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    molObj.RemoveAtom(AtomIndex=22)
+    molObj.RemoveAtom(AtomIndex=0)
+    molObj.GetAromaticAtoms()
+    assert molObj.AtomsList[0].IsAromatic == True
+    assert molObj.AtomsList[7].IsAromatic == False
+
+
 def test_WriteSMARTSString():
-    pass
+    # Radical Rearrangement Reaction
+    with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_Reac.mol", "r") as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    print(molObj.WriteSMARTSString())
