@@ -387,9 +387,6 @@ class Molecule:
             if atomObj.IsAromatic is None:
                 atomObj.IsAromatic = False
 
-    def WriteSMARTSString(self) -> str:
-        pass
-
     def WriteMolString(self):
         """
         Generate a .MOL file string in V3000 format.
@@ -538,7 +535,6 @@ class Molecule:
                         SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}+{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
                     else:
                         SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
-
         # Edit SMARTS string
 
         return SMARTS
