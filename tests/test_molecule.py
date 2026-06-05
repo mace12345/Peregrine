@@ -737,9 +737,6 @@ def test_ReadXYZFile():
 
     # Sn2 6
 
-    
-
-
 
 def test_AtomIsAromatic():
     with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
