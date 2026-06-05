@@ -5,7 +5,7 @@ from copy import deepcopy
 from Peregrine.molecule import Molecule
 from Peregrine.atom import Atom
 
-xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin"
+xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin"
 
 
 def test_atom_initialization():
@@ -162,7 +162,10 @@ def test_write_molecule():
         ),
     )
     wt_mol_str = water_triplet.WriteMolString()
-    with open(f"{Path(__file__).parent}/water_triplet.mol", "w") as f:
+    with open(
+        f"{Path(__file__).parent.split("\\")[:-1]}/data/InitialTests/water_triplet.mol",
+        "w",
+    ) as f:
         f.write(wt_mol_str)
         f.close()
 
@@ -199,7 +202,7 @@ def test_write_molecule():
         ),
     )
     wc_mol_str = water_cation.WriteMolString()
-    with open(f"{Path(__file__).parent}/water_cation.mol", "w") as f:
+    with open(f"{Path(__file__).parent}/data/InitialTests/water_cation.mol", "w") as f:
         f.write(wc_mol_str)
         f.close()
 
@@ -249,13 +252,15 @@ def test_write_molecule():
         ),
     )
     benzene_str = benzene.WriteMolString()
-    with open(f"{Path(__file__).parent}/benzene_stripped.mol", "w") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/benzene_stripped.mol", "w"
+    ) as f:
         f.write(benzene_str)
         f.close()
 
 
 def test_read_molecule():
-    with open(f"{Path(__file__).parent}/water_triplet.mol", "r") as f:
+    with open(f"{Path(__file__).parent}/data/InitialTests/water_triplet.mol", "r") as f:
         wt_mol_string = f.read()
         f.close()
     water_triplet = Molecule.ReadMolString(wt_mol_string)
@@ -266,7 +271,7 @@ def test_read_molecule():
     assert water_triplet.NumberOfAtoms == 3
     assert water_triplet.MolecularMass == 18.02
 
-    with open(f"{Path(__file__).parent}/water_cation.mol", "r") as f:
+    with open(f"{Path(__file__).parent}/data/InitialTests/water_cation.mol", "r") as f:
         wc_mol_string = f.read()
         f.close()
     water_cation = Molecule.ReadMolString(wc_mol_string)
@@ -279,7 +284,9 @@ def test_read_molecule():
 
 
 def test_add_atoms_and_bonds_to_molecule():
-    with open(f"{Path(__file__).parent}/benzene_stripped.mol", "r") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/benzene_stripped.mol", "r"
+    ) as f:
         benzene_string = f.read()
         f.close()
     benzene = Molecule.ReadMolString(benzene_string)
@@ -307,7 +314,7 @@ def test_add_atoms_and_bonds_to_molecule():
     benzene.AddBond(AtomLabels=["C5", "H5"])
     benzene.AddBond(AtomLabels=["C6", "H6"])
     benzene_str = benzene.WriteMolString()
-    with open(f"{Path(__file__).parent}/benzene.mol", "w") as f:
+    with open(f"{Path(__file__).parent}/data/InitialTests/benzene.mol", "w") as f:
         f.write(benzene_str)
         f.close()
     assert benzene.FormalCharge == 0
@@ -319,7 +326,7 @@ def test_add_atoms_and_bonds_to_molecule():
 
 
 def test_add_molecule_to_molecule():
-    with open(f"{Path(__file__).parent}/benzene.mol", "r") as f:
+    with open(f"{Path(__file__).parent}/data/InitialTests/benzene.mol", "r") as f:
         benzene_string = f.read()
         f.close()
     benzene = Molecule.ReadMolString(benzene_string)
@@ -339,7 +346,9 @@ def test_add_molecule_to_molecule():
         MoleculeToAdd=water_cation,
     )
     benzene_string = benzene.WriteMolString()
-    with open(f"{Path(__file__).parent}/benzene_water_cation.mol", "w") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/benzene_water_cation.mol", "w"
+    ) as f:
         f.write(benzene_string)
         f.close()
     assert benzene.FormalCharge == 1
@@ -352,7 +361,9 @@ def test_add_molecule_to_molecule():
 
 def test_SplitMoleculeIntoComponents():
     # Benzene, Water, and Proton
-    with open(f"{Path(__file__).parent}/benzene_water_cation.mol", "r") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/benzene_water_cation.mol", "r"
+    ) as f:
         benzene_str = f.read()
         f.close()
     benzene_water_cat = Molecule.ReadMolString(benzene_str)
@@ -384,7 +395,9 @@ def test_SplitMoleculeIntoComponents():
 
 def test_DeriveMoleculeSmiles():
     # Benzene, Water, and Proton
-    with open(f"{Path(__file__).parent}/benzene_water_cation.mol", "r") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/benzene_water_cation.mol", "r"
+    ) as f:
         benzene_str = f.read()
         f.close()
     benzene_water_cat = Molecule.ReadMolString(benzene_str)
@@ -398,7 +411,9 @@ def test_DeriveMoleculeSmiles():
 
 
 def test_ChangeAtom():
-    with open(f"{Path(__file__).parent}/benzene_water_cation.mol", "r") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/benzene_water_cation.mol", "r"
+    ) as f:
         benzene_str = f.read()
         f.close()
     benzene_water_cat = Molecule.ReadMolString(benzene_str)
@@ -417,7 +432,9 @@ def test_ChangeAtom():
     benzene_water_cat.AtomsDict["O1"][1].FormalCharge = 0
     benzene_water_cat.AtomsDict["H9"][1].FormalCharge = 1
     benzene_water_cat_str = benzene_water_cat.WriteMolString()
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+    ) as f:
         f.write(benzene_water_cat_str)
         f.close()
     assert benzene_water_cat.MolecularMass == 179.24
@@ -430,7 +447,9 @@ def test_ChangeAtom():
 
 
 def test_RemoveAtom():
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+    ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
     aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
@@ -438,7 +457,9 @@ def test_RemoveAtom():
     aromatic_sandwich.RemoveAtom(AtomIndex=21)
     aromatic_sandwich.RemoveAtom(AtomObject=aromatic_sandwich.AtomsDict["H10"][1])
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+    ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
     assert aromatic_sandwich.MolecularMass == 165.22
@@ -450,7 +471,9 @@ def test_RemoveAtom():
 
 
 def test_RemoveBond():
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+    ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
     aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
@@ -464,13 +487,17 @@ def test_RemoveBond():
     assert aromatic_sandwich.NumberOfBonds == 23
     assert aromatic_sandwich.NumberOfSubstructures == 4
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+    ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
 
 
 def test_ChangeBond():
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+    ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
     aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
@@ -478,19 +505,25 @@ def test_ChangeBond():
     aromatic_sandwich.ChangeBond(NewBondOrder=1, AtomIndices=[19, 17])
     aromatic_sandwich.ChangeBond(NewBondOrder=2, AtomIndices=[16, 18])
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+    ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
 
 
 def test_RemoveMolecule():
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+    ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
     aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
     aromatic_sandwich.RemoveMolecule(SMILES="O")
     aromatic_sandwich.RemoveMolecule(SMARTS="[#6][#6][#6][#6]")
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+    ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
     aromatic_sandwich_2 = Molecule.ReadMolString(aromatic_sandwich_str)
@@ -507,13 +540,17 @@ def test_RemoveMolecule():
     aromatic_sandwich.RemoveMolecule(SubstructureIndex=4)
     assert aromatic_sandwich.NumberOfSubstructures == 5
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+    ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
 
 
 def test_OptimiseGeometry():
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+    ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
     aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
@@ -530,7 +567,9 @@ def test_OptimiseGeometry():
         xtb_binary_path=xtb_binary_path,
     )
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "w") as f:
+    with open(
+        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+    ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
 
@@ -831,4 +870,3 @@ def test_WriteSMARTSString():
     assert SMARTS_3_reac == "[#6:0]#[#6:1].[#7-:2]=[#7+:3]=[#7:4]"
     assert SMARTS_3_TS == "[#6:0]#[#6:1].[#7-:2]=[#7+:3]=[#7:4]"
     assert SMARTS_3_prod == "[#6:0]1:[#6:1]:[#7:4]:[#7:3]:[#7:2]:1"
-
