@@ -536,6 +536,9 @@ def test_OptimiseGeometry():
 
 
 def test_ReadXYZFile():
+
+    # === BH9 reactions - https://doi.org/10.1021/acs.jctc.1c00694 ===
+
     # Radical Rearrangment
     molObj = Molecule.ReadXYZFile(
         xyz_file=f"{Path(__file__).parent}/TS/BH9/01_3R.xyz",
@@ -722,6 +725,21 @@ def test_ReadXYZFile():
         f.write(molObj.WriteMolString())
         f.close()
 
+    # Hydrogen Abstraction
+
+    # Hydride Abstraction
+
+    # Boron Transfer 14
+
+    # Silicon Hydrogen Abstraction 33
+
+    # Proton Transfer 1
+
+    # Sn2 6
+
+    
+
+
 
 def test_AtomIsAromatic():
     with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
@@ -778,6 +796,26 @@ def test_WriteSMARTSString():
     assert SMARTS_2_prod == "[#6:0]-[#16:1]-[#6:2]-[#6v3+0:3]"
 
     # Pericyclic [3+2]
+    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Reac.mol", "r") as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_3_reac = molObj.WriteSMARTSString()
+    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_TS.mol", "r") as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_3_TS = molObj.WriteSMARTSString()
+    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Prod.mol", "r") as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_3_prod = molObj.WriteSMARTSString()
+    assert SMARTS_3_reac == "[#6:0]#[#6:1].[#7-:2]=[#7+:3]=[#7:4]"
+    assert SMARTS_3_TS == "[#6:0]#[#6:1].[#7-:2]=[#7+:3]=[#7:4]"
+    assert SMARTS_3_prod == "[#6:0]1:[#6:1]:[#7:4]:[#7:3]:[#7:2]:1"
+
+    # Pericyclic [4+2]
     with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Reac.mol", "r") as f:
         molObj_str = f.read()
         f.close()
