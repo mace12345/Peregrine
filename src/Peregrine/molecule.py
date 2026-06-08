@@ -387,6 +387,95 @@ class Molecule:
             if atomObj.IsAromatic is None:
                 atomObj.IsAromatic = False
 
+    def GetBondAngle(
+        self,
+        AtomLabels: list[str] | None = None,
+        AtomIndices: list[int] | None = None,
+        AtomObjects: list[Atom] | None = None,
+    ) -> float:
+        """
+        Calculate the bond angle between three atoms in radians.
+
+        The angle is measured at the central atom (second atom in the input list).
+        For example, GetBondAngle(AtomLabels=['H1', 'C1', 'H2']) calculates the
+        H1-C1-H2 bond angle with C1 as the central atom.
+
+        Parameters:
+            AtomLabels (list[str] | None): Labels of three atoms (e.g., ['H1', 'C1', 'H2'])
+            AtomIndices (list[int] | None): Indices of three atoms in AtomsList
+            AtomObjects (list[Atom] | None): Direct references to three Atom objects
+
+        Returns:
+            float: The bond angle in degrees, rounded to 2 decimal places
+
+        Raises:
+            ValueError: If not exactly 3 atoms provided, or invalid atom specification
+            IndexError: If atom indices are out of bounds
+            ValueError: If atoms are at same location (degenerate geometry)
+
+        Examples:
+            # Using atom labels
+            angle = molecule.GetBondAngle(AtomLabels=['H1', 'O1', 'H2'])
+
+            # Using atom indices
+            angle = molecule.GetBondAngle(AtomIndexs=[0, 1, 2])
+        """
+        # Determine atom indices
+        if AtomIndices is not None:
+            if len(AtomIndices) != 3:
+                raise ValueError("AtomIndexs must contain exactly 3 indices")
+            atomIdx1, atomIdx2, atomIdx3 = AtomIndices
+            if not all(0 <= idx < self.NumberOfAtoms for idx in AtomIndices):
+                raise IndexError("Atom indices out of bounds")
+        elif AtomLabels is not None:
+            if len(AtomLabels) != 3:
+                raise ValueError("AtomLabels must contain exactly 3 labels")
+            if not all(label in self.AtomsDict for label in AtomLabels):
+                raise ValueError("One or more atom labels not found in molecule")
+            atomIdx1 = self.AtomsDict[AtomLabels[0]][0]
+            atomIdx2 = self.AtomsDict[AtomLabels[1]][0]
+            atomIdx3 = self.AtomsDict[AtomLabels[2]][0]
+        elif AtomObjects is not None:
+            if len(AtomObjects) != 3:
+                raise ValueError("AtomObjects must contain exactly 3 objects")
+            try:
+                atomIdx1 = self.AtomsDict[AtomObjects[0].Label][0]
+                atomIdx2 = self.AtomsDict[AtomObjects[1].Label][0]
+                atomIdx3 = self.AtomsDict[AtomObjects[2].Label][0]
+            except KeyError as e:
+                raise ValueError(f"Atom object not found in molecule: {e}")
+        else:
+            raise ValueError(
+                "GetBondAngle requires AtomLabels, AtomIndexs, or AtomObjects"
+            )
+
+        # Get atom coordinates
+        # The central atom is the second one (index 1)
+        central_atom = self.AtomsList[atomIdx2]
+        atom1 = self.AtomsList[atomIdx1]
+        atom3 = self.AtomsList[atomIdx3]
+
+        # Create vectors from central atom to the other two atoms
+        vector1 = atom1.Coordinates - central_atom.Coordinates
+        vector3 = atom3.Coordinates - central_atom.Coordinates
+
+        # Calculate the angle using dot product
+        dot_product = np.dot(vector1, vector3)
+        magnitude1 = np.linalg.norm(vector1)
+        magnitude3 = np.linalg.norm(vector3)
+
+        # Avoid division by zero
+        if magnitude1 == 0 or magnitude3 == 0:
+            raise ValueError("Bond angle undefined: atoms at same location")
+
+        cos_angle = dot_product / (magnitude1 * magnitude3)
+
+        # Clamp to [-1, 1] to avoid numerical errors in arccos
+        cos_angle = np.clip(cos_angle, -1, 1)
+
+        # Calculate angle in radians
+        return np.arccos(cos_angle)
+
     def WriteMolString(self):
         """
         Generate a .MOL file string in V3000 format.
@@ -1383,6 +1472,10 @@ class Molecule:
         )
         molPybelObj = next(molPybelObj)
         os.remove(f"{Path(__file__).parent}/{self.Identifier}_temp.mol")
+        # Fix bond orders with openbabel
+        obmol = molPybelObj.OBMol
+        obmol.PerceiveBondOrders()
+        obmol.SetAromaticPerceived(False)
         # Set up constraints
         if fixed_atoms:
             constrs = ob.OBFFConstraints()
