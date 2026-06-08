@@ -5,7 +5,7 @@ from copy import deepcopy
 from Peregrine.molecule import Molecule
 from Peregrine.atom import Atom
 
-xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin"
+xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin"
 
 
 def test_atom_initialization():
@@ -163,7 +163,7 @@ def test_write_molecule():
     )
     wt_mol_str = water_triplet.WriteMolString()
     with open(
-        f"{Path(__file__).parent.split("\\")[:-1]}/data/InitialTests/water_triplet.mol",
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/water_triplet.mol",
         "w",
     ) as f:
         f.write(wt_mol_str)
@@ -202,7 +202,7 @@ def test_write_molecule():
         ),
     )
     wc_mol_str = water_cation.WriteMolString()
-    with open(f"{Path(__file__).parent}/data/InitialTests/water_cation.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/water_cation.mol", "w") as f:
         f.write(wc_mol_str)
         f.close()
 
@@ -253,14 +253,14 @@ def test_write_molecule():
     )
     benzene_str = benzene.WriteMolString()
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/benzene_stripped.mol", "w"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/benzene_stripped.mol", "w"
     ) as f:
         f.write(benzene_str)
         f.close()
 
 
 def test_read_molecule():
-    with open(f"{Path(__file__).parent}/data/InitialTests/water_triplet.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/water_triplet.mol", "r") as f:
         wt_mol_string = f.read()
         f.close()
     water_triplet = Molecule.ReadMolString(wt_mol_string)
@@ -271,7 +271,7 @@ def test_read_molecule():
     assert water_triplet.NumberOfAtoms == 3
     assert water_triplet.MolecularMass == 18.02
 
-    with open(f"{Path(__file__).parent}/data/InitialTests/water_cation.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/water_cation.mol", "r") as f:
         wc_mol_string = f.read()
         f.close()
     water_cation = Molecule.ReadMolString(wc_mol_string)
@@ -285,7 +285,7 @@ def test_read_molecule():
 
 def test_add_atoms_and_bonds_to_molecule():
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/benzene_stripped.mol", "r"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/benzene_stripped.mol", "r"
     ) as f:
         benzene_string = f.read()
         f.close()
@@ -314,7 +314,7 @@ def test_add_atoms_and_bonds_to_molecule():
     benzene.AddBond(AtomLabels=["C5", "H5"])
     benzene.AddBond(AtomLabels=["C6", "H6"])
     benzene_str = benzene.WriteMolString()
-    with open(f"{Path(__file__).parent}/data/InitialTests/benzene.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/benzene.mol", "w") as f:
         f.write(benzene_str)
         f.close()
     assert benzene.FormalCharge == 0
@@ -326,11 +326,11 @@ def test_add_atoms_and_bonds_to_molecule():
 
 
 def test_add_molecule_to_molecule():
-    with open(f"{Path(__file__).parent}/data/InitialTests/benzene.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/benzene.mol", "r") as f:
         benzene_string = f.read()
         f.close()
     benzene = Molecule.ReadMolString(benzene_string)
-    with open(f"{Path(__file__).parent}/water_cation.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/water_cation.mol", "r") as f:
         wc_mol_string = f.read()
         f.close()
     water_cation = Molecule.ReadMolString(wc_mol_string)
@@ -347,7 +347,7 @@ def test_add_molecule_to_molecule():
     )
     benzene_string = benzene.WriteMolString()
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/benzene_water_cation.mol", "w"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/benzene_water_cation.mol", "w"
     ) as f:
         f.write(benzene_string)
         f.close()
@@ -362,7 +362,7 @@ def test_add_molecule_to_molecule():
 def test_SplitMoleculeIntoComponents():
     # Benzene, Water, and Proton
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/benzene_water_cation.mol", "r"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/benzene_water_cation.mol", "r"
     ) as f:
         benzene_str = f.read()
         f.close()
@@ -396,7 +396,7 @@ def test_SplitMoleculeIntoComponents():
 def test_DeriveMoleculeSmiles():
     # Benzene, Water, and Proton
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/benzene_water_cation.mol", "r"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/benzene_water_cation.mol", "r"
     ) as f:
         benzene_str = f.read()
         f.close()
@@ -412,7 +412,7 @@ def test_DeriveMoleculeSmiles():
 
 def test_ChangeAtom():
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/benzene_water_cation.mol", "r"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/benzene_water_cation.mol", "r"
     ) as f:
         benzene_str = f.read()
         f.close()
@@ -433,7 +433,7 @@ def test_ChangeAtom():
     benzene_water_cat.AtomsDict["H9"][1].FormalCharge = 1
     benzene_water_cat_str = benzene_water_cat.WriteMolString()
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "w"
     ) as f:
         f.write(benzene_water_cat_str)
         f.close()
@@ -448,7 +448,7 @@ def test_ChangeAtom():
 
 def test_RemoveAtom():
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "r"
     ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
@@ -458,7 +458,7 @@ def test_RemoveAtom():
     aromatic_sandwich.RemoveAtom(AtomObject=aromatic_sandwich.AtomsDict["H10"][1])
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "w"
     ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
@@ -472,7 +472,7 @@ def test_RemoveAtom():
 
 def test_RemoveBond():
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "r"
     ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
@@ -488,7 +488,7 @@ def test_RemoveBond():
     assert aromatic_sandwich.NumberOfSubstructures == 4
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "w"
     ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
@@ -496,7 +496,7 @@ def test_RemoveBond():
 
 def test_ChangeBond():
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "r"
     ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
@@ -506,7 +506,7 @@ def test_ChangeBond():
     aromatic_sandwich.ChangeBond(NewBondOrder=2, AtomIndices=[16, 18])
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "w"
     ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
@@ -514,7 +514,7 @@ def test_ChangeBond():
 
 def test_RemoveMolecule():
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "r"
     ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
@@ -522,7 +522,7 @@ def test_RemoveMolecule():
     aromatic_sandwich.RemoveMolecule(SMILES="O")
     aromatic_sandwich.RemoveMolecule(SMARTS="[#6][#6][#6][#6]")
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "r"
     ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
@@ -541,7 +541,7 @@ def test_RemoveMolecule():
     assert aromatic_sandwich.NumberOfSubstructures == 5
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "w"
     ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
@@ -549,7 +549,7 @@ def test_RemoveMolecule():
 
 def test_OptimiseGeometry():
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "r"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "r"
     ) as f:
         aromatic_sandwich_str = f.read()
         f.close()
@@ -568,10 +568,22 @@ def test_OptimiseGeometry():
     )
     aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
     with open(
-        f"{Path(__file__).parent}/data/InitialTests/AromaticSandwich.mol", "w"
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "w"
     ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
+
+
+def test_AtomIsAromatic():
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol", "r") as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    molObj.RemoveAtom(AtomIndex=22)
+    molObj.RemoveAtom(AtomIndex=0)
+    molObj.GetAromaticAtoms()
+    assert molObj.AtomsList[0].IsAromatic == True
+    assert molObj.AtomsList[7].IsAromatic == False
 
 
 def test_ReadXYZFile():
@@ -580,7 +592,7 @@ def test_ReadXYZFile():
 
     # Radical Rearrangment
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/01_3R.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/01_3R.xyz",
         identifier="RadPentene",
         charge=0,
         multiplicity=2,
@@ -590,11 +602,11 @@ def test_ReadXYZFile():
     molObj.AtomsList[2].SMARTSCentre = True
     molObj.AtomsList[3].SMARTSCentre = True
     molObj.AtomsList[4].SMARTSCentre = True
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_Reac.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalRearrangment_Reac.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/01_3TS.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/01_3TS.xyz",
         identifier="RadPentene",
         charge=0,
         multiplicity=2,
@@ -604,11 +616,11 @@ def test_ReadXYZFile():
     molObj.AtomsList[2].SMARTSCentre = True
     molObj.AtomsList[3].SMARTSCentre = True
     molObj.AtomsList[4].SMARTSCentre = True
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_TS.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalRearrangment_TS.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/01_3P.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/01_3P.xyz",
         identifier="RadPentene",
         charge=0,
         multiplicity=2,
@@ -618,13 +630,13 @@ def test_ReadXYZFile():
     molObj.AtomsList[2].SMARTSCentre = True
     molObj.AtomsList[3].SMARTSCentre = True
     molObj.AtomsList[4].SMARTSCentre = True
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_Prod.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalRearrangment_Prod.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
 
     # Radical Addition
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/01_9P.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/01_9P.xyz",
         identifier="RadThiol",
         charge=0,
         multiplicity=2,
@@ -643,11 +655,11 @@ def test_ReadXYZFile():
     molObj.AtomsList[1].SMARTSCentre = True
     molObj.AtomsList[2].SMARTSCentre = True
     molObj.AtomsList[3].SMARTSCentre = True
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalAddition_Prod.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalAddition_Prod.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/01_9TS.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/01_9TS.xyz",
         identifier="RadThiol",
         charge=0,
         multiplicity=2,
@@ -656,7 +668,7 @@ def test_ReadXYZFile():
     molObj.AtomsList[1].SMARTSCentre = True
     molObj.AtomsList[2].SMARTSCentre = True
     molObj.AtomsList[3].SMARTSCentre = True
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalAddition_TS.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalAddition_TS.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
     molObj.OptimiseGeometry(
@@ -666,42 +678,42 @@ def test_ReadXYZFile():
     molObj.AtomsList[1].SMARTSCentre = True
     molObj.AtomsList[2].SMARTSCentre = True
     molObj.AtomsList[3].SMARTSCentre = True
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalAddition_Reac.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalAddition_Reac.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
 
     # Pericyclic [4+2]
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/02_11P.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/02_11P.xyz",
         identifier="Peri42",
         charge=0,
         multiplicity=1,
     )
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic42_Prod.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic42_Prod.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/02_11R.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/02_11R.xyz",
         identifier="Peri42",
         charge=0,
         multiplicity=1,
     )
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic42_Reac.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic42_Reac.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/02_11TS.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/02_11TS.xyz",
         identifier="Peri42",
         charge=0,
         multiplicity=1,
     )
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic42_TS.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic42_TS.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
 
     # Pericyclic [3+2]
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/02_56P.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/02_56P.xyz",
         identifier="Peri32",
         charge=0,
         multiplicity=1,
@@ -711,11 +723,11 @@ def test_ReadXYZFile():
     molObj.AtomsList[20].SMARTSCentre = True
     molObj.AtomsList[21].SMARTSCentre = True
     molObj.AtomsList[22].SMARTSCentre = True
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Prod.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic32_Prod.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/02_56TS.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/02_56TS.xyz",
         identifier="Peri32",
         charge=0,
         multiplicity=1,
@@ -725,7 +737,7 @@ def test_ReadXYZFile():
     molObj.AtomsList[20].SMARTSCentre = True
     molObj.AtomsList[21].SMARTSCentre = True
     molObj.AtomsList[22].SMARTSCentre = True
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_TS.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic32_TS.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
     molObj.OptimiseGeometry(
@@ -736,13 +748,13 @@ def test_ReadXYZFile():
     molObj.AtomsList[20].SMARTSCentre = True
     molObj.AtomsList[21].SMARTSCentre = True
     molObj.AtomsList[22].SMARTSCentre = True
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Reac.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic32_Reac.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
 
     # Halogen Abstraction
     molObj = Molecule.ReadXYZFile(
-        xyz_file=f"{Path(__file__).parent}/TS/BH9/03_7TS.xyz",
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/03_7TS.xyz",
         identifier="HalAbstract",
         charge=0,
         multiplicity=2,
@@ -751,7 +763,7 @@ def test_ReadXYZFile():
     molObj.AtomsDict["F1"][1].FormalCharge = 0
     molObj.AtomsDict["F1"][1].Multiplicity = 1
     molObj.AtomsDict["S1"][1].FormalCharge = 2
-    with open(f"{Path(__file__).parent}/TS/BH9/HalAbstract_TS.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/HalAbstract_TS.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
     molObj.AddBond(AtomIndices=[1, 0])
@@ -760,7 +772,7 @@ def test_ReadXYZFile():
         SimpleLennardJonesPotential=True,
         MolecularMechanics=True,
     )
-    with open(f"{Path(__file__).parent}/TS/BH9/HalAbstract_Reac.mol", "w") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/HalAbstract_Reac.mol", "w") as f:
         f.write(molObj.WriteMolString())
         f.close()
 
@@ -777,32 +789,20 @@ def test_ReadXYZFile():
     # Sn2 6
 
 
-def test_AtomIsAromatic():
-    with open(f"{Path(__file__).parent}/AromaticSandwich.mol", "r") as f:
-        molObj_str = f.read()
-        f.close()
-    molObj = Molecule.ReadMolString(molObj_str)
-    molObj.RemoveAtom(AtomIndex=22)
-    molObj.RemoveAtom(AtomIndex=0)
-    molObj.GetAromaticAtoms()
-    assert molObj.AtomsList[0].IsAromatic == True
-    assert molObj.AtomsList[7].IsAromatic == False
-
-
 def test_WriteSMARTSString():
 
     # Radical Rearrangement Reaction
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_Reac.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalRearrangment_Reac.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_1_reac = molObj.WriteSMARTSString()
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_TS.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalRearrangment_TS.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_1_TS = molObj.WriteSMARTSString()
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalRearrangment_Prod.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalRearrangment_Prod.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
@@ -812,17 +812,17 @@ def test_WriteSMARTSString():
     assert SMARTS_1_prod == "[#6:0]1-[#6:1]-[#6:2]-[#6:3]-1-[#6v3+0:4]"
 
     # Radical Addition Reaction
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalAddition_Reac.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalAddition_Reac.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_2_reac = molObj.WriteSMARTSString()
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalAddition_TS.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalAddition_TS.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_2_TS = molObj.WriteSMARTSString()
-    with open(f"{Path(__file__).parent}/TS/BH9/RadicalAddition_Prod.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/RadicalAddition_Prod.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
@@ -832,17 +832,17 @@ def test_WriteSMARTSString():
     assert SMARTS_2_prod == "[#6:0]-[#16:1]-[#6:2]-[#6v3+0:3]"
 
     # Pericyclic [3+2]
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Reac.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic32_Reac.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_3_reac = molObj.WriteSMARTSString()
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_TS.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic32_TS.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_3_TS = molObj.WriteSMARTSString()
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Prod.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic32_Prod.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
@@ -852,17 +852,17 @@ def test_WriteSMARTSString():
     assert SMARTS_3_prod == "[#6:0]1:[#6:1]:[#7:4]:[#7:3]:[#7:2]:1"
 
     # Pericyclic [4+2]
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Reac.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic32_Reac.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_3_reac = molObj.WriteSMARTSString()
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_TS.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic32_TS.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_3_TS = molObj.WriteSMARTSString()
-    with open(f"{Path(__file__).parent}/TS/BH9/Pericyclic32_Prod.mol", "r") as f:
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Pericyclic32_Prod.mol", "r") as f:
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
@@ -870,3 +870,23 @@ def test_WriteSMARTSString():
     assert SMARTS_3_reac == "[#6:0]#[#6:1].[#7-:2]=[#7+:3]=[#7:4]"
     assert SMARTS_3_TS == "[#6:0]#[#6:1].[#7-:2]=[#7+:3]=[#7:4]"
     assert SMARTS_3_prod == "[#6:0]1:[#6:1]:[#7:4]:[#7:3]:[#7:2]:1"
+
+    # Halogen Abstraction
+    with open(f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/HalAbstract_Reac.mol", "r") as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_4_reac = molObj.WriteSMARTSString()
+    print(SMARTS_4_reac)
+
+    # Hydrogen Abstraction
+
+    # Hydride Abstraction
+
+    # Boron Transfer 14
+
+    # Silicon Hydrogen Abstraction 33
+
+    # Proton Transfer 1
+
+    # Sn2 6
