@@ -5,7 +5,7 @@ from copy import deepcopy
 from Peregrine.molecule import Molecule
 from Peregrine.atom import Atom
 
-xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin"
+xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin"
 
 
 def test_atom_initialization():
@@ -902,7 +902,7 @@ def test_ReadXYZFile():
     # Hydrogen Abstraction
     molObj = Molecule.ReadXYZFile(
         xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/04_1TS.xyz",
-        identifier="HalAbstract",
+        identifier="HydrogenAbstract",
         charge=0,
         multiplicity=2,
     )
@@ -940,7 +940,7 @@ def test_ReadXYZFile():
         f.close()
     molObj = Molecule.ReadXYZFile(
         xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/04_1R.xyz",
-        identifier="HalAbstract",
+        identifier="HydrogenAbstract",
         charge=0,
         multiplicity=2,
     )
@@ -959,8 +959,118 @@ def test_ReadXYZFile():
         f.close()
 
     # Hydride Abstraction
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/05_5TS.xyz",
+        identifier="HydrideAbstract",
+        charge=1,
+        multiplicity=1,
+    )
+    molObj.RemoveBond(AtomIndices=[20, 5])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[20, 21])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[19, 21])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[19, 23])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[23, 13])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[13, 18])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[18, 20])
+    molObj.AtomsList[20].FormalCharge = 0
+    molObj.AtomsList[5].FormalCharge = 0
+    molObj.AtomsList[10].FormalCharge = 0
+    molObj.AtomsList[23].FormalCharge = 1
+    molObj.AtomsList[10].SMARTSCentre = True
+    molObj.AtomsList[8].SMARTSCentre = True
+    molObj.AtomsList[5].SMARTSCentre = True
+    molObj.AtomsList[20].SMARTSCentre = True
+    molObj.AtomsList[18].SMARTSCentre = True
+    molObj.AtomsList[13].SMARTSCentre = True
+    molObj.AtomsList[23].SMARTSCentre = True
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/HydrideTransfer_TS.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj.OptimiseGeometry(
+        SimpleLennardJonesPotential=True,
+        MolecularMechanics=True,
+    )
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/HydrideTransfer_Reac.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj.AddBond(AtomIndices=[5, 20])
+    molObj.RemoveBond(AtomIndices=[5, 8])
+    molObj.AtomsList[23].FormalCharge = 0
+    molObj.AtomsList[10].FormalCharge = 1
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[1, 2])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[1, 8])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[8, 10])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[10, 11])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[11, 9])
+    molObj.ChangeBond(NewBondOrder=1.5, AtomIndices=[9, 2])
+    molObj.ChangeBond(NewBondOrder=1, AtomIndices=[20, 21])
+    molObj.ChangeBond(NewBondOrder=2, AtomIndices=[19, 21])
+    molObj.ChangeBond(NewBondOrder=1, AtomIndices=[19, 23])
+    molObj.ChangeBond(NewBondOrder=1, AtomIndices=[23, 13])
+    molObj.ChangeBond(NewBondOrder=2, AtomIndices=[13, 18])
+    molObj.ChangeBond(NewBondOrder=1, AtomIndices=[18, 20])
+    molObj.OptimiseGeometry(
+        SimpleLennardJonesPotential=True,
+        MolecularMechanics=True,
+    )
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/HydrideTransfer_Prod.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
 
     # Boron Transfer 14
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/06_14TS.xyz",
+        identifier="BoronTransfer",
+        charge=0,
+        multiplicity=1,
+    )
+    molObj.AtomsList[2].FormalCharge = 0
+    molObj.AtomsList[17].FormalCharge = 0
+    molObj.AtomsList[18].FormalCharge = 0
+    molObj.RemoveBond(AtomIndices=[2, 12])
+    molObj.RemoveBond(AtomIndices=[2, 16])
+    molObj.ChangeBond(AtomIndices=[16, 12], NewBondOrder=2)
+    molObj.AtomsList[2].SMARTSCentre = True
+    molObj.AtomsList[12].SMARTSCentre = True
+    molObj.AtomsList[16].SMARTSCentre = True
+    molObj.AtomsList[17].SMARTSCentre = True
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/BoronTransfer_TS.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj.OptimiseGeometry(
+        MolecularMechanics=True,
+    )
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/BoronTransfer_Reac.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj.AddBond(AtomIndices=[12, 2])
+    molObj.RemoveBond(AtomIndices=[17, 2])
+    molObj.ChangeBond(AtomIndices=[16, 12], NewBondOrder=1)
+    molObj.ChangeBond(AtomIndices=[16, 17], NewBondOrder=2)
+    molObj.OptimiseGeometry(
+        MolecularMechanics=True,
+    )
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/BoronTransfer_Prod.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
 
     # Silicon Hydrogen Abstraction 33
 
@@ -1147,8 +1257,62 @@ def test_WriteSMARTSString():
     assert SMARTS_5_prod == "[#6:0]-[H:2].[#8v1+0:1]"
 
     # Hydride Abstraction
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/HydrideTransfer_Reac.mol",
+        "r",
+    ) as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_6_reac = molObj.WriteSMARTSString()
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/HydrideTransfer_TS.mol",
+        "r",
+    ) as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_6_TS = molObj.WriteSMARTSString()
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/HydrideTransfer_Prod.mol",
+        "r",
+    ) as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_6_prod = molObj.WriteSMARTSString()
+    assert SMARTS_6_reac == "[H:0]-[#6:1]-[#7:2].[#6:3](:[#6:4]:[#7:5]):[#7+:6]"
+    assert SMARTS_6_TS == "[H:0]-[#6:1]-[#7:2].[#6:3](:[#6:4]:[#7:5]):[#7+:6]"
+    assert SMARTS_6_prod == "[H:0]-[#7:5]-[#6:4]=[#6:3]-[#7:6].[#6:1]:[#7+:2]"
 
     # Boron Transfer 14
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/BoronTransfer_Reac.mol",
+        "r",
+    ) as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_7_reac = molObj.WriteSMARTSString()
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/BoronTransfer_TS.mol",
+        "r",
+    ) as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_7_TS = molObj.WriteSMARTSString()
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/BoronTransfer_Prod.mol",
+        "r",
+    ) as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_7_prod = molObj.WriteSMARTSString()
+    assert SMARTS_7_reac == "[#5:0]-[#8:3]-[#6:2]=[#6:1]"
+    assert SMARTS_7_TS == "[#5:0]-[#8:3]-[#6:2]=[#6:1]"
+    assert SMARTS_7_prod == "[#5:0]-[#6:1]-[#6:2]=[#8:3]"
 
     # Silicon Hydrogen Abstraction 33
 

@@ -624,6 +624,14 @@ class Molecule:
                         SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}+{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
                     else:
                         SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
+        # Check for aromatic atoms
+        self.GetAromaticAtoms()
+        for rdkitAtomObj_idx in rdkitMolObj_to_molObj_atomIdx_dict:
+            atomObj_idx = rdkitMolObj_to_molObj_atomIdx_dict[rdkitAtomObj_idx]
+            atomObj = self.AtomsList[atomObj_idx] 
+            if atomObj.IsAromatic == True:
+                # Need to change #x to lowercase to symbolise aromatic atoms
+                pass
         # Edit SMARTS string
 
         return SMARTS
@@ -1472,7 +1480,7 @@ class Molecule:
         )
         molPybelObj = next(molPybelObj)
         os.remove(f"{Path(__file__).parent}/{self.Identifier}_temp.mol")
-        # Fix bond orders with openbabel
+        # define which bonds and atoms are aromatic
         obmol = molPybelObj.OBMol
         obmol.PerceiveBondOrders()
         obmol.SetAromaticPerceived(False)
@@ -1605,7 +1613,7 @@ $end
         MolecularMechanics_settings: dict | None = None,
         SemiEmpiricalxTB: bool | None = None,
         SemiEmpiricalxTB_settings: dict | None = None,
-        xtb_binary_path: str | None = None,
+        xtb_binary_path: str | None=None,
     ):
         lj_defaults = {
             "Max Steps": 100,
