@@ -7,6 +7,8 @@ from Peregrine.atom import Atom
 
 xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin"
 
+# TODO: Sort our aromatic representations in SMILES
+
 
 def test_atom_initialization():
     """Test basic atom initialization with required parameters."""
