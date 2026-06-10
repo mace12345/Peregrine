@@ -1079,6 +1079,49 @@ def test_ReadXYZFile():
     # Proton Transfer 1
 
     # Sn2 6
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/08_1TS.xyz",
+        identifier="BoronTransfer",
+        charge=-1,
+        multiplicity=1,
+    )
+    molObj.AtomsList[11].FormalCharge = -1
+    molObj.AtomsList[7].FormalCharge = 0
+    molObj.AtomsList[6].FormalCharge = 0
+    molObj.AtomsList[0].FormalCharge = 0
+    molObj.ChangeBond(AtomIndices=[0, 1], NewBondOrder=2)
+    molObj.RemoveBond(AtomIndices=[11, 7])
+    molObj.AtomsList[11].SMARTSCentre = True
+    molObj.AtomsList[7].SMARTSCentre = True
+    molObj.AtomsList[6].SMARTSCentre = True
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Sn2_TS.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj.OptimiseGeometry(
+        MolecularMechanics=True,
+    )
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Sn2_Reac.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    molObj.RemoveBond(AtomIndices=[6, 7])
+    molObj.AddBond(AtomIndices=[11, 7])
+    molObj.AtomsList[11].FormalCharge = 0
+    molObj.AtomsList[6].FormalCharge = -1
+    molObj.OptimiseGeometry(
+        MolecularMechanics=True,
+    )
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Sn2_Prod.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
 
 
 def test_WriteSMARTSString():
@@ -1316,8 +1359,22 @@ def test_WriteSMARTSString():
     assert SMARTS_7_TS == "[#5:0]-[#8:3]-[#6:2]=[#6:1]"
     assert SMARTS_7_prod == "[#5:0]-[#6:1]-[#6:2]=[#8:3]"
 
-    # Silicon Hydrogen Abstraction 33
+    # Sn2 1
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Sn2_Reac.mol",
+        "r",
+    ) as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_8_reac = molObj.WriteSMARTSString()
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/BH9/Sn2_Prod.mol",
+        "r",
+    ) as f:
+        molObj_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molObj_str)
+    SMARTS_8_prod = molObj.WriteSMARTSString()
+    print(SMARTS_8_prod)
 
-    # Proton Transfer 1
-
-    # Sn2 6
