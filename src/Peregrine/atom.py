@@ -480,6 +480,7 @@ class Atom:
         Multiplicity: int = 1,
         SubstructureIndex: int = 1,
         SMARTSCentre: bool = False,
+        SMARTSAtom: str | None = None,
     ):
         """
         Initialize an Atom instance.
@@ -523,7 +524,7 @@ class Atom:
         self.SubstructureIndex = SubstructureIndex
         self.Multiplicity = Multiplicity
         self.SMARTSCentre = SMARTSCentre
-        self.SMARTSAtom = None
+        self.SMARTSAtom = SMARTSAtom
         self.SMARTSIndex = None
         self.AssociatedSMILES = None
         self.AssociatedSMARTS = None

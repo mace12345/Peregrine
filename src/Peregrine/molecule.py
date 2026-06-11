@@ -365,24 +365,47 @@ class Molecule:
         hull = ConvexHull(points)
         return round(hull.volume, 2)
 
-    def GetAromaticAtoms(self):
-        # Convert to xyz file
-        xyz_string = self.WriteXYZString()
-        with open(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz", "w") as f:
-            f.write(xyz_string)
-            f.close()
-        G_full = build_graph(
-            atoms=f"{Path(__file__).parent}/{self.Identifier}_temp.xyz",
-            charge=self.FormalCharge,
-            multiplicity=self.Multiplicity,
-        )
-        os.remove(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz")
-        # Flatten all aromatic rings into a single set of atom indices
-        aromatic_atoms = {
-            idx for ring in G_full.graph.get("aromatic_rings", []) for idx in ring
-        }
-        for aromatic_index in aromatic_atoms:
-            self.AtomsList[aromatic_index].IsAromatic = True
+    def GetAromaticAtoms(
+        self,
+        MolecularMechanicsPreOpt: bool = False,
+        SemiEmpiricalxTBPreOpt: bool = False,
+    ):
+        components = self.SplitMoleculeIntoComponents(UpdateAtomLabels=False)
+        for component in components:
+            if component.NumberOfAtoms < 6:
+                continue
+            # Optimse component so xyzgraph correctly identifies aromatic atoms
+            if MolecularMechanicsPreOpt == True:
+                component.OptimiseGeometry(
+                    MolecularMechanics=MolecularMechanicsPreOpt,
+                )
+            if SemiEmpiricalxTBPreOpt == True:
+                component.OptimiseGeometry(
+                    SemiEmpiricalxTB=SemiEmpiricalxTBPreOpt,
+                )
+            # Convert to xyz file
+            xyz_string = component.WriteXYZString()
+            with open(
+                f"{Path(__file__).parent}/{component.Identifier}_temp.xyz", "w"
+            ) as f:
+                f.write(xyz_string)
+                f.close()
+            G_full = build_graph(
+                atoms=f"{Path(__file__).parent}/{component.Identifier}_temp.xyz",
+                charge=component.FormalCharge,
+                multiplicity=component.Multiplicity,
+            )
+            os.remove(f"{Path(__file__).parent}/{component.Identifier}_temp.xyz")
+            # Flatten all aromatic rings into a single set of atom indices
+            aromatic_atoms = {
+                idx for ring in G_full.graph.get("aromatic_rings", []) for idx in ring
+            }
+            # Get atom label from atom indices
+            # call main AtomsDict and set atom to aromatic
+            for aromatic_index in aromatic_atoms:
+                self.AtomsDict[component.AtomsList[aromatic_index].Label][
+                    1
+                ].IsAromatic = True
         for atomObj in self.AtomsList:
             if atomObj.IsAromatic is None:
                 atomObj.IsAromatic = False
@@ -578,7 +601,11 @@ class Molecule:
         SMILES_str = Chem.MolToSmiles(rdkit_mol)
         return SMILES_str
 
-    def WriteSMARTSString(self) -> str:
+    def WriteSMARTSString(
+        self,
+        HandleAromaticity: bool = True,
+    ) -> str:
+        # Create initial SMARTS string
         # Convert molObj to rdKitMolObj
         rdkitMolObj = Chem.EditableMol(Chem.Mol())
         molObj_to_rdkitMolObj_atomIdx_dict = {}
@@ -613,26 +640,90 @@ class Molecule:
                 old_sub_SMARTS = sub_SMARTS + "]"
                 break
         SMARTS = SMARTS.replace(old_sub_SMARTS, new_sub_SMARTS)
-        # Check for radicals, adjust SMARTS for radicals
-        if self.Multiplicity >= 2:
-            for rdkitAtomObj_idx in rdkitMolObj_to_molObj_atomIdx_dict:
-                atomObj_idx = rdkitMolObj_to_molObj_atomIdx_dict[rdkitAtomObj_idx]
-                atomObj = self.AtomsList[atomObj_idx]
-                if atomObj.Multiplicity == 2:
-                    valence = int(self.BondOrderMatrix[atomObj_idx].sum())
-                    if atomObj.FormalCharge >= 0:
-                        SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}+{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
-                    else:
-                        SMARTS = f"{SMARTS[:SMARTS.find(f":{rdkitAtomObj_idx}]")]}v{valence}{atomObj.FormalCharge}{SMARTS[SMARTS.find(f":{rdkitAtomObj_idx}]"):]}"
-        # Check for aromatic atoms
-        self.GetAromaticAtoms()
-        for rdkitAtomObj_idx in rdkitMolObj_to_molObj_atomIdx_dict:
-            atomObj_idx = rdkitMolObj_to_molObj_atomIdx_dict[rdkitAtomObj_idx]
-            atomObj = self.AtomsList[atomObj_idx] 
-            if atomObj.IsAromatic == True:
-                # Need to change #x to lowercase to symbolise aromatic atoms
-                pass
+
+        # Create dictionary of molObj atomIdx dict to atoms SMARTS pattern
+        # Using replace function on strings old SMARTS patterns can be swapped for new ones
+        # The dictionary created contains all the old SMARTS pattern
+        Old_rdkitAtomObjIdx_to_SMARTS_pattern_dict = {}
+        for sub_SMARTS in SMARTS.split("]"):
+            if sub_SMARTS == "":
+                continue
+            sub_SMARTS = sub_SMARTS.split("[")[-1]
+            rdkitAtomObj_idx = int(sub_SMARTS.split(":")[-1])
+            Old_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
+                f"[{sub_SMARTS}]"
+            )
+
         # Edit SMARTS string
+        # Collect rdkit atom properties from own molObj
+        # Make new SMARTS patterns based on the molObj atoms
+        New_rdkitAtomObjIdx_to_SMARTS_pattern_dict = {}
+        if HandleAromaticity == True:
+            self.GetAromaticAtoms()
+        for rdkitAtomObj_idx in rdkitMolObj_to_molObj_atomIdx_dict:
+
+            atomObj_idx = rdkitMolObj_to_molObj_atomIdx_dict[rdkitAtomObj_idx]
+            atomObj = self.AtomsList[atomObj_idx]
+            valence = int(self.BondOrderMatrix[atomObj_idx].sum())
+            SMARTSAtom = atomObj.SMARTSAtom
+
+            if SMARTSAtom is not None:
+                New_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
+                    f"{SMARTSAtom}:{rdkitAtomObj_idx}"
+                )
+                continue
+
+            # Construct SMARTS for both all radicals and aromatic radicals
+            if atomObj.Multiplicity == 2:
+                valence = int(self.BondOrderMatrix[atomObj_idx].sum())
+                if atomObj.IsAromatic == None or atomObj.IsAromatic == False:
+                    if atomObj.FormalCharge == 0:
+                        New_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
+                            f"[#{atomObj.AtomicNumber}v{valence}+0:{rdkitAtomObj_idx}]"
+                        )
+                    elif atomObj.FormalCharge > 0:
+                        New_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
+                            f"[#{atomObj.AtomicNumber}v{valence}+{atomObj.FormalCharge}:{rdkitAtomObj_idx}]"
+                        )
+                    elif atomObj.FormalCharge < 0:
+                        New_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
+                            f"[#{atomObj.AtomicNumber}v{valence}-{atomObj.FormalCharge}:{rdkitAtomObj_idx}]"
+                        )
+                elif atomObj.IsAromatic == True:
+                    if atomObj.FormalCharge == 0:
+                        New_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
+                            f"[{atomObj.AtomicSymbol.lower()}v{valence}+0:{rdkitAtomObj_idx}]"
+                        )
+                    elif atomObj.FormalCharge > 0:
+                        New_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
+                            f"[{atomObj.AtomicSymbol.lower()}v{valence}+{atomObj.FormalCharge}:{rdkitAtomObj_idx}]"
+                        )
+                    elif atomObj.FormalCharge < 0:
+                        New_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
+                            f"[{atomObj.AtomicSymbol.lower()}v{valence}-{atomObj.FormalCharge}:{rdkitAtomObj_idx}]"
+                        )
+                continue
+
+            # Construct SMARTS for aromatic atoms
+            if atomObj.IsAromatic == True:
+                old_smarts_pattern = Old_rdkitAtomObjIdx_to_SMARTS_pattern_dict[
+                    rdkitAtomObj_idx
+                ]
+                New_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
+                    old_smarts_pattern.replace(
+                        f"#{atomObj.AtomicNumber}", atomObj.AtomicSymbol.lower()
+                    )
+                )
+
+        # Swap out old SMARTS patterns with new SMARTS patterns
+        for new_rdkitAtomObj_idx in New_rdkitAtomObjIdx_to_SMARTS_pattern_dict:
+            old_smarts_pattern = Old_rdkitAtomObjIdx_to_SMARTS_pattern_dict[
+                new_rdkitAtomObj_idx
+            ]
+            new_smarts_pattern = New_rdkitAtomObjIdx_to_SMARTS_pattern_dict[
+                new_rdkitAtomObj_idx
+            ]
+            SMARTS = SMARTS.replace(old_smarts_pattern, new_smarts_pattern)
 
         return SMARTS
 
@@ -1613,7 +1704,7 @@ $end
         MolecularMechanics_settings: dict | None = None,
         SemiEmpiricalxTB: bool | None = None,
         SemiEmpiricalxTB_settings: dict | None = None,
-        xtb_binary_path: str | None=None,
+        xtb_binary_path: str | None = None,
     ):
         lj_defaults = {
             "Max Steps": 100,
