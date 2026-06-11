@@ -537,8 +537,8 @@ def test_WriteSMARTSString():
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_3_prod = molObj.WriteSMARTSString()
-    assert SMARTS_3_reac == "[#6:0]#[#6:1].[#7-:2]=[#7+:3]=[#7:4]"
-    assert SMARTS_3_TS == "[#6:0]#[#6:1].[#7-:2]=[#7+:3]=[#7:4]"
+    assert SMARTS_3_reac == "[#6:0]#[#6:1].[#7:2]-[#7:3]=[#7:4]"
+    assert SMARTS_3_TS == "[#6:0]#[#6:1].[#7:2]-[#7:3]=[#7:4]"
     assert SMARTS_3_prod == "[c:0]1:[#6:1]:[n:4]:[n:3]:[n:2]:1"
 
     # Halogen Abstraction
@@ -701,4 +701,5 @@ def test_WriteSMARTSString():
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_8_prod = molObj.WriteSMARTSString()
-    print(SMARTS_8_prod)
+    assert SMARTS_8_reac == "[#8-:0].[#6:1]-[#9:2]"
+    assert SMARTS_
