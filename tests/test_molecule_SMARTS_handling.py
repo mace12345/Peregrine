@@ -10,7 +10,7 @@ xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin"
 # TODO: Sort our aromatic representations in SMILES
 
 
-def test_ReadXYZFile():
+def test_ReadXYZFile_BH9():
 
     # === BH9 reactions - https://doi.org/10.1021/acs.jctc.1c00694 ===
 
@@ -452,7 +452,7 @@ def test_ReadXYZFile():
         f.close()
 
 
-def test_WriteSMARTSString():
+def test_WriteSMARTSString_BH9():
 
     # Radical Rearrangement Reaction
     with open(
@@ -701,5 +701,59 @@ def test_WriteSMARTSString():
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
     SMARTS_8_prod = molObj.WriteSMARTSString()
-    assert SMARTS_8_reac == "[#8-:0].[#6:1]-[#9:2]"
-    assert SMARTS_
+    assert SMARTS_8_reac == "[#8:0]-[#6:1].[#9-:2]"
+    assert SMARTS_8_prod == "[#8-:0].[#6:1]-[#9:2]"
+
+
+def test_ReadXYZFiles_MOBH():
+
+    # Convert poorly formatted MOBH file to TS xyz files
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/MOBH35/MOBH35_geom.txt",
+        "r",
+    ) as f:
+        xyz_txt = f.read()
+        f.close()
+    xyz_txt = [i for i in xyz_txt.split("\n") if i != ""]
+    space_count = 0
+    idx = 0
+    start = False
+    xyz_file = ""
+    for line in xyz_txt[:]:
+        if "ts" in line:
+            xyz_file = ""
+            start = True
+        if line == " " and start == True:
+            space_count += 1
+        if start == True:
+            xyz_file += f"{line}\n"
+        if space_count == 2 and start == True and xyz_file != "":
+            space_count = 0
+            idx += 1
+            start = False
+            xyz_file = "\n".join(xyz_file.split("\n")[1:])
+            with open(
+                f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/MOBH35/MOBH35_{idx}.xyz",
+                "w",
+            ) as f:
+                f.write(xyz_file)
+                f.close()
+            xyz_file = ""
+
+    # Read in Scandium reaction
+    # overall charge of +1
+    # Scandium is +2
+    # Carbanion coordinated to Scandium
+    # Therefore multiplicity of 2 due to d1 config
+    molObj = Molecule.ReadXYZFile(
+        xyz_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/MOBH35/MOBH35_1.xyz",
+        identifier="MOBH35_1",
+        charge=1,
+        multiplicity=2,
+    )
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/TS/MOBH35/MOBH35_1_TS.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
