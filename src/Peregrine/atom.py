@@ -475,6 +475,7 @@ class Atom:
         self,
         AtomicSymbol: str,
         Coordinates: np.ndarray,
+        Gradient: np.ndarray | None = None,
         Label: str | None = None,
         FormalCharge: int = 0,
         Multiplicity: int = 1,
@@ -519,6 +520,7 @@ class Atom:
         """
         self.Label = Label
         self.Coordinates = Coordinates
+        self.Gradient = Gradient
         self.AtomicSymbol = AtomicSymbol
         self.FormalCharge = FormalCharge
         self.SubstructureIndex = SubstructureIndex

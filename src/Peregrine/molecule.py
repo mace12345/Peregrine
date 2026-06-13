@@ -1,3 +1,4 @@
+# fmt: off
 from typing import Self
 from copy import deepcopy
 from pathlib import Path
@@ -901,8 +902,127 @@ class Molecule:
         pass
 
     @classmethod
-    def ReadORCAOutput(cls, ORCA_output) -> "Molecule":
+    def ReadORCA6Output(cls, ORCA_output_filepath: str) -> "Molecule":
+        #
         pass
+
+    @classmethod
+    def ReadORCA6OutputGradients(
+        cls,
+        ORCA_output_filepath: str, 
+        template_molObj: "Molecule | None" = None
+    ) -> list["Molecule"]:
+
+        def XYZBlockToAtomsList(
+            xyz_block: str,
+            template_molObj: "Molecule | None" = None
+        ) -> list[Atom]:
+            if template_molObj is None:
+                AtomsList = []
+                for line in xyz_block.split("\n"):
+                    line = [i for i in line.split(" ") if i != ""]
+                    AtomsList.append(
+                        Atom(
+                            AtomicSymbol=line[0],
+                            Coordinates=np.array(
+                                [
+                                    float(line[1]),
+                                    float(line[2]),
+                                    float(line[3]),
+                                ]
+                            ),
+                        )
+                    )
+                return AtomsList
+            else:
+                template_AtomsList = template_molObj.AtomsList
+                AtomsList = []
+                for template_idx, line in enumerate(xyz_block.split("\n")):
+                    line = [i for i in line.split(" ") if i != ""]
+                    AtomsList.append(
+                        Atom(
+                            AtomicSymbol=line[0],
+                            Coordinates=np.array(
+                                [
+                                    float(line[1]),
+                                    float(line[2]),
+                                    float(line[3]),
+                                ]
+                            ),
+                            FormalCharge=template_AtomsList[template_idx].FormalCharge,
+                            Multiplicity=template_AtomsList[template_idx].Multiplicity,
+                        )
+                    )
+                return AtomsList
+
+        def GradBlockInToAtomsList(
+            AtomsList: list[Atom], grad_block: str
+        ) -> list[Atom]:
+            for line in grad_block.split("\n"):
+                line = [i for i in line.split(" ") if i != ""]
+                idx = int(line[0]) - 1
+                AtomsList[idx].Gradient = np.array(
+                    [
+                        float(line[3]),
+                        float(line[4]),
+                        float(line[5]),
+                    ]
+                )
+            return AtomsList
+
+        def BondBlockToBondOrderMatrix(bond_block: str, AtomsListLen: int) -> np.ndarray:
+            BondOrderMatrix = np.zeros((AtomsListLen, AtomsListLen))
+            bonds_list = bond_block.split("B(")[1:]
+            for line in bonds_list:
+                idx1 = int(line.split("-")[0])
+                idx2 = int(line.split(",")[-1].split("-")[0])
+                mayer_BO = float(line.split(":")[-1])
+                base_BO = mayer_BO // 1
+                left_over_BO = mayer_BO % 1
+                if left_over_BO <= 0.333:
+                    add_on_BO = 0
+                elif left_over_BO > 0.333 and left_over_BO <= 0.666:
+                    add_on_BO = 0.5
+                elif left_over_BO > 0.666:
+                    add_on_BO = 1
+                BO = base_BO + add_on_BO
+                BondOrderMatrix[idx1][idx2] = BO
+                BondOrderMatrix[idx2][idx1] = BO
+            return BondOrderMatrix
+
+        with open(ORCA_output_filepath, "r") as f:
+            orca_file = f.read()
+            f.close()
+        Identifier = ORCA_output_filepath.split("/")[-1].split(".")[0]
+        orca_file_geom_opt_steps = orca_file.split("GEOMETRY OPTIMIZATION CYCLE")[1:]
+        # TODO: Retreive molecule multiplicity
+        # TODO: Retreive molecule formal charge
+        for opt_step, opt_step in enumerate(orca_file_geom_opt_steps):
+            # Get XYZ coordinates
+            xyz_block = opt_step.split(
+                "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
+            )[-1].split("\n\n")[0]
+            AtomsList = XYZBlockToAtomsList(xyz_block)
+            # Get Mayer bond orders
+            bond_block = opt_step.split("Mayer bond orders larger than 0.100000\n")[
+                -1
+            ].split("\n\n")[0]
+            BondOrderMatrix = BondBlockToBondOrderMatrix(
+                bond_block, len(AtomsList)
+            )
+            # Get cartesian gradients
+            grad_block = opt_step.split("CARTESIAN GRADIENT\n------------------\n\n")[
+                -1
+            ].split("\n\n")[0]
+            AtomsList = GradBlockInToAtomsList(
+                AtomsList, grad_block
+            )
+            molObj = Molecule(
+                Identifier=f"{Identifier}_opt{opt_step}",
+                AtomsList=AtomsList,
+                BondOrderMatrix=BondOrderMatrix,
+            )
+            break
 
     def XYZFileToCoords(self, xyz_file: str) -> list[list[str]]:
         with open(xyz_file, "r") as f:

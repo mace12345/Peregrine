@@ -34,3 +34,15 @@ class MoleculeSet:
 
     def WriteMol2File(self):
         pass
+
+    def ReadORCA6Output(self):
+        # TODO: Iterate through directory looking for .out files
+
+        # TODO: Identifier is the name of the .out file, check to see if identifier exist in MoleculeDict
+        pass
+
+    def ReadORCA6OptOutput(self):
+        pass
+
+    def WriteORCA6Output(self):
+        pass
