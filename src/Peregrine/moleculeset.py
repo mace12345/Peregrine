@@ -41,7 +41,11 @@ class MoleculeSet:
         # TODO: Identifier is the name of the .out file, check to see if identifier exist in MoleculeDict
         pass
 
-    def ReadORCA6OptOutput(self):
+    def ReadORCA6OptOutput(
+        self,
+        input_file_path: str,
+        output_file_path: str,
+    ):
         pass
 
     def WriteORCA6Output(self):

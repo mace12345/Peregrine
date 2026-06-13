@@ -1405,7 +1405,7 @@ Hamiltonian:
    NL short-range parameter             ....  6.900000
  RI-approximation to the Coulomb term is turned on
    Number of AuxJ basis functions       .... 2401
-   RIJ-COSX (HFX calculated with COS-X)).... on
+   RIJ-COSX (HFX calculated with COS-X).... on
 
 
 General Settings:

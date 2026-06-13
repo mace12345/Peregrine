@@ -135,6 +135,14 @@ class Molecule:
             raise ValueError("bond_matrix must have zero diagonal")
         if len(self.AtomsList) == 0:
             raise ValueError("No atoms in AtomsList")
+        
+        # Calculated Attributes
+        self.num_basis_functions: int | None = None
+        self.electronic_energy: float | None = None
+        self.enthalpy: float | None = None
+        self.entropy: float | None = None
+        self.gibbs_free_energy: float | None = None
+        self.vibrational_frequencies: list[float] | None = None
 
     def DeriveBasicAttributes(
         self,
@@ -913,6 +921,8 @@ class Molecule:
         template_molObj: "Molecule | None" = None
     ) -> list["Molecule"]:
 
+        # TODO: Raise Errors when template object does not match up with ORCA molecule file
+
         def XYZBlockToAtomsList(
             xyz_block: str,
             template_molObj: "Molecule | None" = None
@@ -935,7 +945,6 @@ class Molecule:
                     )
                 return AtomsList
             else:
-                template_AtomsList = template_molObj.AtomsList
                 AtomsList = []
                 for template_idx, line in enumerate(xyz_block.split("\n")):
                     line = [i for i in line.split(" ") if i != ""]
@@ -949,8 +958,8 @@ class Molecule:
                                     float(line[3]),
                                 ]
                             ),
-                            FormalCharge=template_AtomsList[template_idx].FormalCharge,
-                            Multiplicity=template_AtomsList[template_idx].Multiplicity,
+                            FormalCharge=template_molObj.AtomsList[template_idx].FormalCharge,
+                            Multiplicity=template_molObj.AtomsList[template_idx].Multiplicity,
                         )
                     )
                 return AtomsList
@@ -990,26 +999,61 @@ class Molecule:
                 BondOrderMatrix[idx2][idx1] = BO
             return BondOrderMatrix
 
+        def GetCalculatedEnergies(orca_string: str) -> dict:
+            en_output_dict = {
+                "Electronic Energy": None,
+                "Enthalpy": None,
+                "Entropy": None,
+                "Gibbs Free Energy": None,
+            }
+            if "FINAL SINGLE POINT ENERGY" in orca_string:
+                sp_en = float(orca_string.split("FINAL SINGLE POINT ENERGY")[1].split("\n")[0])
+                en_output_dict["Electronic Energy"] = sp_en
+            if "Total Enthalpy" in orca_string:
+                en_en = float(
+                    orca_string.split(
+                        "Total Enthalpy"
+                    )[1].split("...")[1].split("Eh")[0]
+                )
+                en_output_dict["Enthalpy"] = en_en
+            if "Final entropy term" in orca_string:
+                et_en = float(
+                    orca_string.split(
+                        "Final entropy term")[1].split("...")[1].split("Eh")[0]
+                )
+                en_output_dict["Entropy"] = et_en
+            if "Final Gibbs free energy" in orca_string:
+                gb_en = float(
+                    orca_string.split(
+                        "Final Gibbs free energy"
+                    )[1].split("...")[1].split("Eh")[0]
+                )
+                en_output_dict["Gibbs Free Energy"] = gb_en
+            return en_output_dict
+
         with open(ORCA_output_filepath, "r") as f:
             orca_file = f.read()
             f.close()
         Identifier = ORCA_output_filepath.split("/")[-1].split(".")[0]
         orca_file_geom_opt_steps = orca_file.split("GEOMETRY OPTIMIZATION CYCLE")[1:]
-        # TODO: Retreive molecule multiplicity
-        # TODO: Retreive molecule formal charge
-        for opt_step, opt_step in enumerate(orca_file_geom_opt_steps):
+        charge_mult = [int(i) for i in orca_file.split("> *xyz ")[1].split("\n")[0].split(" ") if i != ""]
+        molObj_list = []
+        for opt_step_idx, opt_step in enumerate(orca_file_geom_opt_steps):
             # Get XYZ coordinates
             xyz_block = opt_step.split(
                 "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
             )[-1].split("\n\n")[0]
-            AtomsList = XYZBlockToAtomsList(xyz_block)
+            AtomsList = XYZBlockToAtomsList(xyz_block, template_molObj)
             # Get Mayer bond orders
             bond_block = opt_step.split("Mayer bond orders larger than 0.100000\n")[
                 -1
             ].split("\n\n")[0]
-            BondOrderMatrix = BondBlockToBondOrderMatrix(
-                bond_block, len(AtomsList)
-            )
+            if template_molObj is None:
+                BondOrderMatrix = BondBlockToBondOrderMatrix(
+                    bond_block, len(AtomsList)
+                )
+            else:
+                BondOrderMatrix = template_molObj.BondOrderMatrix
             # Get cartesian gradients
             grad_block = opt_step.split("CARTESIAN GRADIENT\n------------------\n\n")[
                 -1
@@ -1018,11 +1062,25 @@ class Molecule:
                 AtomsList, grad_block
             )
             molObj = Molecule(
-                Identifier=f"{Identifier}_opt{opt_step}",
+                Identifier=f"{Identifier}_opt{opt_step_idx}",
                 AtomsList=AtomsList,
                 BondOrderMatrix=BondOrderMatrix,
             )
-            break
+            if template_molObj is None:
+                molObj.AtomsList[0].FormalCharge = charge_mult[0]
+                molObj.AtomsList[0].Multiplicity = charge_mult[1]
+                molObj.DeriveBasicAttributes(
+                    UpdateAtomLabels=False,
+                    UpdateSubstructureIndices=False,
+                )
+            # Get molecule energies
+            calc_en_dict = GetCalculatedEnergies(opt_step)
+            molObj.electronic_energy = calc_en_dict["Electronic Energy"]
+            molObj.enthalpy = calc_en_dict["Enthalpy"]
+            molObj.entropy = calc_en_dict["Entropy"]
+            molObj.gibbs_free_energy = calc_en_dict["Gibbs Free Energy"]
+            molObj_list.append(molObj)
+        return molObj_list
 
     def XYZFileToCoords(self, xyz_file: str) -> list[list[str]]:
         with open(xyz_file, "r") as f:
