@@ -546,14 +546,15 @@ class Molecule:
         mol_str += f" 0 0 0 0 0 999 V3000\nM V30 BEGIN CTAB\nM V30 COUNTS {self.NumberOfAtoms} {self.NumberOfBonds} {self.NumberOfSubstructures} 0 0\nM V30 BEGIN ATOM\n"
         # specify atoms
         for idx, atomObj in enumerate(self.AtomsList):
+            mol_str += f"M V30 {idx+1} {atomObj.AtomicSymbol} {round(atomObj.Coordinates[0], 10)} {round(atomObj.Coordinates[1], 10)} {round(atomObj.Coordinates[2], 10)} 0"
             if atomObj.SMARTSCentre == True:
-                mol_str += f"M V30 {idx+1} {atomObj.AtomicSymbol} {round(atomObj.Coordinates[0], 10)} {round(atomObj.Coordinates[1], 10)} {round(atomObj.Coordinates[2], 10)} 1"
-            else:
-                mol_str += f"M V30 {idx+1} {atomObj.AtomicSymbol} {round(atomObj.Coordinates[0], 10)} {round(atomObj.Coordinates[1], 10)} {round(atomObj.Coordinates[2], 10)} 0"
+                mol_str += f" SMC={1}"
             if atomObj.Multiplicity != 1:
                 mol_str += f" RAD={atomObj.Multiplicity}"
             if atomObj.FormalCharge != 0:
                 mol_str += f" CHG={atomObj.FormalCharge}"
+            if atomObj.Gradient is not None:
+                mol_str += f" XGD={atomObj.Gradient[0]} YGD={atomObj.Gradient[1]} ZGD={atomObj.Gradient[2]}"
             mol_str += "\n"
         # End atom and begin bonds
         mol_str += "M V30 END ATOM\nM V30 BEGIN BOND\n"
@@ -575,6 +576,15 @@ class Molecule:
                     mol_str += f"M V30 {idx} {int(BondOrder)} {i_idx+1} {j_idx+1}\n"
                 idx += 1
         mol_str += "M V30 END BOND\nM V30 END CTAB\nM END\n"
+        # Add properties
+        if self.electronic_energy is not None:
+            mol_str += f"> <Electronic Energy (Eh)>\n{self.electronic_energy}\n"
+        if self.gibbs_free_energy is not None:
+            mol_str += f"> <Gibbs Free Energy (Eh)>\n{self.gibbs_free_energy}\n"
+        if self.enthalpy is not None:
+            mol_str += f"> <Enthalpy (Eh)>\n{self.enthalpy}\n"
+        if self.entropy is not None:
+            mol_str += f"> <Entropy (Eh)>\n{self.entropy}\n"
         return mol_str
 
     def WriteXYZBlock(self):
@@ -800,7 +810,6 @@ class Molecule:
         # Parse atoms
         atoms_list = []
         atom_indices = {}  # Map MOL indices to list indices
-
         for idx in range(atom_begin_idx, atom_end_idx):
             line = lines[idx].strip()
             if not line.startswith("M V30"):
@@ -813,19 +822,26 @@ class Molecule:
             y = float(parts[3])
             z = float(parts[4])
 
-            SMARTSCentre = True if float(parts[5]) == 1 else False
-
+            SMARTSCentre = False
             formal_charge = 0
             multiplicity = 1
-
             # Parse optional properties
+            # including gradient of atom
+            Gradient = np.array([None, None, None])
             for i in range(6, len(parts)):
                 if parts[i].startswith("CHG="):
                     formal_charge = int(parts[i].split("=")[1])
                 elif parts[i].startswith("RAD="):
                     multiplicity = int(parts[i].split("=")[1])
-
-            atom = Atom(
+                elif parts[i].startswith("XGD="):
+                    Gradient[0] = float(parts[i].split("=")[1])
+                elif parts[i].startswith("YGD="):
+                    Gradient[1] = float(parts[i].split("=")[1])
+                elif parts[i].startswith("ZGD="):
+                    Gradient[2] = float(parts[i].split("=")[1])
+                elif parts[i] == "SMC=1":
+                    SMARTSCentre = True
+            atomObj = Atom(
                 Label=f"{atom_symbol}{mol_idx}",
                 AtomicSymbol=atom_symbol,
                 Coordinates=np.array([x, y, z]),
@@ -833,13 +849,17 @@ class Molecule:
                 Multiplicity=multiplicity,
                 SMARTSCentre=SMARTSCentre,
             )
+            if Gradient[0] is None and Gradient[1] is None and Gradient[2] is None:
+                pass
+            else:
+                atomObj.Gradient = Gradient
+
             atom_indices[mol_idx] = len(atoms_list)
-            atoms_list.append(atom)
+            atoms_list.append(atomObj)
 
         # Parse bonds
         num_atoms = len(atoms_list)
         bond_order_matrix = np.zeros((num_atoms, num_atoms))
-
         if bond_begin_idx is not None and bond_end_idx is not None:
             for idx in range(bond_begin_idx, bond_end_idx):
                 line = lines[idx].strip()
@@ -857,7 +877,20 @@ class Molecule:
                 bond_order_matrix[atom1_idx][atom2_idx] = bond_order
                 bond_order_matrix[atom2_idx][atom1_idx] = bond_order
 
-        return cls(identifier, atoms_list, bond_order_matrix)
+        # Create molecule object
+        molObj = cls(identifier, atoms_list, bond_order_matrix)
+
+        # Parse for molecule properties
+        if "> <Electronic Energy (Eh)>" in mol_string:
+            molObj.electronic_energy = float(mol_string.split("> <Electronic Energy (Eh)>\n")[1].split("\n")[0])
+        if "> <Gibbs Free Energy (Eh)>" in mol_string:
+            molObj.gibbs_free_energy = float(mol_string.split("> <Gibbs Free Energy (Eh)>\n")[1].split("\n")[0])
+        if "> <Enthalpy (Eh)>" in mol_string:
+            molObj.enthalpy = float(mol_string.split("> <Enthalpy (Eh)>\n")[1].split("\n")[0])
+        if "> <Entropy (Eh)>" in mol_string:
+            molObj.entropy = float(mol_string.split("> <Entropy (Eh)>\n")[1].split("\n")[0])
+
+        return molObj
 
     @classmethod
     def ReadXYZFile(
@@ -988,13 +1021,15 @@ class Molecule:
                 mayer_BO = float(line.split(":")[-1])
                 base_BO = mayer_BO // 1
                 left_over_BO = mayer_BO % 1
-                if left_over_BO <= 0.333:
+                if left_over_BO <= 0.25:
                     add_on_BO = 0
-                elif left_over_BO > 0.333 and left_over_BO <= 0.666:
+                elif left_over_BO > 0.25 and left_over_BO <= 0.75:
                     add_on_BO = 0.5
-                elif left_over_BO > 0.666:
+                elif left_over_BO > 0.75:
                     add_on_BO = 1
                 BO = base_BO + add_on_BO
+                if BO < 1:
+                    BO=1
                 BondOrderMatrix[idx1][idx2] = BO
                 BondOrderMatrix[idx2][idx1] = BO
             return BondOrderMatrix
@@ -1007,7 +1042,7 @@ class Molecule:
                 "Gibbs Free Energy": None,
             }
             if "FINAL SINGLE POINT ENERGY" in orca_string:
-                sp_en = float(orca_string.split("FINAL SINGLE POINT ENERGY")[1].split("\n")[0])
+                sp_en = float(orca_string.split("FINAL SINGLE POINT ENERGY")[-1].split("\n")[0])
                 en_output_dict["Electronic Energy"] = sp_en
             if "Total Enthalpy" in orca_string:
                 en_en = float(
@@ -1038,6 +1073,7 @@ class Molecule:
         orca_file_geom_opt_steps = orca_file.split("GEOMETRY OPTIMIZATION CYCLE")[1:]
         charge_mult = [int(i) for i in orca_file.split("> *xyz ")[1].split("\n")[0].split(" ") if i != ""]
         molObj_list = []
+        prev_BondOrderMatrix = None
         for opt_step_idx, opt_step in enumerate(orca_file_geom_opt_steps):
             # Get XYZ coordinates
             xyz_block = opt_step.split(
@@ -1045,13 +1081,17 @@ class Molecule:
             )[-1].split("\n\n")[0]
             AtomsList = XYZBlockToAtomsList(xyz_block, template_molObj)
             # Get Mayer bond orders
-            bond_block = opt_step.split("Mayer bond orders larger than 0.100000\n")[
-                -1
-            ].split("\n\n")[0]
             if template_molObj is None:
-                BondOrderMatrix = BondBlockToBondOrderMatrix(
-                    bond_block, len(AtomsList)
-                )
+                if "Mayer bond orders larger than 0.100000" in opt_step:
+                    bond_block = opt_step.split("Mayer bond orders larger than 0.100000\n")[
+                        -1
+                    ].split("\n\n")[0]
+                    BondOrderMatrix = BondBlockToBondOrderMatrix(
+                        bond_block, len(AtomsList)
+                    )
+                    prev_BondOrderMatrix = BondOrderMatrix
+                else:
+                    BondOrderMatrix = prev_BondOrderMatrix
             else:
                 BondOrderMatrix = template_molObj.BondOrderMatrix
             # Get cartesian gradients
