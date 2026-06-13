@@ -85,3 +85,31 @@ def test_molecule_ReadORCA6OutputGradients():
     assert molObj_opt24.gibbs_free_energy == -8601.12018681
     assert molObj_opt24.entropy == 0.10870349
     assert molObj_opt24.enthalpy == -8601.01148332
+
+
+def test_moleculeset_ReadORCA6OptOutput():
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S4_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S4_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CrIILig-S1_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CrIILig-S1_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CrIILig-S3_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CrIILig-S3_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CrIILig-S5_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CrIILig-S5_Gradient-Output",
+    )

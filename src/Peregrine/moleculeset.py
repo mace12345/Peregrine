@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 from .atom import Atom
 from .molecule import Molecule
@@ -6,7 +7,7 @@ from .molecule import Molecule
 
 class MoleculeSet:
     def __init__(self):
-        self.MoleculeDict = {}
+        self.MoleculeDict: dict[Molecule]
 
     def ReadXYZFile(self):
         pass
@@ -46,7 +47,21 @@ class MoleculeSet:
         input_file_path: str,
         output_file_path: str,
     ):
-        pass
+        dir_list = [i for i in os.listdir(input_file_path) if i.split(".")[-1] == "out"]
+        molObjs_dict = {
+            mol.Identifier: mol
+            for sublist in [
+                Molecule.ReadORCA6OutputGradients(
+                    ORCA_output_filepath=f"{input_file_path}/{out_file}"
+                )
+                for out_file in dir_list
+            ]
+            for mol in sublist
+        }
+        for Identifier in molObjs_dict:
+            with open(f"{output_file_path}/{Identifier}.mol", "w") as f:
+                f.write(molObjs_dict[Identifier].WriteMolString())
+                f.close()
 
     def WriteORCA6Output(self):
         pass
