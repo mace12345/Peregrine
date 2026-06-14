@@ -10,7 +10,7 @@ Chemist needs to optimise reaction for an industrial process. They will need to 
 
 Building that same map can be done computationally, using a fraction of the resources versus map making in the laboratory.
 
-However, experimental chemists typically lack the programming and computational expertise to build maps computationally, this is where our no-code software idea comes in.
+However, experimental chemists typically lack the programming and computational expertise to build maps computationally, this is where my no-code software idea comes in.
 
 
 # Installing Dependancies for chem-env, the python environment for Peregrine
