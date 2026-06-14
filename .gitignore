@@ -2,5 +2,12 @@ src/Peregrine/__pycache__/
 src/Peregrine/__pycache__/moleculeset.cpython-312.pyc
 tests/__pycache__/
 tests/__pycache__/test_moleculeset_ReadORCA6Output.cpython-312-pytest-9.0.3.pyc
-data/testing_data/ReadORCA6Outputs/*Gradient-Output
+data/testing_data/ReadORCA6Outputs/CoIILig-S4_Gradient-Output
+data/testing_data/ReadORCA6Outputs/Cr*_Gradient-Output
+data/testing_data/ReadORCA6Outputs/Fe*_Gradient-Output
+data/testing_data/ReadORCA6Outputs/Mn*_Gradient-Output
 .vscode
+data/testing_data/ReadORCA6Outputs/CoIILig-S4_PBE0-def2-TZVP-Opt-Freq-DEFGRID3
+data/testing_data/ReadORCA6Outputs/Cr*
+data/testing_data/ReadORCA6Outputs/Fe*
+data/testing_data/ReadORCA6Outputs/Mn*
