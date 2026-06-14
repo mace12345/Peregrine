@@ -1,4 +1,7 @@
 # Peregrine
+
+__Project is under construction__
+
 Software for building transition states in a high-throuput fashion. Input TS geometry and SMILES => Output TS structures. Enables reactivity screening and building datasets for MLPs and AI/ML applications.
 
 # The big idea proposition in 30 seconds
@@ -21,7 +24,7 @@ __RDKit__ is a critical package that would be very hard to replace. Very good at
 
 __Openbabel__ has extreamly useful functionality for assigning 3D coordinates to `smiles` strings and thus converting them to `.xyz` files or our prefered file `.mol2` files. `.mol2` files are very useful sincy they contain not only the cartesian coordinates of the atoms but also the bonding, and atom properties information. Openbabel has optimising functions to optimise molecules with the Universal Force Field (UFF).
 
-__xyzgraph__ and __RCgraph__ are excellent packages developed by Alister Goodfellow
+__xyzgraph__ and __RCgraph__ are excellent packages developed by Alister Goodfellow, really handy for characterising transtion states and assigning bonds to XYZ coordinates.
 
 __ASE__ (Atomic Simulation Environment) Can be thought of as an adapter for linking packages that calculate molecular properties to interface with python. For example, it can interface with xTB to optimise molecules, or maybe a Machine Learning Potential (MLP). It would be faster to interface with xTB direct in the command line but ASE can do constrained optimisations and Nudge Elastic Band (NEB) calculations to find Transition States (TS).
 
