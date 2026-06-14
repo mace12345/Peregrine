@@ -41,12 +41,114 @@ RDKIT_BONDTYPE_TRANSLATION = {
 }
 
 
+# Helper functions
+
+def _XYZBlockToAtomsList(
+    xyz_block: str, template_molObj: "Molecule | None" = None
+) -> tuple[list[Atom], int]:
+    symbols = []
+    coords = []
+    for line in xyz_block.split("\n"):
+        parts = line.split()
+        if not parts:
+            continue
+        symbols.append(parts[0])
+        coords.append((float(parts[1]), float(parts[2]), float(parts[3])))
+
+    coord_array = np.array(coords, dtype=float)  # shape (N, 3)
+
+    AtomsList = []
+    if template_molObj is None:
+        for symbol, row in zip(symbols, coord_array):
+            AtomsList.append(Atom(AtomicSymbol=symbol, Coordinates=row))
+    else:
+        template_atoms = template_molObj.AtomsList
+        for symbol, row, t_atom in zip(symbols, coord_array, template_atoms):
+            AtomsList.append(
+                Atom(
+                    AtomicSymbol=symbol,
+                    Coordinates=row,
+                    FormalCharge=t_atom.FormalCharge,
+                    Multiplicity=t_atom.Multiplicity,
+                    GetAtomAttributes=False,
+                )
+            )
+
+    return AtomsList, len(AtomsList)
+
+def _GradBlockInToAtomsList(
+    AtomsList: list[Atom], grad_block: str
+) -> list[Atom]:
+    for line in grad_block.split("\n"):
+        line = line.split()
+        idx = int(line[0]) - 1
+        AtomsList[idx].Gradient = np.array(
+            [
+                float(line[3]),
+                float(line[4]),
+                float(line[5]),
+            ]
+        )
+    return AtomsList
+
+def _BondBlockToBondOrderMatrix(
+    bond_block: str, AtomsListLen: int
+) -> np.ndarray:
+    BondOrderMatrix = np.zeros((AtomsListLen, AtomsListLen))
+    bonds_list = bond_block.split("B(")[1:]
+    for line in bonds_list:
+        left, _, right = line.partition(",")
+        idx1 = int(left.partition("-")[0])
+        idx2 = int(right.partition("-")[0])
+        mayer_BO = float(line.rpartition(":")[2])
+        # round to nearest 0.5, floor at 1.0
+        BO = max(round(mayer_BO * 2) / 2, 1.0)
+        BondOrderMatrix[idx1, idx2] = BO
+        BondOrderMatrix[idx2, idx1] = BO
+    return BondOrderMatrix, len(bonds_list)
+
+def _GetCalculatedEnergies(orca_string: str, check_final_energies: bool) -> dict:
+    en_output_dict = {
+        "Electronic Energy": None,
+        "Enthalpy": None,
+        "Entropy": None,
+        "Gibbs Free Energy": None,
+    }
+
+    before, sep, after = orca_string.rpartition("FINAL SINGLE POINT ENERGY")
+    if sep:
+        en_output_dict["Electronic Energy"] = float(after.partition("\n")[0])
+
+    if check_final_energies:
+        before, sep, after = orca_string.partition("Total Enthalpy")
+        if sep:
+            en_output_dict["Enthalpy"] = float(
+                after.partition("...")[2].partition("Eh")[0]
+            )
+
+        before, sep, after = orca_string.partition("Final entropy term")
+        if sep:
+            en_output_dict["Entropy"] = float(
+                after.partition("...")[2].partition("Eh")[0]
+            )
+
+        before, sep, after = orca_string.partition("Final Gibbs free energy")
+        if sep:
+            en_output_dict["Gibbs Free Energy"] = float(
+                after.partition("...")[2].partition("Eh")[0]
+            )
+
+    return en_output_dict
+
+
 class Molecule:
     def __init__(
         self,
         Identifier: str,
         AtomsList: list[Atom],
         BondOrderMatrix: np.ndarray | None,
+        DeriveAttributes: bool = True,
+        CheckMolObj: bool = True,
         UpdateAtomLabels: bool = True,
     ):
         """
@@ -118,23 +220,25 @@ class Molecule:
             self.BondOrderMatrix = np.zeros((len(self.AtomsList), len(self.AtomsList)))
 
         # Derived Basic Attributes
-        self.DeriveBasicAttributes(UpdateAtomLabels=UpdateAtomLabels)
+        if DeriveAttributes == True:
+            self.DeriveBasicAttributes(UpdateAtomLabels=UpdateAtomLabels)
 
         # Optional SMILES Attributes
         self.AssociatedMoleculeSMILES = None
 
         # Check Attributes
-        if self.BondOrderMatrix.shape != (self.NumberOfAtoms, self.NumberOfAtoms):
-            raise ValueError(
-                f"bond_matrix shape {self.bond_matrix.shape} does not match number of atoms ({self.NumberOfAtoms})"
-            )
-        if not np.array_equal(self.BondOrderMatrix, self.BondOrderMatrix.T):
-            raise ValueError("bond_matrix must be symmetric")
-        if np.any(np.diag(self.BondOrderMatrix) != 0):
-            print(self.BondOrderMatrix)
-            raise ValueError("bond_matrix must have zero diagonal")
-        if len(self.AtomsList) == 0:
-            raise ValueError("No atoms in AtomsList")
+        if CheckMolObj == True:
+            if self.BondOrderMatrix.shape != (self.NumberOfAtoms, self.NumberOfAtoms):
+                raise ValueError(
+                    f"bond_matrix shape {self.bond_matrix.shape} does not match number of atoms ({self.NumberOfAtoms})"
+                )
+            if not np.array_equal(self.BondOrderMatrix, self.BondOrderMatrix.T):
+                raise ValueError("bond_matrix must be symmetric")
+            if np.any(np.diag(self.BondOrderMatrix) != 0):
+                print(self.BondOrderMatrix)
+                raise ValueError("bond_matrix must have zero diagonal")
+            if len(self.AtomsList) == 0:
+                raise ValueError("No atoms in AtomsList")
 
         # Calculated Attributes
         self.num_basis_functions: int | None = None
@@ -959,132 +1063,18 @@ class Molecule:
     def ReadORCA6OutputGradients(
         cls, ORCA_output_filepath: str, template_molObj: "Molecule | None" = None
     ) -> list["Molecule"]:
+        """
+        
+        """
 
         # TODO: Raise Errors when template object does not match up with ORCA molecule file
-
-        def XYZBlockToAtomsList(
-            xyz_block: str, template_molObj: "Molecule | None" = None
-        ) -> list[Atom]:
-            if template_molObj is None:
-                AtomsList = []
-                for line in xyz_block.split("\n"):
-                    line = [i for i in line.split(" ") if i != ""]
-                    AtomsList.append(
-                        Atom(
-                            AtomicSymbol=line[0],
-                            Coordinates=np.array(
-                                [
-                                    float(line[1]),
-                                    float(line[2]),
-                                    float(line[3]),
-                                ]
-                            ),
-                        )
-                    )
-                return AtomsList
-            else:
-                AtomsList = []
-                for template_idx, line in enumerate(xyz_block.split("\n")):
-                    line = [i for i in line.split(" ") if i != ""]
-                    AtomsList.append(
-                        Atom(
-                            AtomicSymbol=line[0],
-                            Coordinates=np.array(
-                                [
-                                    float(line[1]),
-                                    float(line[2]),
-                                    float(line[3]),
-                                ]
-                            ),
-                            FormalCharge=template_molObj.AtomsList[
-                                template_idx
-                            ].FormalCharge,
-                            Multiplicity=template_molObj.AtomsList[
-                                template_idx
-                            ].Multiplicity,
-                        )
-                    )
-                return AtomsList
-
-        def GradBlockInToAtomsList(
-            AtomsList: list[Atom], grad_block: str
-        ) -> list[Atom]:
-            for line in grad_block.split("\n"):
-                line = [i for i in line.split(" ") if i != ""]
-                idx = int(line[0]) - 1
-                AtomsList[idx].Gradient = np.array(
-                    [
-                        float(line[3]),
-                        float(line[4]),
-                        float(line[5]),
-                    ]
-                )
-            return AtomsList
-
-        def BondBlockToBondOrderMatrix(
-            bond_block: str, AtomsListLen: int
-        ) -> np.ndarray:
-            BondOrderMatrix = np.zeros((AtomsListLen, AtomsListLen))
-            bonds_list = bond_block.split("B(")[1:]
-            for line in bonds_list:
-                idx1 = int(line.split("-")[0])
-                idx2 = int(line.split(",")[-1].split("-")[0])
-                mayer_BO = float(line.split(":")[-1])
-                base_BO = mayer_BO // 1
-                left_over_BO = mayer_BO % 1
-                if left_over_BO <= 0.25:
-                    add_on_BO = 0
-                elif left_over_BO > 0.25 and left_over_BO <= 0.75:
-                    add_on_BO = 0.5
-                elif left_over_BO > 0.75:
-                    add_on_BO = 1
-                BO = base_BO + add_on_BO
-                if BO < 1:
-                    BO = 1
-                BondOrderMatrix[idx1][idx2] = BO
-                BondOrderMatrix[idx2][idx1] = BO
-            return BondOrderMatrix
-
-        def GetCalculatedEnergies(orca_string: str) -> dict:
-            en_output_dict = {
-                "Electronic Energy": None,
-                "Enthalpy": None,
-                "Entropy": None,
-                "Gibbs Free Energy": None,
-            }
-            if "FINAL SINGLE POINT ENERGY" in orca_string:
-                sp_en = float(
-                    orca_string.split("FINAL SINGLE POINT ENERGY")[-1].split("\n")[0]
-                )
-                en_output_dict["Electronic Energy"] = sp_en
-            if "Total Enthalpy" in orca_string:
-                en_en = float(
-                    orca_string.split("Total Enthalpy")[1]
-                    .split("...")[1]
-                    .split("Eh")[0]
-                )
-                en_output_dict["Enthalpy"] = en_en
-            if "Final entropy term" in orca_string:
-                et_en = float(
-                    orca_string.split("Final entropy term")[1]
-                    .split("...")[1]
-                    .split("Eh")[0]
-                )
-                en_output_dict["Entropy"] = et_en
-            if "Final Gibbs free energy" in orca_string:
-                gb_en = float(
-                    orca_string.split("Final Gibbs free energy")[1]
-                    .split("...")[1]
-                    .split("Eh")[0]
-                )
-                en_output_dict["Gibbs Free Energy"] = gb_en
-            return en_output_dict
 
         with open(ORCA_output_filepath, "r") as f:
             orca_file = f.read()
             f.close()
         Identifier = ORCA_output_filepath.split("/")[-1].split(".")[0]
         orca_file_geom_opt_steps = orca_file.split("GEOMETRY OPTIMIZATION CYCLE")[1:]
+        num_opt_step = len(orca_file_geom_opt_steps)
         charge_mult = [
             int(i)
             for i in orca_file.split("> *xyz ")[1].split("\n")[0].split(" ")
@@ -1092,46 +1082,54 @@ class Molecule:
         ]
         molObj_list = []
         prev_BondOrderMatrix = None
+        prev_NumberOfBonds = None
+        check_final_energies = False
         for opt_step_idx, opt_step in enumerate(orca_file_geom_opt_steps):
             # Get XYZ coordinates
-            xyz_block = opt_step.split(
+            xyz_block = opt_step.rpartition(
                 "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
-            )[-1].split("\n\n")[0]
-            AtomsList = XYZBlockToAtomsList(xyz_block, template_molObj)
+            )[2].partition("\n\n")[0]
+            AtomsList, NumberOfAtoms = _XYZBlockToAtomsList(xyz_block, template_molObj)
             # Get Mayer bond orders
             if template_molObj is None:
-                if "Mayer bond orders larger than 0.100000" in opt_step:
-                    bond_block = opt_step.split(
-                        "Mayer bond orders larger than 0.100000\n"
-                    )[-1].split("\n\n")[0]
-                    BondOrderMatrix = BondBlockToBondOrderMatrix(
+                parts = opt_step.split("Mayer bond orders larger than 0.100000")
+                if len(parts) > 1:
+                    bond_block = parts[-1].split("\n\n")[0]
+                    BondOrderMatrix, NumberOfBonds = _BondBlockToBondOrderMatrix(
                         bond_block, len(AtomsList)
                     )
                     prev_BondOrderMatrix = BondOrderMatrix
+                    prev_NumberOfBonds = NumberOfBonds
                 else:
                     BondOrderMatrix = prev_BondOrderMatrix
+                    NumberOfBonds = prev_NumberOfBonds
             else:
                 BondOrderMatrix = template_molObj.BondOrderMatrix
+                NumberOfBonds = template_molObj.NumberOfBonds
             # Get cartesian gradients
-            if "CARTESIAN GRADIENT" in opt_step:
-                grad_block = opt_step.split(
-                    "CARTESIAN GRADIENT\n------------------\n\n"
-                )[-1].split("\n\n")[0]
-                AtomsList = GradBlockInToAtomsList(AtomsList, grad_block)
+            parts = opt_step.split("CARTESIAN GRADIENT\n------------------\n\n")
+            if len(parts) > 1:
+                grad_block = parts[-1].split("\n\n", 1)[0]
+                AtomsList = _GradBlockInToAtomsList(AtomsList, grad_block)
             molObj = Molecule(
                 Identifier=f"{Identifier}_opt{opt_step_idx}",
                 AtomsList=AtomsList,
                 BondOrderMatrix=BondOrderMatrix,
+                DeriveAttributes=False,
+                CheckMolObj=False,
             )
+            molObj.NumberOfAtoms = NumberOfAtoms
+            molObj.NumberOfBonds = NumberOfBonds
+            molObj.NumberOfSubstructures = 0
             if template_molObj is None:
                 molObj.AtomsList[0].FormalCharge = charge_mult[0]
                 molObj.AtomsList[0].Multiplicity = charge_mult[1]
-                molObj.DeriveBasicAttributes(
-                    UpdateAtomLabels=False,
-                    UpdateSubstructureIndices=False,
-                )
+                molObj.FormalCharge = charge_mult[0]
+                molObj.Multiplicity = charge_mult[1]
             # Get molecule energies
-            calc_en_dict = GetCalculatedEnergies(opt_step)
+            if opt_step_idx + 1 == num_opt_step:
+                check_final_energies = True
+            calc_en_dict = _GetCalculatedEnergies(opt_step, check_final_energies=check_final_energies)
             molObj.electronic_energy = calc_en_dict["Electronic Energy"]
             molObj.enthalpy = calc_en_dict["Enthalpy"]
             molObj.entropy = calc_en_dict["Entropy"]

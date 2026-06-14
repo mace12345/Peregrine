@@ -1,6 +1,5 @@
-src/Peregrine/__pycache__/__init__.cpython-312.pyc
-src/Peregrine/__pycache__/atom.cpython-312.pyc
-src/Peregrine/__pycache__/molecule.cpython-312.pyc
-tests/__pycache__/__init__.cpython-312.pyc
-tests/__pycache__/test_molecule.cpython-312-pytest-8.4.1.pyc
-tests/testing_data/ReadORCA6Outputs/*
+src/Peregrine/__pycache__/
+src/Peregrine/__pycache__/moleculeset.cpython-312.pyc
+tests/__pycache__/
+tests/__pycache__/test_moleculeset_ReadORCA6Output.cpython-312-pytest-9.0.3.pyc
+data/testing_data/ReadORCA6Outputs/

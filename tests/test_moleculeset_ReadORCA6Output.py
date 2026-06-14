@@ -1,6 +1,7 @@
 import numpy as np
 from pathlib import Path
 from copy import deepcopy
+import time
 
 from Peregrine.moleculeset import MoleculeSet
 from Peregrine.molecule import Molecule
@@ -88,6 +89,7 @@ def test_molecule_ReadORCA6OutputGradients():
 
 
 def test_moleculeset_ReadORCA6OptOutput():
+    start = time.time()
     ms = MoleculeSet()
     ms.ReadORCA6OptOutput(
         input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
@@ -113,3 +115,50 @@ def test_moleculeset_ReadORCA6OptOutput():
         input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CrIILig-S5_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
         output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CrIILig-S5_Gradient-Output",
     )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIILig-S1_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIILig-S1_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIILig-S3_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIILig-S3_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIILig-S5_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIILig-S5_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/MnIILig-S2_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/MnIILig-S2_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/MnIILig-S4_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/MnIILig-S4_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/MnIILig-S6_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/MnIILig-S6_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIIILig-S2_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIIILig-S2_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIIILig-S4_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIIILig-S4_Gradient-Output",
+    )
+    ms = MoleculeSet()
+    ms.ReadORCA6OptOutput(
+        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIIILig-S6_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/FeIIILig-S6_Gradient-Output",
+    )
+    end = time.time()
+    print(round(12800 / (end - start), 3))

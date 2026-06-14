@@ -482,6 +482,7 @@ class Atom:
         SubstructureIndex: int = 1,
         SMARTSCentre: bool = False,
         SMARTSAtom: str | None = None,
+        GetAtomAttributes: bool = True,
     ):
         """
         Initialize an Atom instance.
@@ -531,7 +532,8 @@ class Atom:
         self.AssociatedSMILES = None
         self.AssociatedSMARTS = None
         self.IsAromatic = None
-        self.Update()
+        if GetAtomAttributes == True:
+            self.Update()
 
     def Update(self):
         """
