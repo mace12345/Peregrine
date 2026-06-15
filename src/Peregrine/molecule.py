@@ -1005,6 +1005,149 @@ class Molecule:
         return molObj
 
     @classmethod
+    def ReadMol2String(cls, mol2_string: str) -> "Molecule":
+        """
+        Reads a `.mol2` format string and parses the molecular data into a Molecule object.
+
+        The method:
+        - Parses atom and bond information from the mol2 string.
+        - Constructs Atom and Molecule objects.
+        - Builds connectivity and bond order matrices.
+        - Handles specific logic for "am" bond types (e.g., C-N → single bond, C-O → double bond).
+
+        Args:
+            mol2_string (str): A single molecule's mol2 format string content.
+
+        Returns:
+            Molecule: A Molecule object with parsed atoms, bonds, and connectivity information.
+
+        Raises:
+            ValueError: If the mol2 string format is invalid or missing required sections.
+
+        Example:
+            mol2_content = "...mol2 string content..."
+            molecule = Molecule.ReadMol2String(mol2_content)
+        """
+        # Parse molecule info section
+        molucule_info_string = mol2_string.split("@<TRIPOS>ATOM\n")[0]
+        molecule_atom_string = mol2_string.split("@<TRIPOS>ATOM\n")[-1].split("@")[0]
+        molecule_bond_string = mol2_string.split("@<TRIPOS>BOND\n")[-1].split("@")[0]
+
+        identifier = molucule_info_string.split("\n")[0]
+        atom_bond_number = [
+            i for i in molucule_info_string.split("\n")[1].split(" ") if i != ""
+        ]
+        number_of_atoms = int(atom_bond_number[0])
+        number_of_bonds = int(atom_bond_number[1])
+        number_of_substructures = int(atom_bond_number[2])
+
+        # Parse atoms
+        molecule_atom_list = [
+            [i for i in j.split(" ") if i != ""]
+            for j in molecule_atom_string.split("\n")
+        ]
+
+        atoms_list = []
+        for atom in molecule_atom_list:
+            if len(atom) == 0:
+                continue
+            atoms_list.append(
+                Atom(
+                    Label=atom[1],
+                    Coordinates=np.array(
+                        [
+                            float(atom[2]),
+                            float(atom[3]),
+                            float(atom[4]),
+                        ]
+                    ),
+                    AtomicSymbol=atom[5].split(".")[0],
+                    SubstructureIndex=atom[6],
+                    FormalCharge=int(float(atom[8])),
+                )
+            )
+
+        # Parse bonds
+        molecule_bond_list = [
+            [i for i in j.split(" ") if i != ""]
+            for j in molecule_bond_string.split("\n")
+        ]
+
+        if len(molecule_bond_list[0]) == 4:
+            bond_order_matrix = np.zeros((number_of_atoms, number_of_atoms))
+            for bond in molecule_bond_list:
+                if len(bond) == 0:
+                    continue
+                atom1_index = int(bond[1])
+                atom2_index = int(bond[2])
+                bond_type = bond[3]
+
+                # Handle "am" bond type logic
+                if bond_type == "am":
+                    if (
+                        atoms_list[atom1_index - 1].AtomicSymbol == "C"
+                        and atoms_list[atom2_index - 1].AtomicSymbol == "N"
+                    ):
+                        bond_order_matrix[atom1_index - 1][atom2_index - 1] = 1
+                        bond_order_matrix[atom2_index - 1][atom1_index - 1] = 1
+                    elif (
+                        atoms_list[atom2_index - 1].AtomicSymbol == "C"
+                        and atoms_list[atom1_index - 1].AtomicSymbol == "N"
+                    ):
+                        bond_order_matrix[atom1_index - 1][atom2_index - 1] = 1
+                        bond_order_matrix[atom2_index - 1][atom1_index - 1] = 1
+                    if (
+                        atoms_list[atom1_index - 1].AtomicSymbol == "C"
+                        and atoms_list[atom2_index - 1].AtomicSymbol == "O"
+                    ):
+                        bond_order_matrix[atom1_index - 1][atom2_index - 1] = 2
+                        bond_order_matrix[atom2_index - 1][atom1_index - 1] = 2
+                    elif (
+                        atoms_list[atom2_index - 1].AtomicSymbol == "C"
+                        and atoms_list[atom1_index - 1].AtomicSymbol == "O"
+                    ):
+                        bond_order_matrix[atom1_index - 1][atom2_index - 1] = 2
+                        bond_order_matrix[atom2_index - 1][atom1_index - 1] = 2
+                else:
+                    # Standard bond type mapping would require access to bond_types_to_bond_order_dict
+                    # For now, use standard mapping
+                    bond_order_dict = {
+                        "1": 1,
+                        "2": 2,
+                        "3": 3,
+                        "ar": 1.5,
+                        "du": 1,
+                        "un": 1,
+                        "nc": 0,
+                    }
+                    if bond_type in bond_order_dict:
+                        bond_order = bond_order_dict[bond_type]
+                        bond_order_matrix[atom1_index - 1][atom2_index - 1] = bond_order
+                        bond_order_matrix[atom2_index - 1][atom1_index - 1] = bond_order
+        else:
+            bond_order_matrix = np.array([[0]])
+
+        # Create Molecule object
+        mol_obj = cls(
+            Identifier=identifier,
+            AtomsList=atoms_list,
+            BondOrderMatrix=bond_order_matrix,
+        )
+
+        # Handle multiplicities if present in mol2 string
+        if "Multiplicities: " in molucule_info_string:
+            molucule_mult_string = (
+                molucule_info_string.split("Multiplicities: ")[1].split("},")[0] + "}"
+            )
+            molucule_mult_string = molucule_mult_string.replace(" ", "")
+            molucule_mult_dict = eval(molucule_mult_string)
+            for atomLabel in molucule_mult_dict:
+                atomObj = mol_obj.AtomsDict[atomLabel][1]
+                atomObj.Multiplicity = molucule_mult_dict[atomLabel]
+
+        return mol_obj
+
+    @classmethod
     def ReadXYZFile(
         cls, xyz_file: str, identifier: str, charge: int, multiplicity: int
     ) -> "Molecule":
@@ -1064,11 +1207,9 @@ class Molecule:
         cls, ORCA_output_filepath: str, template_molObj: "Molecule | None" = None
     ) -> list["Molecule"]:
         """
-        
+        Important Note: If template molecule not provided func will place overall multiplicity and charge on first atom in the atomlist index
         """
-
         # TODO: Raise Errors when template object does not match up with ORCA molecule file
-
         with open(ORCA_output_filepath, "r") as f:
             orca_file = f.read()
             f.close()

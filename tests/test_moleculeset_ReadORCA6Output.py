@@ -89,8 +89,20 @@ def test_molecule_ReadORCA6OutputGradients():
 
 
 def test_moleculeset_ReadORCA6OptOutput():
-    ms = MoleculeSet()
-    ms.ReadORCA6OptOutput(
-        input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
-        output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_Gradient-Output",
-    )
+    metal_mult = {
+        "CoII": [2, 4],
+        "FeII": [1, 3, 5],
+        "FeIII": [2, 4, 6],
+        "MnII": [2, 4, 6],
+        "CrII": [1, 3, 5],
+    }
+    for metal in metal_mult:
+        for mult in metal_mult[metal]:
+            ms = MoleculeSet()
+            ms.ReadMol2File(
+                mol2_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/{metal}Lig-S{mult}_XRD-Structures.mol2",
+            )
+            ms.ReadORCA6OptimisationOutput(
+                input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/{metal}Lig-S{mult}_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
+                output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/{metal}Lig-S{mult}_Gradient-Output",
+            )
