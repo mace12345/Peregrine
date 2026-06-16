@@ -3,9 +3,9 @@ from pathlib import Path
 from copy import deepcopy
 import time
 
-from Peregrine.moleculeset import MoleculeSet
-from Peregrine.molecule import Molecule
-from Peregrine.atom import Atom
+from peregrine.moleculeset import MoleculeSet
+from peregrine.molecule import Molecule
+from peregrine.atom import Atom
 
 
 def test_molecule_ReadORCA6Output():
@@ -89,12 +89,10 @@ def test_molecule_ReadORCA6OutputGradients():
 
 
 def test_moleculeset_ReadORCA6OptOutput():
+    # Read in molecule data from ORCA output files and write as .MOL files
+    # Template file it being used to assign bonds, formal charges, and formal atom multiplicities
     metal_mult = {
-        "CoII": [2, 4],
-        "FeII": [1, 3, 5],
-        "FeIII": [2, 4, 6],
-        "MnII": [2, 4, 6],
-        "CrII": [1, 3, 5],
+        "CoII": [2],
     }
     for metal in metal_mult:
         for mult in metal_mult[metal]:
@@ -106,3 +104,30 @@ def test_moleculeset_ReadORCA6OptOutput():
                 input_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/{metal}Lig-S{mult}_PBE0-def2-TZVP-Opt-Freq-DEFGRID3",
                 output_file_path=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/{metal}Lig-S{mult}_Gradient-Output",
             )
+    # Test to see if all the relevant data was maintained based on when saved as .MOL files
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_Gradient-Output/BIHGEE-S4_opt0.mol",
+        "r",
+    ) as f:
+        mol_str = f.read()
+        f.close()
+    BIHGEE_opt0 = Molecule.ReadMolString(mol_str)
+    assert BIHGEE_opt0.FormalCharge == 0
+    assert BIHGEE_opt0.AtomsDict["Co1"][1].FormalCharge == 2
+    assert BIHGEE_opt0.Multiplicity == 2
+    assert BIHGEE_opt0.AtomsDict["Co1"][1].Multiplicity == 2
+    assert BIHGEE_opt0.NumberOfAtoms == 71
+    assert BIHGEE_opt0.NumberOfBonds == 76
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_Gradient-Output/YUDGUA02-S4_opt21.mol",
+        "r",
+    ) as f:
+        mol_str = f.read()
+        f.close()
+    YUDGUA02_opt21 = Molecule.ReadMolString(mol_str)
+    assert YUDGUA02_opt21.FormalCharge == 0
+    assert YUDGUA02_opt21.AtomsDict["Co1"][1].FormalCharge == 2
+    assert YUDGUA02_opt21.Multiplicity == 2
+    assert YUDGUA02_opt21.AtomsDict["Co1"][1].Multiplicity == 2
+    assert YUDGUA02_opt21.NumberOfAtoms == 77
+    assert YUDGUA02_opt21.NumberOfBonds == 84

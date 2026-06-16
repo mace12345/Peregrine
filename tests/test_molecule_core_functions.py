@@ -2,8 +2,8 @@ import numpy as np
 from pathlib import Path
 from copy import deepcopy
 
-from Peregrine.molecule import Molecule
-from Peregrine.atom import Atom
+from peregrine.molecule import Molecule
+from peregrine.atom import Atom
 
 xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin"
 
@@ -640,3 +640,69 @@ def test_OptimiseGeometry():
     ) as f:
         f.write(aromatic_sandwich_str)
         f.close()
+
+
+# === Get Molecule properties ===
+
+# === Get atomic descriptors ===
+
+
+def test_GetSOAPDescriptors():
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/BIHGEE-S4_opt0.mol",
+        "r",
+    ) as f:
+        mol_str = f.read()
+        f.close()
+    BIHGEE_opt0 = Molecule.ReadMolString(mol_str)
+    BIHGEE_opt0.GetSOAPDescriptors(
+        NumRadiaBasisFunctions=1,
+        MaxDegreeSphericalHarm=1,
+    )
+    assert round(sum(BIHGEE_opt0.AtomsList[0].SOAPDescriptor), 1) == 9.5
+    assert round(sum(BIHGEE_opt0.AtomsList[-1].SOAPDescriptor), 1) == 22.5
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/BIHGEE-S4_opt0_SOAPDes.mol",
+        "w",
+    ) as f:
+        f.write(BIHGEE_opt0.WriteMolString())
+        f.close()
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/BIHGEE-S4_opt0_SOAPDes.mol",
+        "r",
+    ) as f:
+        molObj_str = f.read()
+    molObj = Molecule.ReadMolString(molObj_str)
+    assert round(sum(molObj.AtomsList[0].SOAPDescriptor), 1) == 9.5
+    assert round(sum(molObj.AtomsList[-1].SOAPDescriptor), 1) == 22.5
+
+
+# === Read/Write files & SMILES/SMARTS & convert molecule objects ===
+
+# === Edit Molecule functions ===
+
+
+def test_MoleculeToASEMolecule():
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_Gradient-Output/BIHGEE-S4_opt0.mol",
+        "r",
+    ) as f:
+        mol_str = f.read()
+        f.close()
+    BIHGEE_opt0 = Molecule.ReadMolString(mol_str)
+    BIHGEE_opt0_ase = BIHGEE_opt0.MoleculeToASEMolecule()
+    assert BIHGEE_opt0_ase.get_chemical_formula() == "C36H30Cl2CoP2"
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_Gradient-Output/YUDGUA02-S4_opt21.mol",
+        "r",
+    ) as f:
+        mol_str = f.read()
+        f.close()
+    YUDGUA02_opt21 = Molecule.ReadMolString(mol_str)
+    YUDGUA02_opt21_ase = YUDGUA02_opt21.MoleculeToASEMolecule()
+    assert YUDGUA02_opt21_ase.get_chemical_formula() == "C39H32Cl2CoOP2"
+
+
+# === Translate and Rotate Molecule ===
+
+# === Optimise Geometries Functions ===

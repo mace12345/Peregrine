@@ -483,6 +483,7 @@ class Atom:
         SMARTSCentre: bool = False,
         SMARTSAtom: str | None = None,
         GetAtomAttributes: bool = True,
+        SOAPDescriptor: list | None = None,
     ):
         """
         Initialize an Atom instance.
@@ -532,6 +533,7 @@ class Atom:
         self.AssociatedSMILES = None
         self.AssociatedSMARTS = None
         self.IsAromatic = None
+        self.SOAPDescriptor = SOAPDescriptor
         if GetAtomAttributes == True:
             self.Update()
 

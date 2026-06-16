@@ -1,4 +1,4 @@
-# fmt: off
+# fmt: on
 from typing import Self
 from copy import deepcopy
 from pathlib import Path
@@ -22,6 +22,9 @@ from rdkit import rdBase
 from openbabel import pybel
 from openbabel import openbabel as ob
 
+from ase import Atoms as aseAtoms
+from dscribe.descriptors import SOAP
+
 from xyzgraph import build_graph
 
 from .atom import Atom
@@ -41,7 +44,8 @@ RDKIT_BONDTYPE_TRANSLATION = {
 }
 
 
-# Helper functions
+# === Helper functions ===
+
 
 def _XYZBlockToAtomsList(
     xyz_block: str, template_molObj: "Molecule | None" = None
@@ -76,9 +80,8 @@ def _XYZBlockToAtomsList(
 
     return AtomsList, len(AtomsList)
 
-def _GradBlockInToAtomsList(
-    AtomsList: list[Atom], grad_block: str
-) -> list[Atom]:
+
+def _GradBlockInToAtomsList(AtomsList: list[Atom], grad_block: str) -> list[Atom]:
     for line in grad_block.split("\n"):
         line = line.split()
         idx = int(line[0]) - 1
@@ -91,9 +94,8 @@ def _GradBlockInToAtomsList(
         )
     return AtomsList
 
-def _BondBlockToBondOrderMatrix(
-    bond_block: str, AtomsListLen: int
-) -> np.ndarray:
+
+def _BondBlockToBondOrderMatrix(bond_block: str, AtomsListLen: int) -> np.ndarray:
     BondOrderMatrix = np.zeros((AtomsListLen, AtomsListLen))
     bonds_list = bond_block.split("B(")[1:]
     for line in bonds_list:
@@ -106,6 +108,7 @@ def _BondBlockToBondOrderMatrix(
         BondOrderMatrix[idx1, idx2] = BO
         BondOrderMatrix[idx2, idx1] = BO
     return BondOrderMatrix, len(bonds_list)
+
 
 def _GetCalculatedEnergies(orca_string: str, check_final_energies: bool) -> dict:
     en_output_dict = {
@@ -442,6 +445,8 @@ class Molecule:
                     connected_idx, visited, substructure_index
                 )
 
+    # === Get Molecule properties ===
+
     def GetFormalCharge(self):
         self.FormalCharge = 0
         for atomObj in self.AtomsList:
@@ -612,6 +617,56 @@ class Molecule:
         # Calculate angle in radians
         return np.arccos(cos_angle)
 
+    # === Get atomic descriptors ===
+
+    def GetSOAPDescriptors(
+        self,
+        RadiusCutOff: float = 5.0,
+        NumRadiaBasisFunctions: int = 8,
+        MaxDegreeSphericalHarm: int = 6,
+    ):
+        species = list(set(atomObj.AtomicSymbol for atomObj in self.AtomsList))
+        soap = SOAP(
+            species=species,
+            r_cut=RadiusCutOff,
+            n_max=NumRadiaBasisFunctions,
+            l_max=MaxDegreeSphericalHarm,
+            periodic=False,
+        )
+        aseMolObj = self.MoleculeToASEMolecule()
+        for idx, atomObj in enumerate(self.AtomsList):
+            atomObj.SOAPDescriptor = list(
+                float(i) for i in soap.create(aseMolObj, centers=[idx])[0]
+            )
+
+    # === Read/Write files & SMILES/SMARTS & convert molecule objects ===
+
+    def EquivelentMoleculeInchi(self, SMILES1: str, SMILES2: str) -> bool:
+        SMILES1_rdkitObj = Chem.MolFromSmiles(SMILES1)
+        SMILES2_rdkitObj = Chem.MolFromSmiles(SMILES2)
+        if SMILES1_rdkitObj is None:
+            print(f"Could not generate rdkitObj from SMILES string: {SMILES1}")
+            return False
+        if SMILES2_rdkitObj is None:
+            print(f"Could not generate rdkitObj from SMILES string: {SMILES2}")
+            return False
+        else:
+            return Chem.MolToInchi(SMILES1_rdkitObj) == Chem.MolToInchi(
+                SMILES2_rdkitObj
+            )
+
+    def SMARTSMatchesSMILES(self, SMILES: str, SMARTS: str) -> tuple:
+        SMILES_rdkitObj = Chem.MolFromSmiles(SMILES)
+        SMARTS_rdkitObj = Chem.MolFromSmarts(SMARTS)
+        if SMILES_rdkitObj is None:
+            print(f"Could not generate rdkitObj from SMILES string: {SMILES}")
+            return False
+        if SMARTS_rdkitObj is None:
+            print(f"Could not generate rdkitObj from SMARTS string: {SMARTS}")
+            return False
+        matches = SMILES_rdkitObj.GetSubstructMatches(SMARTS_rdkitObj)
+        return matches
+
     def WriteMolString(self):
         """
         Generate a .MOL file string in V3000 format.
@@ -659,6 +714,8 @@ class Molecule:
                 mol_str += f" CHG={atomObj.FormalCharge}"
             if atomObj.Gradient is not None:
                 mol_str += f" XGD={atomObj.Gradient[0]} YGD={atomObj.Gradient[1]} ZGD={atomObj.Gradient[2]}"
+            if atomObj.SOAPDescriptor is not None:
+                mol_str += f" SPD={str(atomObj.SOAPDescriptor).replace(" ", "")}"
             mol_str += "\n"
         # End atom and begin bonds
         mol_str += "M V30 END ATOM\nM V30 BEGIN BOND\n"
@@ -856,6 +913,15 @@ class Molecule:
     def MoleculeToRDKitMol(self):
         pass
 
+    def MoleculeToASEMolecule(self) -> aseAtoms:
+        ASEMolecule = aseAtoms(
+            symbols=[atomObj.AtomicSymbol for atomObj in self.AtomsList],
+            positions=[tuple(atomObj.Coordinates) for atomObj in self.AtomsList],
+        )
+        ASEMolecule.info["spin_multiplicity"] = self.Multiplicity
+        ASEMolecule.info["charge"] = self.FormalCharge
+        return ASEMolecule
+
     @classmethod
     def ReadMolString(cls, mol_string: str) -> "Molecule":
         """
@@ -926,6 +992,7 @@ class Molecule:
             y = float(parts[3])
             z = float(parts[4])
 
+            SOAPDescriptor = None
             SMARTSCentre = False
             formal_charge = 0
             multiplicity = 1
@@ -945,6 +1012,15 @@ class Molecule:
                     Gradient[2] = float(parts[i].split("=")[1])
                 elif parts[i] == "SMC=1":
                     SMARTSCentre = True
+                elif parts[i].startswith("SPD="):
+                    SOAPDescriptor = [
+                        float(i)
+                        for i in parts[i]
+                        .split("=")[1]
+                        .replace("[", "")
+                        .replace("]", "")
+                        .split(",")
+                    ]
             atomObj = Atom(
                 Label=f"{atom_symbol}{mol_idx}",
                 AtomicSymbol=atom_symbol,
@@ -952,6 +1028,7 @@ class Molecule:
                 FormalCharge=formal_charge,
                 Multiplicity=multiplicity,
                 SMARTSCentre=SMARTSCentre,
+                SOAPDescriptor=SOAPDescriptor,
             )
             if Gradient[0] is None and Gradient[1] is None and Gradient[2] is None:
                 pass
@@ -1270,7 +1347,9 @@ class Molecule:
             # Get molecule energies
             if opt_step_idx + 1 == num_opt_step:
                 check_final_energies = True
-            calc_en_dict = _GetCalculatedEnergies(opt_step, check_final_energies=check_final_energies)
+            calc_en_dict = _GetCalculatedEnergies(
+                opt_step, check_final_energies=check_final_energies
+            )
             molObj.electronic_energy = calc_en_dict["Electronic Energy"]
             molObj.enthalpy = calc_en_dict["Enthalpy"]
             molObj.entropy = calc_en_dict["Entropy"]
@@ -1297,6 +1376,8 @@ class Molecule:
                     float(line[3]),
                 ]
             )
+
+    # === Edit Molecule functions ===
 
     def AddAtom(
         self,
@@ -1692,6 +1773,8 @@ class Molecule:
         self.BondOrderMatrix[atomIdx1][atomIdx2] = NewBondOrder
         self.BondOrderMatrix[atomIdx2][atomIdx1] = NewBondOrder
 
+    # === Translate and Rotate Molecule ===
+
     def TranslateMolecule(
         self,
         TranslationVector: np.ndarray,
@@ -1751,32 +1834,6 @@ class Molecule:
         # Translate back to original position
         for atomObj in self.AtomsList:
             atomObj.Coordinates = atomObj.Coordinates + geometric_midpoint
-
-    def EquivelentMoleculeInchi(self, SMILES1: str, SMILES2: str) -> bool:
-        SMILES1_rdkitObj = Chem.MolFromSmiles(SMILES1)
-        SMILES2_rdkitObj = Chem.MolFromSmiles(SMILES2)
-        if SMILES1_rdkitObj is None:
-            print(f"Could not generate rdkitObj from SMILES string: {SMILES1}")
-            return False
-        if SMILES2_rdkitObj is None:
-            print(f"Could not generate rdkitObj from SMILES string: {SMILES2}")
-            return False
-        else:
-            return Chem.MolToInchi(SMILES1_rdkitObj) == Chem.MolToInchi(
-                SMILES2_rdkitObj
-            )
-
-    def SMARTSMatchesSMILES(self, SMILES: str, SMARTS: str) -> tuple:
-        SMILES_rdkitObj = Chem.MolFromSmiles(SMILES)
-        SMARTS_rdkitObj = Chem.MolFromSmarts(SMARTS)
-        if SMILES_rdkitObj is None:
-            print(f"Could not generate rdkitObj from SMILES string: {SMILES}")
-            return False
-        if SMARTS_rdkitObj is None:
-            print(f"Could not generate rdkitObj from SMARTS string: {SMARTS}")
-            return False
-        matches = SMILES_rdkitObj.GetSubstructMatches(SMARTS_rdkitObj)
-        return matches
 
     # === Optimise Geometries Functions ===
 
