@@ -176,26 +176,32 @@ class MoleculeSet:
                 f.close()
 
     # === Execute a workflow of some kind ===
+
     def CalculateAtomicSOAPDescriptors(
         self,
-        output_mol_file_directory: str,
+        output_mol_file_directory: str | None = None,
+        output_csv_file_directory: str | None = None,
         RadiusCutOff: float = 5.0,
         NumRadiaBasisFunctions: int = 8,
         MaxDegreeSphericalHarm: int = 6,
     ):
-        os.makedirs(output_mol_file_directory, exist_ok=True)
+        if output_mol_file_directory is not None:
+            os.makedirs(output_mol_file_directory, exist_ok=True)
 
-        def process(item):
-            identifier, molObj = item
-            molObj_copy = deepcopy(molObj)
-            molObj_copy.GetSOAPDescriptors(
-                RadiusCutOff=RadiusCutOff,
-                NumRadiaBasisFunctions=NumRadiaBasisFunctions,
-                MaxDegreeSphericalHarm=MaxDegreeSphericalHarm,
-            )
-            with open(f"{output_mol_file_directory}/{identifier}.mol", "w") as f:
-                f.write(molObj_copy.WriteMolString())
-            del molObj_copy
+            def process(item):
+                identifier, molObj = item
+                molObj_copy = deepcopy(molObj)
+                molObj_copy.GetSOAPDescriptors(
+                    RadiusCutOff=RadiusCutOff,
+                    NumRadiaBasisFunctions=NumRadiaBasisFunctions,
+                    MaxDegreeSphericalHarm=MaxDegreeSphericalHarm,
+                )
+                with open(f"{output_mol_file_directory}/{identifier}.mol", "w") as f:
+                    f.write(molObj_copy.WriteMolString())
+                del molObj_copy
 
-        with ThreadPoolExecutor(max_workers=int(os.cpu_count() / 2)) as executor:
-            list(executor.map(process, self.MoleculesDict.items()))
+            with ThreadPoolExecutor(max_workers=int(os.cpu_count() / 2)) as executor:
+                list(executor.map(process, self.MoleculesDict.items()))
+        elif output_csv_file_directory is not None:
+            print("Create CSV output")
+            pass
