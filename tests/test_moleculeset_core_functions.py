@@ -131,3 +131,20 @@ def test_moleculeset_ReadORCA6OptOutput():
     assert YUDGUA02_opt21.AtomsDict["Co1"][1].Multiplicity == 2
     assert YUDGUA02_opt21.NumberOfAtoms == 77
     assert YUDGUA02_opt21.NumberOfBonds == 84
+
+
+def test_moleculeset_ReadMolFiles_GetSOAPDes_WriteMolFiles():
+    metal_mult = {
+        "CoII": [2],
+    }
+    for metal in metal_mult:
+        for mult in metal_mult[metal]:
+            ms = MoleculeSet()
+            ms.ReadMolFileDirectory(
+                f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/{metal}Lig-S{mult}_Gradient-Output"
+            )
+            ms.CalculateAtomicSOAPDescriptors(
+                output_mol_file_directory=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/AtomicDescriptors/{metal}Lig-S{mult}_SOAP-5-2-2",
+                NumRadiaBasisFunctions=2,
+                MaxDegreeSphericalHarm=2,
+            )

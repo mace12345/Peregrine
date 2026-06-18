@@ -1,47 +1,39 @@
 import numpy as np
 import os
+import time
+from copy import deepcopy
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 from .atom import Atom
 from .molecule import Molecule
 
 
-def _process_orca_file(out_filepath: str, output_file_path: str) -> list[str]:
-    """Parse one ORCA .out file and write a .mol per molecule. Returns the IDs written."""
-    mols = Molecule.ReadORCA6OutputGradients(ORCA_output_filepath=out_filepath)
-    written = []
-    for mol in mols:
-        with open(f"{output_file_path}/{mol.Identifier}.mol", "w") as f:
-            f.write(mol.WriteMolString())
-        written.append(mol.Identifier)
-    return written
-
-
 class MoleculeSet:
     def __init__(self):
-        self.MoleculesDict: dict[Molecule]
+        self.MoleculesDict: dict[str, Molecule] = {}
 
-    def ReadXYZFile(self):
+    # === Read in molecule information (mainly from directories) ===
+
+    def ReadXYZFileDirectory(self):
         pass
 
-    def WriteXYZFile(self):
+    def WriteXYZFileDirectory(self):
         pass
 
-    def ReadMolFile(self):
-        pass
+    def ReadMolFileDirectory(self, mol_file_directory: str):
+        mol_file_list = [
+            i for i in os.listdir(mol_file_directory) if i.endswith(".mol")
+        ]
 
-    def WriteMolFile(self):
-        main_mol_str = ""
-        for Identifier in self.MoleculesDict:
-            mol_str = ""
-            molObj = self.MoleculesDict[Identifier]
-            # Opening Identifier Line, Header block, and blank comment line
-            mol_str += f"{Identifier}\nPeregrine Generated .MOL File\n\n"
-            # CTAB begin block, counts line, and begin atoms line
-            mol_str += f"M V30 BEGIN CTAB\nM V30 COUNTS {molObj.NumberOfAtoms} {molObj.NumberOfBonds} {molObj.NumberOfSubstructures} 0 0\nM V30 BEGIN ATOM\n"
+        def load(mol_file):
+            with open(f"{mol_file_directory}/{mol_file}") as f:
+                return Molecule.ReadMolString(f.read())
 
-        pass
+        with ThreadPoolExecutor(max_workers=int(os.cpu_count() / 2)) as executor:
+            for molObj in executor.map(load, mol_file_list):
+                self.MoleculesDict[molObj.Identifier] = molObj
 
     def ReadMol2File(self, mol2_file: str):
         """
@@ -79,9 +71,6 @@ class MoleculeSet:
             molecule_list.append(mol_obj)
         # Store molecules in dictionary
         self.MoleculesDict = {mol.Identifier: mol for mol in molecule_list}
-
-    def WriteMol2Files(self):
-        pass
 
     def ReadORCA6OutputDirectory(
         self,
@@ -143,6 +132,10 @@ class MoleculeSet:
         input_file_path: str,
         output_file_path: str,
     ):
+        """
+        Uses Molecule.ReadORCA6OutputGradients()
+        The default of this function is that it does not fully derive molecule attributes
+        """
         os.makedirs(output_file_path, exist_ok=True)
         dir_list = [
             f"{input_file_path}/{i}"
@@ -164,11 +157,45 @@ class MoleculeSet:
             ]
             for mol in sublist
         }
-
         for Identifier in NewMoleculesDict:
             with open(f"{output_file_path}/{Identifier}.mol", "w") as f:
                 f.write(NewMoleculesDict[Identifier].WriteMolString())
                 f.close()
 
-    def WriteORCA6Output(self):
+    # === Write molecule information into directories ===
+
+    def WriteORCA6Input(self):
         pass
+
+    def WriteMolFileDirectory(self, mol_file_directory: str):
+        os.makedirs(mol_file_directory, exist_ok=True)
+        for Identifier in self.MoleculesDict:
+            molObj = self.MoleculesDict[Identifier]
+            with open(f"{mol_file_directory}/{Identifier}.mol", "w") as f:
+                f.write(molObj.WriteMolString())
+                f.close()
+
+    # === Execute a workflow of some kind ===
+    def CalculateAtomicSOAPDescriptors(
+        self,
+        output_mol_file_directory: str,
+        RadiusCutOff: float = 5.0,
+        NumRadiaBasisFunctions: int = 8,
+        MaxDegreeSphericalHarm: int = 6,
+    ):
+        os.makedirs(output_mol_file_directory, exist_ok=True)
+
+        def process(item):
+            identifier, molObj = item
+            molObj_copy = deepcopy(molObj)
+            molObj_copy.GetSOAPDescriptors(
+                RadiusCutOff=RadiusCutOff,
+                NumRadiaBasisFunctions=NumRadiaBasisFunctions,
+                MaxDegreeSphericalHarm=MaxDegreeSphericalHarm,
+            )
+            with open(f"{output_mol_file_directory}/{identifier}.mol", "w") as f:
+                f.write(molObj_copy.WriteMolString())
+            del molObj_copy
+
+        with ThreadPoolExecutor(max_workers=int(os.cpu_count() / 2)) as executor:
+            list(executor.map(process, self.MoleculesDict.items()))

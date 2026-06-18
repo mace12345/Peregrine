@@ -11,3 +11,7 @@ data/testing_data/ReadORCA6Outputs/CoIILig-S4_PBE0-def2-TZVP-Opt-Freq-DEFGRID3
 data/testing_data/ReadORCA6Outputs/Cr*
 data/testing_data/ReadORCA6Outputs/Fe*
 data/testing_data/ReadORCA6Outputs/Mn*
+data/testing_data/AtomicDescriptors/Cr*
+data/testing_data/AtomicDescriptors/Mn*
+data/testing_data/AtomicDescriptors/Fe*
+data/testing_data/AtomicDescriptors/CoIILig-S4_SOAP-5-2-2

@@ -1062,22 +1062,16 @@ class Molecule:
         molObj = cls(identifier, atoms_list, bond_order_matrix)
 
         # Parse for molecule properties
-        if "> <Electronic Energy (Eh)>" in mol_string:
-            molObj.electronic_energy = float(
-                mol_string.split("> <Electronic Energy (Eh)>\n")[1].split("\n")[0]
-            )
-        if "> <Gibbs Free Energy (Eh)>" in mol_string:
-            molObj.gibbs_free_energy = float(
-                mol_string.split("> <Gibbs Free Energy (Eh)>\n")[1].split("\n")[0]
-            )
-        if "> <Enthalpy (Eh)>" in mol_string:
-            molObj.enthalpy = float(
-                mol_string.split("> <Enthalpy (Eh)>\n")[1].split("\n")[0]
-            )
-        if "> <Entropy (Eh)>" in mol_string:
-            molObj.entropy = float(
-                mol_string.split("> <Entropy (Eh)>\n")[1].split("\n")[0]
-            )
+        property_map = {
+            "> <Electronic Energy (Eh)>": "electronic_energy",
+            "> <Gibbs Free Energy (Eh)>": "gibbs_free_energy",
+            "> <Enthalpy (Eh)>": "enthalpy",
+            "> <Entropy (Eh)>": "entropy",
+        }
+        for idx, line in enumerate(lines):
+            attr = property_map.get(line.strip())
+            if attr is not None and idx + 1 < len(lines):
+                setattr(molObj, attr, float(lines[idx + 1].strip()))
 
         return molObj
 
