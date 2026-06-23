@@ -656,7 +656,7 @@ def test_GetSOAPDescriptors():
         f.close()
     BIHGEE_opt0 = Molecule.ReadMolString(mol_str)
     BIHGEE_opt0.GetSOAPDescriptors(
-        NumRadiaBasisFunctions=1,
+        NumRadialBasisFunctions=1,
         MaxDegreeSphericalHarm=1,
     )
     assert round(sum(BIHGEE_opt0.AtomsList[0].SOAPDescriptor), 1) == 9.5

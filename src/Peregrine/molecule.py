@@ -622,16 +622,33 @@ class Molecule:
     def GetSOAPDescriptors(
         self,
         RadiusCutOff: float = 5.0,
-        NumRadiaBasisFunctions: int = 8,
+        NumRadialBasisFunctions: int = 8,
         MaxDegreeSphericalHarm: int = 6,
+        AtomicSymbols: list[str] | None = None,
+        periodic: bool = False,
     ):
-        species = list(set(atomObj.AtomicSymbol for atomObj in self.AtomsList))
+        """
+        Using DScribe python package to calculate atomic SOAP descriptors for MLP training.
+
+        DScribe SOAP() object is initialised
+        Molecule object is converted to ASE Atoms object
+        ASE atoms object is used to feed into SOAP() object and calculate SOAP descriptors
+
+        Keyword arguments:
+            RadiusCutOff -- MLPs are based on atomic centred clusters, so how many atoms will be included in the defined radius for the soap descriptor (default = 5 angstrom)
+            NumRadialBasisFunctions --
+            MaxDegreeSphericalHarm --
+            AtomicSymbols -- Chemical elements used to construct descriptor (species in DScribe) (default is the chemical elements that exists in the molObj)
+            periodic --
+        """
+        if AtomicSymbols is None:
+            AtomicSymbols = list({atomObj.AtomicSymbol for atomObj in self.AtomsList})
         soap = SOAP(
-            species=species,
+            species=AtomicSymbols,
             r_cut=RadiusCutOff,
-            n_max=NumRadiaBasisFunctions,
+            n_max=NumRadialBasisFunctions,
             l_max=MaxDegreeSphericalHarm,
-            periodic=False,
+            periodic=periodic,
         )
         aseMolObj = self.MoleculeToASEMolecule()
         for idx, atomObj in enumerate(self.AtomsList):
