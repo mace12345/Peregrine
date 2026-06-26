@@ -184,7 +184,23 @@ class MoleculeSet:
         RadiusCutOff: float = 5.0,
         NumRadiaBasisFunctions: int = 8,
         MaxDegreeSphericalHarm: int = 6,
+        AtomicSymbols: list[str] | None = None,
+        periodic: bool = False,
     ):
+        """
+        Using DScribe python package to calculate atomic SOAP descriptors for MLP training.
+
+        DScribe SOAP() object is initialised
+        Molecule object is converted to ASE Atoms object
+        ASE atoms object is used to feed into SOAP() object and calculate SOAP descriptors
+
+        Keyword arguments:
+            RadiusCutOff -- MLPs are based on atomic centred clusters, so how many atoms will be included in the defined radius for the soap descriptor (default = 5 angstrom)
+            NumRadialBasisFunctions --
+            MaxDegreeSphericalHarm --
+            AtomicSymbols -- Chemical elements used to construct descriptor (species in DScribe) (default is the chemical elements that exists in the molObj)
+            periodic -- Is the ASE Atoms object structure solid state periodic or not (default = False)
+        """
         if output_mol_file_directory is not None:
             os.makedirs(output_mol_file_directory, exist_ok=True)
 
@@ -195,6 +211,7 @@ class MoleculeSet:
                     RadiusCutOff=RadiusCutOff,
                     NumRadiaBasisFunctions=NumRadiaBasisFunctions,
                     MaxDegreeSphericalHarm=MaxDegreeSphericalHarm,
+                    periodic=periodic,
                 )
                 with open(f"{output_mol_file_directory}/{identifier}.mol", "w") as f:
                     f.write(molObj_copy.WriteMolString())
@@ -203,5 +220,5 @@ class MoleculeSet:
             with ThreadPoolExecutor(max_workers=int(os.cpu_count() / 2)) as executor:
                 list(executor.map(process, self.MoleculesDict.items()))
         elif output_csv_file_directory is not None:
-            print("Create CSV output")
+            print("Write code to create CSV file")
             pass

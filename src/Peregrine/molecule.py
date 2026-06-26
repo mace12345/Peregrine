@@ -639,7 +639,7 @@ class Molecule:
             NumRadialBasisFunctions --
             MaxDegreeSphericalHarm --
             AtomicSymbols -- Chemical elements used to construct descriptor (species in DScribe) (default is the chemical elements that exists in the molObj)
-            periodic --
+            periodic -- Is the ASE Atoms object structure periodic or not (default = False)
         """
         if AtomicSymbols is None:
             AtomicSymbols = list({atomObj.AtomicSymbol for atomObj in self.AtomsList})
