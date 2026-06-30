@@ -15,7 +15,7 @@ However, experimental chemists typically lack the programming and computational 
 
 # Installing Dependancies for chem-env, the python environment for Peregrine
 ```
-conda env create -f environment.yml --name chem-env
+conda env create -f environment.yml --name chem-env -y
 ```
 Python Version 3.12 and all packages are downloaded within the conda environment that must be called "chem-env". All packages are managed with __Miniforge__, works well across different platforms and has BSD 3-clause license, handy for commercial use. 
 
