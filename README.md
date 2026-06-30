@@ -18,7 +18,7 @@ Python Version 3.12 and all packages are downloaded within the conda environment
 
 ## Installing Dependancies for chem-env, the python environment for Peregrine
 ```
-conda env create -f environment.yml --name chem-env
+conda env create -f environment.yml --name chem-env -y
 ```
 
 ## Install Peregrine itself
