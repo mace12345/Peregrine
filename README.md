@@ -12,12 +12,27 @@ Building that same map can be done computationally, using a fraction of the reso
 
 However, experimental chemists typically lack the programming and computational expertise to build maps computationally, this is where my no-code software idea comes in.
 
+# Installation
 
-# Installing Dependancies for chem-env, the python environment for Peregrine
+Python Version 3.12 and all packages are downloaded within the conda environment that must be called "chem-env". All packages are managed with __Miniforge__, works well across different platforms and has BSD 3-clause license, handy for commercial use.
+
+## Installing Dependancies for chem-env, the python environment for Peregrine
 ```
 conda env create -f environment.yml --name chem-env
 ```
-Python Version 3.12 and all packages are downloaded within the conda environment that must be called "chem-env". All packages are managed with __Miniforge__, works well across different platforms and has BSD 3-clause license, handy for commercial use. 
+
+## Install Peregrine itself
+```
+pip install -e .
+``` 
+
+## Test to make sure Peregrine is correctly installed and working
+```
+pytest -v -s
+```
+Make sure the pathway to the xtb binary is set.
+
+# Description of Dependencies
 
 ## Chemistry Related Dependencies
 __RDKit__ is a critical package that would be very hard to replace. Very good at handling if `smiles` and `SMARTS` strings, machine readable information for chemical structures. Has atom mapping caperbilities, heavily utilised in this project by mapping `SMARTS` that is used build transition states with the `Molecule` class.
@@ -39,10 +54,3 @@ __PyVista__ an excellent toolkit for 3D modelling of out molecules. __PyQt5__ Do
 
 ## Notes on PySCF
 PySCF is a python package that can run DFT calculations and optimisations. It will be used to generate the training data for the Machine Learning Potential (MLP) and inital guesses for SCF convergence. It is an apache license so we can use it commercially to. PySCF is very customisable so that means we can incorperate our machine learning models into it to massively speed up these calculations, this will give us a huge edge commericaly. PySCF is currently not included in as it is unable to run on windows and is not essiental for the workflows being built on it. It runs on linux and will be used in a distrabutive computing fashion.
-
-
-# Unit Testing with PyTest
-To test project, call `pytest` in the root directory of `Project`. All testing input and outputs are saved in the folder `Project/tests`.
-
-```
-conda install conda-forge::pytest -y
