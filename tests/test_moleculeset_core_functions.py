@@ -145,6 +145,6 @@ def test_moleculeset_ReadMolFiles_GetSOAPDes_WriteMolFiles():
             )
             ms.CalculateAtomicSOAPDescriptors(
                 output_mol_file_directory=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/AtomicDescriptors/{metal}Lig-S{mult}_SOAP-5-2-2",
-                NumRadiaBasisFunctions=2,
+                NumRadialBasisFunctions=2,
                 MaxDegreeSphericalHarm=2,
             )

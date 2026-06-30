@@ -182,7 +182,7 @@ class MoleculeSet:
         output_mol_file_directory: str | None = None,
         output_csv_file_directory: str | None = None,
         RadiusCutOff: float = 5.0,
-        NumRadiaBasisFunctions: int = 8,
+        NumRadialBasisFunctions: int = 8,
         MaxDegreeSphericalHarm: int = 6,
         AtomicSymbols: list[str] | None = None,
         periodic: bool = False,
@@ -209,7 +209,7 @@ class MoleculeSet:
                 molObj_copy = deepcopy(molObj)
                 molObj_copy.GetSOAPDescriptors(
                     RadiusCutOff=RadiusCutOff,
-                    NumRadiaBasisFunctions=NumRadiaBasisFunctions,
+                    NumRadialBasisFunctions=NumRadialBasisFunctions,
                     MaxDegreeSphericalHarm=MaxDegreeSphericalHarm,
                     periodic=periodic,
                 )
