@@ -2056,7 +2056,7 @@ class Molecule:
     ):
         xyz_string = self.WriteXYZString()
         cmd = [
-            f"{xtb_binary_path}/xtb",
+            f"{xtb_binary_path}xtb",
             f"{Path(__file__).parent}/{self.Identifier}_temp.xyz",
         ]
         with open(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz", "w") as f:
