@@ -29,5 +29,4 @@ dependencies:
   - dscribe
   - pyscf
   - pip:
-    - "e ."
     - xyzgraph
