@@ -1,7 +1,10 @@
+import json
 from pyscf import gto
 from pyscf import scf
 from pyscf import grad
 from pyscf.tools import fcidump
+
+metadata = {}
 
 # Define Molecule
 pyscfMolObj = gto.Mole(
@@ -23,18 +26,33 @@ H 2.6091649351 1.480627435 0.0008603297
     output = 'Benzene_PySCFOutput.log',
     verbose = 4,
     max_memory = 1000,
+    charge = 0,
+    spin = 0
 )
-pyscfMolObj.charge = 0
-pyscfMolObj.spin = 0
+metadata['Identifier'] = 'Benzene'
+metadata['Basis Set'] = 'def2svp'
+metadata['Charge'] = 0
+metadata['Multiplicity'] = 1
 
 pyscfMolObj_calc = scf.RHF(pyscfMolObj)
 pyscfMolObj_calc.kernel()
+metadata['AO Labels'] = pyscfMolObj.ao_labels()
+metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
+metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
+metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
+metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
 
+# Get Gradients
 g = pyscfMolObj_calc.Gradients()
-g.kernel()
+grad = g.kernel()
+metadata['Gradients (Eh/Bohr)'] = grad.tolist()
 
 # Write Fock Matrix
-import io
 import numpy as np
 F = pyscfMolObj_calc.get_fock()
+metadata['Fock Matrix File Name'] = 'Benzene_PySCFOutput.fock'
 np.savetxt('Benzene_PySCFOutput.fock', F, fmt='%.16e')
+
+# Write metadata to .json file
+with open('Benzene_PySCFOutput.meta.json', 'w') as f:
+   json.dump(metadata, f, indent=2)

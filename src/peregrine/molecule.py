@@ -943,7 +943,7 @@ class Molecule:
         if self.Multiplicity > 1:
             restricted = False
 
-        pyscf_str = "from pyscf import gto\n"
+        pyscf_str = "import json\nfrom pyscf import gto\n"
 
         # Determine the optional imports
         if method == "hf":
@@ -952,7 +952,7 @@ class Molecule:
             pyscf_str += "from pyscf import grad\n"
         if get_fock_matrix == True:
             pyscf_str += "from pyscf.tools import fcidump\n"
-        pyscf_str += "\n"
+        pyscf_str += "\nmetadata = {}\n\n"
 
         # Declare atoms and basis set
         pyscf_str += f"""# Define Molecule
@@ -963,9 +963,13 @@ pyscfMolObj = gto.Mole(
     output = '{self.Identifier}_PySCFOutput.log',
     verbose = 4,
     max_memory = {max_memory},
+    charge = {self.FormalCharge},
+    spin = {self.Multiplicity - 1}
 )
-pyscfMolObj.charge = {self.FormalCharge}
-pyscfMolObj.spin = {self.Multiplicity - 1}\n\n"""
+metadata['Identifier'] = '{self.Identifier}'
+metadata['Basis Set'] = '{basisset}'
+metadata['Charge'] = {self.FormalCharge}
+metadata['Multiplicity'] = {self.Multiplicity}\n\n"""
 
         # Set up calculation and run calculation
         if (
@@ -973,20 +977,39 @@ pyscfMolObj.spin = {self.Multiplicity - 1}\n\n"""
             and restricted == False
             and method == "hf"
         ):
-            pyscf_str += "pyscfMolObj_calc = scf.UHF(pyscfMolObj)\npyscfMolObj_calc.kernel()"
+            pyscf_str += """pyscfMolObj_calc = scf.UHF(pyscfMolObj)
+pyscfMolObj_calc.kernel()
+metadata['AO Labels'] = pyscfMolObj.ao_labels()
+metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
+metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
+metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
+metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
+"""
         elif (
             calculation_type == "single point"
             and restricted == True
             and method == "hf"
         ):
-            pyscf_str += "pyscfMolObj_calc = scf.RHF(pyscfMolObj)\npyscfMolObj_calc.kernel()\n\n"
+            pyscf_str += """pyscfMolObj_calc = scf.RHF(pyscfMolObj)
+pyscfMolObj_calc.kernel()
+metadata['AO Labels'] = pyscfMolObj.ao_labels()
+metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
+metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
+metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
+metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
+"""
 
         # Post-Processing of single point calculations
         if (
             calculation_type == "single point"
             and get_gradients == True
         ):
-            pyscf_str += "g = pyscfMolObj_calc.Gradients()\ng.kernel()\n"
+            pyscf_str += """
+# Get Gradients
+g = pyscfMolObj_calc.Gradients()
+grad = g.kernel()
+metadata['Gradients (Eh/Bohr)'] = grad.tolist()
+"""
         if (
             calculation_type == "single point"
             and get_fock_matrix == True
@@ -995,7 +1018,13 @@ pyscfMolObj.spin = {self.Multiplicity - 1}\n\n"""
 # Write Fock Matrix
 import numpy as np
 F = pyscfMolObj_calc.get_fock()
-np.savetxt('{self.Identifier}_PySCFOutput.fock', F, fmt='%.16e')"""
+metadata['Fock Matrix File Name'] = '{self.Identifier}_PySCFOutput.fock'
+np.savetxt('{self.Identifier}_PySCFOutput.fock', F, fmt='%.16e')
+
+"""
+
+        # Write meta data .json file
+        pyscf_str += f"# Write metadata to .json file\nwith open('{self.Identifier}_PySCFOutput.meta.json', 'w') as f:\n   json.dump(metadata, f, indent=2)"
 
         return pyscf_str
 
