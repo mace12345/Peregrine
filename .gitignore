@@ -15,3 +15,4 @@ data/testing_data/AtomicDescriptors/Cr*
 data/testing_data/AtomicDescriptors/Mn*
 data/testing_data/AtomicDescriptors/Fe*
 data/testing_data/AtomicDescriptors/CoIILig-S4_SOAP-5-2-2
+src/peregrine/__pycache__/molecule.cpython-312.pyc

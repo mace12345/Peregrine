@@ -6,7 +6,7 @@ from peregrine.molecule import Molecule
 from peregrine.atom import Atom
 
 xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin/"
-xtb_binary_path = ""
+xtb_binary_path = "/home/samue/bin/xtb-6.7.1/bin/"
 
 # TODO: Sort our aromatic representations in SMILES
 

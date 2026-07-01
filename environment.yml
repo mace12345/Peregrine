@@ -27,6 +27,7 @@ dependencies:
   - conda-forge::python-kaleido
   - conda
   - dscribe
+  - pyscf
   - pip:
-    - e .
+    - "e ."
     - xyzgraph

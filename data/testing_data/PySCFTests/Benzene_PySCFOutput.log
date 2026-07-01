@@ -1,0 +1,139 @@
+#INFO: **** input file is /home/samue/Desktop/Peregrine/data/testing_data/PySCFTests/benzene_calc.py ****
+from pyscf import gto
+from pyscf import scf
+from pyscf import grad
+from pyscf.tools import fcidump
+
+# Define Molecule
+pyscfMolObj = gto.Mole(
+    atom='''C -1.2131 -0.6884 0.0004
+C -1.2028 0.7064 0.0001
+C -0.0103 -1.3948 0.0002
+C 0.0104 1.3948 0.0001
+C 1.2028 -0.7063 0.0006
+C 1.2131 0.6884 0.0004
+H -2.6091649351 -1.480627435 0.0008603297
+H -2.5868635378 1.5192554066 0.0002150701
+H -0.0221531095 -2.9999181747 0.0004301575
+H 0.0223681766 2.9999166019 0.0002150786
+H 2.5869572201 -1.519095348 0.0012904675
+H 2.6091649351 1.480627435 0.0008603297
+''',
+    basis='def2svp',
+    unit = 'Ang',
+    output = 'Benzene_PySCFOutput.log',
+    verbose = 4,
+    max_memory = 1000,
+)
+pyscfMolObj.charge = 0
+pyscfMolObj.spin = 0
+
+pyscfMolObj_calc = scf.RHF(pyscfMolObj)
+pyscfMolObj_calc.kernel()
+
+g = pyscfMolObj_calc.Gradients()
+g.kernel()
+
+# Write Fock Matrix
+import io
+import numpy as np
+F = pyscfMolObj_calc.get_fock()
+np.savetxt('Benzene_PySCFOutput.fock', F, fmt='%.16e')#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='DESKTOP-8FN552C', release='6.18.33.2-microsoft-standard-WSL2', version='#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026', machine='x86_64')  Threads 12
+Python 3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]
+numpy 2.4.6  scipy 1.18.0  h5py 3.16.0
+Date: Wed Jul  1 11:10:13 2026
+PySCF version 2.13.1
+PySCF path  /home/samue/miniforge3/envs/chem-env/lib/python3.12/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 12
+[INPUT] num. electrons = 42
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = Ang
+[INPUT] Symbol           X                Y                Z      unit          X                Y                Z       unit  Magmom
+[INPUT]  1 C     -1.213100000000  -0.688400000000   0.000400000000 AA   -2.292426761710  -1.300887464151   0.000755890450 Bohr   0.0
+[INPUT]  2 C     -1.202800000000   0.706400000000   0.000100000000 AA   -2.272962582627   1.334902534393   0.000188972612 Bohr   0.0
+[INPUT]  3 C     -0.010300000000  -1.394800000000   0.000200000000 AA   -0.019464179083  -2.635789998543   0.000377945225 Bohr   0.0
+[INPUT]  4 C      0.010400000000   1.394800000000   0.000100000000 AA    0.019653151695   2.635789998543   0.000188972612 Bohr   0.0
+[INPUT]  5 C      1.202800000000  -0.706300000000   0.000600000000 AA    2.272962582627  -1.334713561780   0.001133835675 Bohr   0.0
+[INPUT]  6 C      1.213100000000   0.688400000000   0.000400000000 AA    2.292426761710   1.300887464151   0.000755890450 Bohr   0.0
+[INPUT]  7 H     -2.609164935100  -1.480627435000   0.000860329700 AA   -4.930607141158  -2.797980344667   0.001625787510 Bohr   0.0
+[INPUT]  8 H     -2.586863537800   1.519255406600   0.000215070100 AA   -4.888463608065   2.870976631739   0.000406423587 Bohr   0.0
+[INPUT]  9 H     -0.022153109500  -2.999918174700   0.000430157500 AA   -0.041863309763  -5.669023746288   0.000812879865 Bohr   0.0
+[INPUT] 10 H      0.022368176600   2.999916601900   0.000215078600 AA    0.042269727680   5.669020774127   0.000406439649 Bohr   0.0
+[INPUT] 11 H      2.586957220100  -1.519095348000   0.001290467500 AA    4.888640641955  -2.870674164821   0.002438630148 Bohr   0.0
+[INPUT] 12 H      2.609164935100   1.480627435000   0.000860329700 AA    4.930607141158   2.797980344667   0.001625787510 Bohr   0.0
+
+nuclear repulsion = 192.330043704084
+number of shells = 54
+number of NR pGTOs = 186
+number of NR cGTOs = 114
+basis = def2svp
+ecp = {}
+CPU time:         1.42
+
+
+******** <class 'pyscf.scf.hf.RHF'> ********
+method = RHF
+initial guess = minao
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+diis_damp = 0
+SCF conv_tol = 1e-09
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmpjmivb_bv
+max_memory 1000 MB (current use 105 MB)
+Set gradient conv threshold to 3.16228e-05
+Initial guess from minao.
+init E= -230.464238913963
+  HOMO = -0.230562218372242  LUMO = -0.0375391684667958
+cycle= 1 E= -229.920054787331  delta_E= 0.544  |g|= 0.466  |ddm|= 3.35
+  HOMO = -0.420404733570088  LUMO = 0.0103173025285788
+cycle= 2 E= -230.002515707502  delta_E= -0.0825  |g|= 0.229  |ddm|= 1.06
+  HOMO = -0.343562200703804  LUMO = 0.044453754594334
+cycle= 3 E= -230.018776024214  delta_E= -0.0163  |g|= 0.0872  |ddm|= 0.338
+  HOMO = -0.363512742991878  LUMO = 0.0441462901407617
+cycle= 4 E= -230.02201100897  delta_E= -0.00323  |g|= 0.00572  |ddm|= 0.173
+  HOMO = -0.364117086423973  LUMO = 0.0438912275283929
+cycle= 5 E= -230.022028045124  delta_E= -1.7e-05  |g|= 0.0013  |ddm|= 0.0101
+  HOMO = -0.363758203134274  LUMO = 0.0440335720305045
+cycle= 6 E= -230.022028993862  delta_E= -9.49e-07  |g|= 0.000188  |ddm|= 0.00295
+  HOMO = -0.363737569056505  LUMO = 0.0440538749419472
+cycle= 7 E= -230.022029021178  delta_E= -2.73e-08  |g|= 3.32e-05  |ddm|= 0.00048
+  HOMO = -0.363739380773562  LUMO = 0.0440536353287087
+cycle= 8 E= -230.022029021742  delta_E= -5.63e-10  |g|= 6.37e-06  |ddm|= 8.22e-05
+  HOMO = -0.363738678934859  LUMO = 0.0440541151238567
+Extra cycle  E= -230.02202902175  delta_E= -8.7e-12  |g|= 4.8e-06  |ddm|= 1.27e-05
+converged SCF energy = -230.02202902175
+
+
+******** <class 'pyscf.grad.rhf.Gradients'> for <class 'pyscf.scf.hf.RHF'> ********
+unit = Eh/Bohr
+max_memory 1000 MB (current use 291 MB)
+--------------- RHF gradients ---------------
+         x                y                z
+0 C     0.0818653811     0.0464986787     0.0000191725
+1 C     0.0811340197    -0.0476985035    -0.0000362599
+2 C     0.0007176373     0.0941197730    -0.0000893024
+3 C    -0.0006300077    -0.0941558206    -0.0000184231
+4 C    -0.0811721535     0.0477829026    -0.0000059054
+5 C    -0.0819218593    -0.0465540364    -0.0000449383
+6 H    -0.0983372397    -0.0557994925     0.0000408093
+7 H    -0.0975003475     0.0572604462     0.0000105682
+8 H    -0.0008326646    -0.1130662862     0.0000174327
+9 H     0.0008431476     0.1130633150     0.0000149388
+10 H     0.0975000244    -0.0572498299     0.0000567101
+11 H     0.0983340621     0.0557988535     0.0000351975
+----------------------------------------------

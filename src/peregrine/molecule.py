@@ -23,6 +23,7 @@ from openbabel import pybel
 from openbabel import openbabel as ob
 
 from ase import Atoms as aseAtoms
+
 from dscribe.descriptors import SOAP
 
 from xyzgraph import build_graph
@@ -924,8 +925,80 @@ class Molecule:
 
         return SMARTS
 
-    def WriteORCAInput(self):
+    def WriteORCAInput(self) -> str:
         pass
+
+    def WritePySCFInput(
+        self,
+        method: str =  "hf",
+        basisset: str = "def2svp",
+        restricted: bool = True,
+        calculation_type: str = "single point",
+        get_gradients: bool = True,
+        get_fock_matrix: bool = True,
+        max_memory: int = 1000, # in MB
+    ) -> str:
+        method = method.lower()
+        basisset = basisset.lower()
+        if self.Multiplicity > 1:
+            restricted = False
+
+        pyscf_str = "from pyscf import gto\n"
+
+        # Determine the optional imports
+        if method == "hf":
+            pyscf_str += "from pyscf import scf\n"
+        if get_gradients == True:
+            pyscf_str += "from pyscf import grad\n"
+        if get_fock_matrix == True:
+            pyscf_str += "from pyscf.tools import fcidump\n"
+        pyscf_str += "\n"
+
+        # Declare atoms and basis set
+        pyscf_str += f"""# Define Molecule
+pyscfMolObj = gto.Mole(
+    atom='''{self.WriteXYZBlock()}''',
+    basis='{basisset}',
+    unit = 'Ang',
+    output = '{self.Identifier}_PySCFOutput.log',
+    verbose = 4,
+    max_memory = {max_memory},
+)
+pyscfMolObj.charge = {self.FormalCharge}
+pyscfMolObj.spin = {self.Multiplicity - 1}\n\n"""
+
+        # Set up calculation and run calculation
+        if (
+            calculation_type == "single point"
+            and restricted == False
+            and method == "hf"
+        ):
+            pyscf_str += "pyscfMolObj_calc = scf.UHF(pyscfMolObj)\npyscfMolObj_calc.kernel()"
+        elif (
+            calculation_type == "single point"
+            and restricted == True
+            and method == "hf"
+        ):
+            pyscf_str += "pyscfMolObj_calc = scf.RHF(pyscfMolObj)\npyscfMolObj_calc.kernel()\n\n"
+
+        # Post-Processing of single point calculations
+        if (
+            calculation_type == "single point"
+            and get_gradients == True
+        ):
+            pyscf_str += "g = pyscfMolObj_calc.Gradients()\ng.kernel()\n"
+        if (
+            calculation_type == "single point"
+            and get_fock_matrix == True
+        ):
+            pyscf_str += f"""
+# Write Fock Matrix
+import io
+import numpy as np
+F = pyscfMolObj_calc.get_fock()
+np.savetxt('{self.Identifier}_PySCFOutput.fock', F, fmt='%.16e')"""
+
+        return pyscf_str
 
     def MoleculeToRDKitMol(self):
         pass
