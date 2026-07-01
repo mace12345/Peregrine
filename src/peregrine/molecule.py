@@ -993,7 +993,6 @@ pyscfMolObj.spin = {self.Multiplicity - 1}\n\n"""
         ):
             pyscf_str += f"""
 # Write Fock Matrix
-import io
 import numpy as np
 F = pyscfMolObj_calc.get_fock()
 np.savetxt('{self.Identifier}_PySCFOutput.fock', F, fmt='%.16e')"""
