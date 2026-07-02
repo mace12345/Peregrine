@@ -1,0 +1,66 @@
+{
+  "Identifier": "WaterCation",
+  "Method Type": "DFT",
+  "Method": "rks wb97m_v",
+  "Basis Set": "def2svp",
+  "Charge": 1,
+  "Multiplicity": 1,
+  "AO Labels": [
+    "0 H 1s    ",
+    "0 H 2s    ",
+    "0 H 2px   ",
+    "0 H 2py   ",
+    "0 H 2pz   ",
+    "1 O 1s    ",
+    "1 O 2s    ",
+    "1 O 3s    ",
+    "1 O 2px   ",
+    "1 O 2py   ",
+    "1 O 2pz   ",
+    "1 O 3px   ",
+    "1 O 3py   ",
+    "1 O 3pz   ",
+    "1 O 3dxy  ",
+    "1 O 3dyz  ",
+    "1 O 3dz^2 ",
+    "1 O 3dxz  ",
+    "1 O 3dx2-y2",
+    "2 H 1s    ",
+    "2 H 2s    ",
+    "2 H 2px   ",
+    "2 H 2py   ",
+    "2 H 2pz   ",
+    "3 H 1s    ",
+    "3 H 2s    ",
+    "3 H 2px   ",
+    "3 H 2py   ",
+    "3 H 2pz   "
+  ],
+  "Electronic Energy (Eh)": -76.56803987312841,
+  "Two Electron Energy (Eh)": 37.08388345077457,
+  "One Electron Energy (Eh)": -126.74542465015949,
+  "Nuclear Repulsion Energy (Eh)": 13.093501326256526,
+  "Gradients (Eh/Bohr)": [
+    [
+      -0.05474752548910233,
+      0.01886584562660536,
+      0.01931050132997328
+    ],
+    [
+      0.08676597850526058,
+      -0.05363959760938597,
+      -0.09784451163130958
+    ],
+    [
+      -0.01691299314035516,
+      -0.0017654838488057045,
+      0.03552064594373347
+    ],
+    [
+      -0.015105616042738593,
+      0.03653924816890608,
+      0.04301345382205257
+    ]
+  ],
+  "Fock Matrix File Name": "WaterCation_PySCFOutput.fock"
+}

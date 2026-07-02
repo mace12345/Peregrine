@@ -1,0 +1,56 @@
+{
+  "Identifier": "WaterTriplet",
+  "Method Type": "DFT",
+  "Method": "roks m06_l",
+  "Basis Set": "def2svp",
+  "Charge": 1,
+  "Multiplicity": 2,
+  "AO Labels": [
+    "0 H 1s    ",
+    "0 H 2s    ",
+    "0 H 2px   ",
+    "0 H 2py   ",
+    "0 H 2pz   ",
+    "1 O 1s    ",
+    "1 O 2s    ",
+    "1 O 3s    ",
+    "1 O 2px   ",
+    "1 O 2py   ",
+    "1 O 2pz   ",
+    "1 O 3px   ",
+    "1 O 3py   ",
+    "1 O 3pz   ",
+    "1 O 3dxy  ",
+    "1 O 3dyz  ",
+    "1 O 3dz^2 ",
+    "1 O 3dxz  ",
+    "1 O 3dx2-y2",
+    "2 H 1s    ",
+    "2 H 2s    ",
+    "2 H 2px   ",
+    "2 H 2py   ",
+    "2 H 2pz   "
+  ],
+  "Electronic Energy (Eh)": -75.88767937499473,
+  "Two Electron Energy (Eh)": 32.65464094622715,
+  "One Electron Energy (Eh)": -117.3833404902328,
+  "Nuclear Repulsion Energy (Eh)": 8.841020169010916,
+  "Gradients (Eh/Bohr)": [
+    [
+      0.01344588255529322,
+      0.028815249318600883,
+      4.712382306773422e-16
+    ],
+    [
+      0.015371980505473726,
+      -0.015371980505470617,
+      -7.223787796081471e-16
+    ],
+    [
+      -0.02881524931860041,
+      -0.013445882555296773,
+      -4.0171033561156374e-16
+    ]
+  ],
+  "Fock Matrix File Name": "WaterTriplet_PySCFOutput.fock"
+}

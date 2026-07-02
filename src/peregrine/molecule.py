@@ -44,6 +44,10 @@ RDKIT_BONDTYPE_TRANSLATION = {
     6: Chem.BondType.HEXTUPLE,
 }
 
+PYSCF_DFT_FUNCTIONS = {
+    "wb97m_v",
+    "m06_l",
+}
 
 # === Helper functions ===
 
@@ -937,21 +941,46 @@ class Molecule:
         get_gradients: bool = True,
         get_fock_matrix: bool = True,
         max_memory: int = 1000, # in MB
+        grid_density: int = 5,
+        prune_grids: None | bool = True,
     ) -> str:
+
+        # Standardise method and basis set names
         method = method.lower()
+        method = method.replace("-", "_")
         basisset = basisset.lower()
-        if self.Multiplicity > 1:
-            restricted = False
+
+        # Check what type of method is being called
+        method_type = None
+        if method in PYSCF_DFT_FUNCTIONS:
+            method_type = "DFT"
+        elif method == "hf":
+            method_type = "HF"
+
+        # Determine if calculation is restricted or not
+        restricted_str = "PLEASE FIX"
+        if restricted == False and method_type == "HF":
+            restricted_str = "UHF"
+        elif self.Multiplicity > 1 and restricted == True and method_type == "HF":
+            restricted_str = "ROHF"
+        elif self.Multiplicity == 1 and restricted == True and method_type == "HF":
+            restricted_str = "RHF"
+        elif restricted == False and method_type == "DFT":
+            restricted_str = "UKS"
+        elif self.Multiplicity > 1 and restricted == True and method_type == "DFT":
+            restricted_str = "ROKS"
+        elif self.Multiplicity == 1 and restricted == True and method_type == "DFT":
+            restricted_str = "RKS"
 
         pyscf_str = "import json\nfrom pyscf import gto\n"
 
         # Determine the optional imports
-        if method == "hf":
+        if method_type == "HF":
             pyscf_str += "from pyscf import scf\n"
         if get_gradients == True:
             pyscf_str += "from pyscf import grad\n"
-        if get_fock_matrix == True:
-            pyscf_str += "from pyscf.tools import fcidump\n"
+        if method_type == "DFT":
+            pyscf_str += "from pyscf import dft\n"
         pyscf_str += "\nmetadata = {}\n\n"
 
         # Declare atoms and basis set
@@ -964,20 +993,22 @@ pyscfMolObj = gto.Mole(
     verbose = 4,
     max_memory = {max_memory},
     charge = {self.FormalCharge},
-    spin = {self.Multiplicity - 1}
+    spin = {int(self.Multiplicity - 1)}
 )
 metadata['Identifier'] = '{self.Identifier}'
+metadata['Method Type'] = '{method_type}'
+metadata['Method'] = '{restricted_str.lower()} {method}'
 metadata['Basis Set'] = '{basisset}'
 metadata['Charge'] = {self.FormalCharge}
-metadata['Multiplicity'] = {self.Multiplicity}\n\n"""
+metadata['Multiplicity'] = {int(self.Multiplicity)}\n\n"""
 
         # Set up calculation and run calculation
+        # HF calculations
         if (
             calculation_type == "single point"
-            and restricted == False
-            and method == "hf"
+            and method_type == "HF"
         ):
-            pyscf_str += """pyscfMolObj_calc = scf.UHF(pyscfMolObj)
+            pyscf_str += f"""pyscfMolObj_calc = scf.{restricted_str}(pyscfMolObj)
 pyscfMolObj_calc.kernel()
 metadata['AO Labels'] = pyscfMolObj.ao_labels()
 metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
@@ -985,12 +1016,15 @@ metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
 metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
 metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
 """
+        # DFT Calculations
         elif (
             calculation_type == "single point"
-            and restricted == True
-            and method == "hf"
+            and method_type == "DFT"
         ):
-            pyscf_str += """pyscfMolObj_calc = scf.RHF(pyscfMolObj)
+            pyscf_str += f"""pyscfMolObj_calc = dft.{restricted_str}(pyscfMolObj)
+pyscfMolObj_calc.xc = '{method}'
+pyscfMolObj_calc.grids.level = {grid_density}
+pyscfMolObj_calc.grids.prune = {prune_grids}
 pyscfMolObj_calc.kernel()
 metadata['AO Labels'] = pyscfMolObj.ao_labels()
 metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
@@ -1000,6 +1034,7 @@ metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
 """
 
         # Post-Processing of single point calculations
+        # Get atomic force gradients
         if (
             calculation_type == "single point"
             and get_gradients == True
@@ -1010,9 +1045,11 @@ g = pyscfMolObj_calc.Gradients()
 grad = g.kernel()
 metadata['Gradients (Eh/Bohr)'] = grad.tolist()
 """
+        # Get fock matricies
         if (
             calculation_type == "single point"
             and get_fock_matrix == True
+            and restricted == True
         ):
             pyscf_str += f"""
 # Write Fock Matrix
@@ -1020,6 +1057,21 @@ import numpy as np
 F = pyscfMolObj_calc.get_fock()
 metadata['Fock Matrix File Name'] = '{self.Identifier}_PySCFOutput.fock'
 np.savetxt('{self.Identifier}_PySCFOutput.fock', F, fmt='%.16e')
+
+"""
+        if (
+            calculation_type == "single point"
+            and get_fock_matrix == True
+            and restricted == False
+        ):
+            pyscf_str += f"""
+# Write Fock Matrix
+import numpy as np
+F = pyscfMolObj_calc.get_fock()
+metadata['Alpha Fock Matrix File Name'] = '{self.Identifier}-Alpha_PySCFOutput.fock'
+metadata['Beta Fock Matrix File Name'] = '{self.Identifier}-Beta_PySCFOutput.fock'
+np.savetxt('{self.Identifier}-Alpha_PySCFOutput.fock', F[0], fmt='%.16e')
+np.savetxt('{self.Identifier}-Beta_PySCFOutput.fock', F[1], fmt='%.16e')
 
 """
 
