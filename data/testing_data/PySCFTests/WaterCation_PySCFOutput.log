@@ -3,6 +3,7 @@ import json
 from pyscf import gto
 from pyscf import grad
 from pyscf import dft
+import numpy as np
 
 metadata = {}
 
@@ -58,7 +59,7 @@ with open('WaterCation_PySCFOutput.meta.json', 'w') as f:
 System: uname_result(system='Linux', node='DESKTOP-8FN552C', release='6.18.33.2-microsoft-standard-WSL2', version='#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026', machine='x86_64')  Threads 12
 Python 3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]
 numpy 2.4.6  scipy 1.18.0  h5py 3.16.0
-Date: Thu Jul  2 08:46:35 2026
+Date: Fri Jul  3 07:59:58 2026
 PySCF version 2.13.1
 PySCF path  /home/samue/miniforge3/envs/chem-env/lib/python3.12/site-packages/pyscf
 
@@ -82,7 +83,7 @@ number of NR pGTOs = 45
 number of NR cGTOs = 29
 basis = def2svp
 ecp = {}
-CPU time:         1.37
+CPU time:         1.40
 
 
 ******** <class 'pyscf.dft.rks.RKS'> ********
@@ -99,7 +100,7 @@ SCF conv_tol_grad = None
 SCF max_cycles = 50
 direct_scf = True
 direct_scf_tol = 1e-13
-chkfile to save SCF result = /tmp/tmpn3iogbz8
+chkfile to save SCF result = /tmp/tmp6c3zg3zp
 max_memory 1000 MB (current use 105 MB)
 XC library pyscf.dft.libxc version 7.0.0
     S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
@@ -112,47 +113,47 @@ becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
 pruning grids: True
 grids dens level: 5
 symmetrized grids: False
-atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x798a6aef8360>
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x74f614b24360>
 ** Following is NLC and NLC Grids **
 NLC functional = wb97m_v
 radial grids: 
     Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
     
 becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
-pruning grids: <function nwchem_prune at 0x798a6aef8400>
+pruning grids: <function nwchem_prune at 0x74f614b24400>
 grids dens level: 3
 symmetrized grids: False
-atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x798a6aef8360>
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x74f614b24360>
 small_rho_cutoff = 0
 Set gradient conv threshold to 3.16228e-05
 Initial guess from minao.
 tot grids = 204752
 tot grids = 43512
 init E= -76.795792144257
-  HOMO = -0.563843572566863  LUMO = -0.00645093074058245
-cycle= 1 E= -76.5318010868745  delta_E= 0.264  |g|= 0.374  |ddm|= 1.49
-  HOMO = -0.872526298383987  LUMO = -0.243861221161704
-cycle= 2 E= -76.5618232273326  delta_E= -0.03  |g|= 0.19  |ddm|= 0.391
-  HOMO = -0.925621886594826  LUMO = -0.236543665302714
+  HOMO = -0.563843572566863  LUMO = -0.00645093074057845
+cycle= 1 E= -76.5318010868744  delta_E= 0.264  |g|= 0.374  |ddm|= 1.49
+  HOMO = -0.872526298383987  LUMO = -0.243861221161705
+cycle= 2 E= -76.5618232273325  delta_E= -0.03  |g|= 0.19  |ddm|= 0.391
+  HOMO = -0.925621886594825  LUMO = -0.236543665302718
 cycle= 3 E= -76.5669479122474  delta_E= -0.00512  |g|= 0.0782  |ddm|= 0.138
-  HOMO = -0.904752562244126  LUMO = -0.22729659385639
-cycle= 4 E= -76.5680239649789  delta_E= -0.00108  |g|= 0.00771  |ddm|= 0.0445
-  HOMO = -0.90479194653877  LUMO = -0.227027740338039
+  HOMO = -0.904752562244126  LUMO = -0.227296593856392
+cycle= 4 E= -76.568023964979  delta_E= -0.00108  |g|= 0.00771  |ddm|= 0.0445
+  HOMO = -0.904791946538772  LUMO = -0.227027740338039
 cycle= 5 E= -76.5680396830936  delta_E= -1.57e-05  |g|= 0.000647  |ddm|= 0.00741
-  HOMO = -0.9049069833588  LUMO = -0.227116647368424
-cycle= 6 E= -76.5680398646568  delta_E= -1.82e-07  |g|= 0.000106  |ddm|= 0.000773
-  HOMO = -0.90492829341421  LUMO = -0.227122108202627
-cycle= 7 E= -76.5680398724624  delta_E= -7.81e-09  |g|= 2.86e-05  |ddm|= 0.000177
-  HOMO = -0.904930490880242  LUMO = -0.227122679125422
+  HOMO = -0.904906983358799  LUMO = -0.227116647368426
+cycle= 6 E= -76.5680398646566  delta_E= -1.82e-07  |g|= 0.000106  |ddm|= 0.000773
+  HOMO = -0.904928293414204  LUMO = -0.22712210820263
+cycle= 7 E= -76.5680398724625  delta_E= -7.81e-09  |g|= 2.86e-05  |ddm|= 0.000177
+  HOMO = -0.904930490880242  LUMO = -0.227122679125419
 cycle= 8 E= -76.5680398731156  delta_E= -6.53e-10  |g|= 5.13e-06  |ddm|= 5.96e-05
-  HOMO = -0.904929020515925  LUMO = -0.227122642558965
-Extra cycle  E= -76.5680398731284  delta_E= -1.29e-11  |g|= 2.65e-06  |ddm|= 6.56e-06
+  HOMO = -0.904929020515934  LUMO = -0.227122642558966
+Extra cycle  E= -76.5680398731284  delta_E= -1.28e-11  |g|= 2.65e-06  |ddm|= 6.56e-06
 converged SCF energy = -76.5680398731284
 
 
 ******** <class 'pyscf.grad.rks.Gradients'> for <class 'pyscf.dft.rks.RKS'> ********
 unit = Eh/Bohr
-max_memory 1000 MB (current use 149 MB)
+max_memory 1000 MB (current use 148 MB)
 grid_response = False
 --------------- RKS gradients ---------------
          x                y                z

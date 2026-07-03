@@ -3,6 +3,7 @@ import json
 from pyscf import gto
 from pyscf import grad
 from pyscf import dft
+import numpy as np
 
 metadata = {}
 
@@ -57,7 +58,7 @@ with open('WaterTriplet_PySCFOutput.meta.json', 'w') as f:
 System: uname_result(system='Linux', node='DESKTOP-8FN552C', release='6.18.33.2-microsoft-standard-WSL2', version='#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026', machine='x86_64')  Threads 12
 Python 3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]
 numpy 2.4.6  scipy 1.18.0  h5py 3.16.0
-Date: Thu Jul  2 08:46:21 2026
+Date: Fri Jul  3 07:59:35 2026
 PySCF version 2.13.1
 PySCF path  /home/samue/miniforge3/envs/chem-env/lib/python3.12/site-packages/pyscf
 
@@ -80,7 +81,7 @@ number of NR pGTOs = 38
 number of NR cGTOs = 24
 basis = def2svp
 ecp = {}
-CPU time:         1.40
+CPU time:         1.36
 
 
 ******** <class 'pyscf.dft.roks.ROKS'> ********
@@ -97,7 +98,7 @@ SCF conv_tol_grad = None
 SCF max_cycles = 50
 direct_scf = True
 direct_scf_tol = 1e-13
-chkfile to save SCF result = /tmp/tmprll2rkgq
+chkfile to save SCF result = /tmp/tmpma2d3mss
 max_memory 1000 MB (current use 105 MB)
 num. doubly occ = 4  num. singly occ = 1
 XC library pyscf.dft.libxc version 7.0.0
@@ -113,33 +114,33 @@ becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
 pruning grids: True
 grids dens level: 5
 symmetrized grids: False
-atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7be20db88360>
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7d24dce58360>
 small_rho_cutoff = 0
 Set gradient conv threshold to 3.16228e-05
 tot grids = 163456
 init E= -76.2467619352854
-  HOMO = -0.407826187250763  LUMO = 0.00575268225493808
-cycle= 1 E= -75.8760742657649  delta_E= 0.371  |g|= 0.197  |ddm|= 1.05
+  HOMO = -0.407826187250766  LUMO = 0.00575268225493719
+cycle= 1 E= -75.8760742657648  delta_E= 0.371  |g|= 0.197  |ddm|= 1.05
   HOMO = -0.760024889408351  LUMO = -0.318567152830691
-cycle= 2 E= -75.8865700046159  delta_E= -0.0105  |g|= 0.0767  |ddm|= 0.185
-  HOMO = -0.727837851459448  LUMO = -0.298595299389469
-cycle= 3 E= -75.8875588859069  delta_E= -0.000989  |g|= 0.0233  |ddm|= 0.039
-  HOMO = -0.733807688913659  LUMO = -0.299198708309738
+cycle= 2 E= -75.886570004616  delta_E= -0.0105  |g|= 0.0767  |ddm|= 0.185
+  HOMO = -0.72783785145945  LUMO = -0.298595299389467
+cycle= 3 E= -75.887558885907  delta_E= -0.000989  |g|= 0.0233  |ddm|= 0.039
+  HOMO = -0.733807688913661  LUMO = -0.299198708309741
 cycle= 4 E= -75.8876563951567  delta_E= -9.75e-05  |g|= 0.0106  |ddm|= 0.0159
   HOMO = -0.73084022596507  LUMO = -0.298553312901189
 cycle= 5 E= -75.8876793430567  delta_E= -2.29e-05  |g|= 0.000386  |ddm|= 0.00485
-  HOMO = -0.730721091496631  LUMO = -0.298549783193268
+  HOMO = -0.73072109149663  LUMO = -0.298549783193266
 cycle= 6 E= -75.8876793749834  delta_E= -3.19e-08  |g|= 5.49e-06  |ddm|= 0.000174
-  HOMO = -0.730719222001903  LUMO = -0.298549568988769
+  HOMO = -0.730719222001897  LUMO = -0.298549568988768
 cycle= 7 E= -75.8876793749948  delta_E= -1.13e-11  |g|= 2.12e-07  |ddm|= 4.77e-06
-  HOMO = -0.730719138712134  LUMO = -0.298549616514357
-Extra cycle  E= -75.8876793749947  delta_E= 2.84e-14  |g|= 7.62e-08  |ddm|= 1.59e-07
-converged SCF energy = -75.8876793749947
+  HOMO = -0.730719138712124  LUMO = -0.298549616514351
+Extra cycle  E= -75.8876793749948  delta_E= 2.84e-14  |g|= 7.62e-08  |ddm|= 1.59e-07
+converged SCF energy = -75.8876793749948
 
 
 ******** <class 'pyscf.grad.roks.Gradients'> for <class 'pyscf.dft.roks.ROKS'> ********
 unit = Eh/Bohr
-max_memory 1000 MB (current use 136 MB)
+max_memory 1000 MB (current use 135 MB)
 grid_response = False
 --------------- ROKS gradients ---------------
          x                y                z

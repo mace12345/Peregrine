@@ -2,6 +2,7 @@ import json
 from pyscf import gto
 from pyscf import grad
 from pyscf import dft
+import numpy as np
 
 metadata = {}
 

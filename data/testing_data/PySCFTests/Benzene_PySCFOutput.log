@@ -3,6 +3,7 @@ import json
 from pyscf import gto
 from pyscf import scf
 from pyscf import grad
+import numpy as np
 
 metadata = {}
 
@@ -63,7 +64,7 @@ with open('Benzene_PySCFOutput.meta.json', 'w') as f:
 System: uname_result(system='Linux', node='DESKTOP-8FN552C', release='6.18.33.2-microsoft-standard-WSL2', version='#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026', machine='x86_64')  Threads 12
 Python 3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]
 numpy 2.4.6  scipy 1.18.0  h5py 3.16.0
-Date: Thu Jul  2 08:46:07 2026
+Date: Fri Jul  3 07:59:24 2026
 PySCF version 2.13.1
 PySCF path  /home/samue/miniforge3/envs/chem-env/lib/python3.12/site-packages/pyscf
 
@@ -95,7 +96,7 @@ number of NR pGTOs = 186
 number of NR cGTOs = 114
 basis = def2svp
 ecp = {}
-CPU time:         1.35
+CPU time:         1.43
 
 
 ******** <class 'pyscf.scf.hf.RHF'> ********
@@ -112,30 +113,30 @@ SCF conv_tol_grad = None
 SCF max_cycles = 50
 direct_scf = True
 direct_scf_tol = 1e-13
-chkfile to save SCF result = /tmp/tmpl5o8xd0k
+chkfile to save SCF result = /tmp/tmp0s5j_azf
 max_memory 1000 MB (current use 105 MB)
 Set gradient conv threshold to 3.16228e-05
 Initial guess from minao.
 init E= -230.464238913963
-  HOMO = -0.230562218372241  LUMO = -0.0375391684667896
-cycle= 1 E= -229.920054787331  delta_E= 0.544  |g|= 0.466  |ddm|= 3.35
-  HOMO = -0.420404733570082  LUMO = 0.0103173025285876
-cycle= 2 E= -230.002515707503  delta_E= -0.0825  |g|= 0.229  |ddm|= 1.06
-  HOMO = -0.3435622007038  LUMO = 0.0444537545943349
-cycle= 3 E= -230.018776024214  delta_E= -0.0163  |g|= 0.0872  |ddm|= 0.338
-  HOMO = -0.363512742991887  LUMO = 0.044146290140767
+  HOMO = -0.230562218372241  LUMO = -0.0375391684667905
+cycle= 1 E= -229.92005478733  delta_E= 0.544  |g|= 0.466  |ddm|= 3.35
+  HOMO = -0.420404733570081  LUMO = 0.0103173025285881
+cycle= 2 E= -230.002515707502  delta_E= -0.0825  |g|= 0.229  |ddm|= 1.06
+  HOMO = -0.343562200703798  LUMO = 0.0444537545943353
+cycle= 3 E= -230.018776024215  delta_E= -0.0163  |g|= 0.0872  |ddm|= 0.338
+  HOMO = -0.36351274299188  LUMO = 0.0441462901407665
 cycle= 4 E= -230.02201100897  delta_E= -0.00323  |g|= 0.00572  |ddm|= 0.173
-  HOMO = -0.364117086423975  LUMO = 0.0438912275283911
+  HOMO = -0.364117086423984  LUMO = 0.0438912275283876
 cycle= 5 E= -230.022028045123  delta_E= -1.7e-05  |g|= 0.0013  |ddm|= 0.0101
-  HOMO = -0.363758203134288  LUMO = 0.0440335720304934
-cycle= 6 E= -230.022028993862  delta_E= -9.49e-07  |g|= 0.000188  |ddm|= 0.00295
-  HOMO = -0.363737569056501  LUMO = 0.0440538749419406
-cycle= 7 E= -230.022029021179  delta_E= -2.73e-08  |g|= 3.32e-05  |ddm|= 0.00048
-  HOMO = -0.363739380773545  LUMO = 0.0440536353287215
+  HOMO = -0.363758203134278  LUMO = 0.0440335720304881
+cycle= 6 E= -230.022028993861  delta_E= -9.49e-07  |g|= 0.000188  |ddm|= 0.00295
+  HOMO = -0.36373756905651  LUMO = 0.0440538749419441
+cycle= 7 E= -230.022029021178  delta_E= -2.73e-08  |g|= 3.32e-05  |ddm|= 0.00048
+  HOMO = -0.363739380773552  LUMO = 0.0440536353287033
 cycle= 8 E= -230.022029021741  delta_E= -5.63e-10  |g|= 6.37e-06  |ddm|= 8.22e-05
-  HOMO = -0.363738678934896  LUMO = 0.0440541151238376
-Extra cycle  E= -230.02202902175  delta_E= -8.47e-12  |g|= 4.8e-06  |ddm|= 1.27e-05
-converged SCF energy = -230.02202902175
+  HOMO = -0.363738678934874  LUMO = 0.044054115123854
+Extra cycle  E= -230.022029021749  delta_E= -8.7e-12  |g|= 4.8e-06  |ddm|= 1.27e-05
+converged SCF energy = -230.022029021749
 
 
 ******** <class 'pyscf.grad.rhf.Gradients'> for <class 'pyscf.scf.hf.RHF'> ********
