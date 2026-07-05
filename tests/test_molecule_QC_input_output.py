@@ -41,7 +41,7 @@ def test_write_PySCF_RKS_input():
         f.write(water_cation_pyscf_str)
         f.close()
 
-def test_write_PySCF_ROKS_input_2():
+def test_write_PySCF_ROKS_input():
     with open(
         f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/water_triplet.mol",
         "r",
@@ -59,4 +59,26 @@ def test_write_PySCF_ROKS_input_2():
         "w",
     ) as f:
         f.write(water_triplet_pyscf_str)
+        f.close()
+
+def test_write_PySCF_UKS_input():
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/BIHGEE-S4_opt0.mol",
+        "r",
+    ) as f:
+        BIHGEE_str = f.read()
+        f.close()
+    BIHGEE = Molecule.ReadMolString(BIHGEE_str)
+    BIHGEE.Identifier = "BIHGEE-S4"
+    BIHGEE_pyscf_str = BIHGEE.WritePySCFInput(
+        method="r2SCAN",
+        basisset="def2svp",
+        restricted=False,
+        grid_density=3,
+    )
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/PySCFTests/BIHGEE-S4_calc.py",
+        "w",
+    ) as f:
+        f.write(BIHGEE_pyscf_str)
         f.close()

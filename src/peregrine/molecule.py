@@ -47,6 +47,7 @@ RDKIT_BONDTYPE_TRANSLATION = {
 PYSCF_DFT_FUNCTIONS = {
     "wb97m_v",
     "m06_l",
+    "r2scan"
 }
 
 # === Helper functions ===
@@ -212,7 +213,7 @@ metadata['Multiplicity'] = {int(molObj.Multiplicity)}\n\n"""
 def _PySCFHelper_DefineAndRunCalculation(
     calculation_type: str, method_type: str, restricted_str: str, method: str, grid_density: str, prune_grids: bool,
 ) -> str:
-    pyscf_str = "UNDETERMINED CALCULATION"
+    pyscf_str = "# UNDETERMINED CALCULATION"
     # HF calculations
     if (
         calculation_type == "single point"
@@ -273,10 +274,10 @@ np.savetxt('{molObj.Identifier}_PySCFOutput.fock', F, fmt='%.16e')
         pyscf_str = f"""
 # Write Fock Matrix
 F = pyscfMolObj_calc.get_fock()
-metadata['Alpha Fock Matrix File Name'] = '{molObj.Identifier}-Alpha_PySCFOutput.fock'
-metadata['Beta Fock Matrix File Name'] = '{molObj.Identifier}-Beta_PySCFOutput.fock'
-np.savetxt('{molObj.Identifier}-Alpha_PySCFOutput.fock', F[0], fmt='%.16e')
-np.savetxt('{molObj.Identifier}-Beta_PySCFOutput.fock', F[1], fmt='%.16e')
+metadata['Alpha Fock Matrix File Name'] = '{molObj.Identifier}_PySCFOutput.alpha.fock'
+metadata['Beta Fock Matrix File Name'] = '{molObj.Identifier}_PySCFOutput.beta.fock'
+np.savetxt('{molObj.Identifier}_PySCFOutput.alpha.fock', F[0], fmt='%.16e')
+np.savetxt('{molObj.Identifier}_PySCFOutput.beta.fock', F[1], fmt='%.16e')
 
 """
     return pyscf_str
@@ -1096,6 +1097,8 @@ class Molecule:
         prune_grids: None | bool = True,
     ) -> str:
 
+        pyscf_str = "import time\nstart = time.time()\n"
+
         # Standardise method and basis set names
         method = method.lower()
         method = method.replace("-", "_")
@@ -1112,7 +1115,7 @@ class Molecule:
         )
 
         # Determine imports required for the calculation
-        pyscf_str = _PySCFHelper_DetermineImports(
+        pyscf_str += _PySCFHelper_DetermineImports(
             method_type=method_type,
             get_gradients=get_gradients,
             get_fock_matrix=get_fock_matrix
@@ -1152,6 +1155,9 @@ class Molecule:
             get_fock_matrix=get_fock_matrix,
             restricted=restricted,
         )
+
+        # Get time taken to run program
+        pyscf_str += "end = time.time()\ntime_taken = round(end - start, 2)\nmetadata['Time Taken (s)'] = time_taken\n"
 
         # Write meta data .json file
         pyscf_str += f"# Write metadata to .json file\nwith open('{self.Identifier}_PySCFOutput.meta.json', 'w') as f:\n   json.dump(metadata, f, indent=2)"

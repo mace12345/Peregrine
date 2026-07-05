@@ -1,3 +1,5 @@
+import time
+start = time.time()
 import json
 from pyscf import gto
 from pyscf import scf
@@ -55,6 +57,9 @@ F = pyscfMolObj_calc.get_fock()
 metadata['Fock Matrix File Name'] = 'Benzene_PySCFOutput.fock'
 np.savetxt('Benzene_PySCFOutput.fock', F, fmt='%.16e')
 
+end = time.time()
+time_taken = round(end - start, 2)
+metadata['Time Taken (s)'] = time_taken
 # Write metadata to .json file
 with open('Benzene_PySCFOutput.meta.json', 'w') as f:
    json.dump(metadata, f, indent=2)
