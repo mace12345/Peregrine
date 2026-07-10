@@ -24,6 +24,8 @@ from openbabel import openbabel as ob
 
 from ase import Atoms as aseAtoms
 
+import tblite.interface as tb
+
 from dscribe.descriptors import SOAP
 
 from xyzgraph import build_graph
@@ -656,7 +658,7 @@ class Molecule:
                 )
             if SemiEmpiricalxTBPreOpt == True:
                 component.OptimiseGeometry(
-                    SemiEmpiricalxTB=SemiEmpiricalxTBPreOpt,
+                    xTB_bin=SemiEmpiricalxTBPreOpt,
                 )
             # Convert to xyz file
             xyz_string = component.WriteXYZString()
@@ -813,7 +815,7 @@ class Molecule:
                 float(i) for i in soap.create(aseMolObj, centers=[idx])[0]
             )
 
-    # === Read/Write files & SMILES/SMARTS & convert molecule objects ===
+    # === Read/Write files & SMILES/SMARTS ===
 
     def EquivelentMoleculeInchi(self, SMILES1: str, SMILES2: str) -> bool:
         SMILES1_rdkitObj = Chem.MolFromSmiles(SMILES1)
@@ -1164,6 +1166,8 @@ class Molecule:
 
         return pyscf_str
 
+    # === Convert Molecule Objects ===
+
     def MoleculeToRDKitMol(self):
         pass
 
@@ -1175,6 +1179,8 @@ class Molecule:
         ASEMolecule.info["spin_multiplicity"] = self.Multiplicity
         ASEMolecule.info["charge"] = self.FormalCharge
         return ASEMolecule
+
+    # === Read molecule files ===
 
     @classmethod
     def ReadMolString(cls, mol_string: str) -> "Molecule":
@@ -2083,7 +2089,7 @@ class Molecule:
         for atomObj in self.AtomsList:
             atomObj.Coordinates = atomObj.Coordinates + geometric_midpoint
 
-    # === Optimise Geometries Functions ===
+    # === Optimise Geometries and Calculate Energies Functions ===
 
     def LennardJonesPotential(
         self,
@@ -2281,7 +2287,7 @@ class Molecule:
             atomObj.Coordinates = np.array(ob_atom.coords)
         return ff.Energy()
 
-    def OptimiseGeometry_gxTB(
+    def OptimiseGeometry_xTB_bin(
         self,
         xtb_binary_path: str,
         solvent_model: str | None = None,
@@ -2375,15 +2381,29 @@ $end
             except PermissionError:
                 pass
 
+    def OptimiseGeometry_tblite(
+        self,
+        solvent_model: str | None = None,
+        solvent: str | None = None,
+        opt_tol: str | None = None,
+        opt_cycles: int | None = None,
+        xtb_method: str = "GFN2-xTB",
+        fixed_atoms: list[int] | None = None,
+    ):
+        pass
+
     def OptimiseGeometry(
         self,
         SimpleLennardJonesPotential: bool | None = None,
         SimpleLennardJonesPotential_settings: dict | None = None,
         MolecularMechanics: bool | None = None,
         MolecularMechanics_settings: dict | None = None,
-        SemiEmpiricalxTB: bool | None = None,
-        SemiEmpiricalxTB_settings: dict | None = None,
-        xtb_binary_path: str | None = None,
+        xTB_bin: bool | None = None,
+        xTB_bin_settings: dict | None = None,
+        xTB_bin_path: str | None = None,
+        tblite: bool | None = None,
+        tblite_settings: dict | None = None,
+
     ):
         lj_defaults = {
             "Max Steps": 100,
@@ -2398,7 +2418,7 @@ $end
             "ConstrainedAtomLabels": None,
             "ConstrainedAtomIndices": None,
         }
-        xtb_defaults = {
+        xtb_bin_defaults = {
             "Solvent Model": None,
             "Solvent": None,
             "Optimisation Level": "tight",
@@ -2410,7 +2430,7 @@ $end
 
         lj_settings = {**lj_defaults, **(SimpleLennardJonesPotential_settings or {})}
         mm_settings = {**mm_defaults, **(MolecularMechanics_settings or {})}
-        xtb_settings = {**xtb_defaults, **(SemiEmpiricalxTB_settings or {})}
+        xtb_settings = {**xtb_bin_defaults, **(xTB_bin_settings or {})}
         if SimpleLennardJonesPotential == True:
             self.OptimiseGeometry_SimpleLJ(
                 n_steps=lj_settings["Max Steps"],
@@ -2434,7 +2454,7 @@ $end
                 energy_tol=mm_settings["Max Energy Difference"],
                 force_field=mm_settings["Method"],
             )
-        if SemiEmpiricalxTB == True:
+        if xTB_bin == True:
             if xtb_settings["ConstrainedAtomLabels"] is not None:
                 fixed_atoms = [
                     self.AtomsDict[Label][0]
@@ -2444,8 +2464,8 @@ $end
                 fixed_atoms = mm_settings["ConstrainedAtomIndices"]
             else:
                 fixed_atoms = None
-            self.OptimiseGeometry_gxTB(
-                xtb_binary_path=xtb_binary_path,
+            self.OptimiseGeometry_xTB_bin(
+                xtb_binary_path=xTB_bin_path,
                 solvent_model=xtb_settings["Solvent Model"],
                 solvent=xtb_settings["Solvent"],
                 opt_tol=xtb_settings["Optimisation Level"],
@@ -2453,3 +2473,5 @@ $end
                 xtb_method=xtb_settings["xTB Method"],
                 fixed_atoms=fixed_atoms,
             )
+        if tblite == True:
+            pass

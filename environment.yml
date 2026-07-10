@@ -28,5 +28,7 @@ dependencies:
   - conda
   - dscribe
   - pyscf
+  - tblite-python
+  - pyberny
   - pip:
     - xyzgraph

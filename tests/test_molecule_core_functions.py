@@ -5,11 +5,12 @@ from copy import deepcopy
 from peregrine.molecule import Molecule
 from peregrine.atom import Atom
 
-xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin/"
-xtb_binary_path = "/home/samue/bin/xtb-6.7.1/bin/"
+xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin/"
+#xtb_binary_path = "/home/samue/bin/xtb-6.7.1/bin/"
 
 # TODO: Sort our aromatic representations in SMILES
 
+# === Test edit molecule and other core functions ===
 
 def test_atom_initialization():
     """Test basic atom initialization with required parameters."""
@@ -584,6 +585,8 @@ def test_RemoveMolecule():
         f.close()
 
 
+# === Get Molecule properties ===
+
 def test_AtomIsAromatic():
     with open(
         f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol",
@@ -595,55 +598,6 @@ def test_AtomIsAromatic():
     molObj.GetAromaticAtoms(MolecularMechanicsPreOpt=True)
     assert molObj.AtomsList[1].IsAromatic == True
     assert molObj.AtomsList[7].IsAromatic == False
-
-
-def test_OptimiseGeometry():
-    with open(
-        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol",
-        "r",
-    ) as f:
-        aromatic_sandwich_str = f.read()
-        f.close()
-    aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
-    aromatic_sandwich.OptimiseGeometry(
-        SimpleLennardJonesPotential=True,
-        SimpleLennardJonesPotential_settings={"Max Steps": 150},
-        MolecularMechanics=True,
-        SemiEmpiricalxTB=True,
-        SemiEmpiricalxTB_settings={
-            "Solvent Model": "gbe",
-            "Solvent": "ethanol",
-            "Optimisation Cycles": 2,
-        },
-        xtb_binary_path=xtb_binary_path,
-    )
-    aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
-    with open(
-        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol",
-        "w",
-    ) as f:
-        f.write(aromatic_sandwich_str)
-        f.close()
-
-    # Testing to see openbabel correctly identifies aromatic carbons on benzene before optimsing with UFF
-    aromatic_sandwich.OptimiseGeometry(
-        MolecularMechanics=True,
-    )
-    aromatic_sandwich.GetAromaticAtoms()
-    assert (
-        round(np.rad2deg(aromatic_sandwich.GetBondAngle(AtomIndices=[11, 10, 12])), 0)
-        == 120
-    )
-    aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
-    with open(
-        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwichUFF.mol",
-        "w",
-    ) as f:
-        f.write(aromatic_sandwich_str)
-        f.close()
-
-
-# === Get Molecule properties ===
 
 # === Get atomic descriptors ===
 
@@ -680,9 +634,6 @@ def test_GetSOAPDescriptors():
 
 # === Read/Write files & SMILES/SMARTS & convert molecule objects ===
 
-# === Edit Molecule functions ===
-
-
 def test_MoleculeToASEMolecule():
     with open(
         f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_Gradient-Output/BIHGEE-S4_opt0.mol",
@@ -706,4 +657,60 @@ def test_MoleculeToASEMolecule():
 
 # === Translate and Rotate Molecule ===
 
-# === Optimise Geometries Functions ===
+# === Optimise Molecule Geometries ===
+
+def test_OptimiseGeometry():
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol",
+        "r",
+    ) as f:
+        aromatic_sandwich_str = f.read()
+        f.close()
+    aromatic_sandwich = Molecule.ReadMolString(aromatic_sandwich_str)
+    aromatic_sandwich.OptimiseGeometry(
+        SimpleLennardJonesPotential=True,
+        SimpleLennardJonesPotential_settings={"Max Steps": 150},
+        MolecularMechanics=True,
+        xTB_bin=True,
+        xTB_bin_settings={
+            "Solvent Model": "gbe",
+            "Solvent": "ethanol",
+            "Optimisation Cycles": 2,
+        },
+        xTB_bin_path=xtb_binary_path,
+    )
+    aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol",
+        "w",
+    ) as f:
+        f.write(aromatic_sandwich_str)
+        f.close()
+
+    # Testing to see openbabel correctly identifies aromatic carbons on benzene before optimsing with UFF
+    aromatic_sandwich.OptimiseGeometry(
+        MolecularMechanics=True,
+    )
+    aromatic_sandwich.GetAromaticAtoms()
+    assert (
+        round(np.rad2deg(aromatic_sandwich.GetBondAngle(AtomIndices=[11, 10, 12])), 0)
+        == 120
+    )
+    aromatic_sandwich_str = aromatic_sandwich.WriteMolString()
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwichUFF.mol",
+        "w",
+    ) as f:
+        f.write(aromatic_sandwich_str)
+        f.close()
+
+
+def test_OptimiseGeometry_tblite():
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/AtomicDescriptors/CoIILig-S2_SOAP-5-2-2/BIHGEE-S4_opt0.mol",
+        "r",
+    ) as f:
+        molecule_str = f.read()
+        f.close()
+    molObj = Molecule.ReadMolString(molecule_str)
+    molObj.OptimiseGeometry_tblite()

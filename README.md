@@ -35,18 +35,20 @@ Make sure the pathway to the xtb binary is set.
 # Description of Dependencies
 
 ## Chemistry Related Dependencies
-__RDKit__ is a critical package that would be very hard to replace. Very good at handling if `smiles` and `SMARTS` strings, machine readable information for chemical structures. Has atom mapping caperbilities, heavily utilised in this project by mapping `SMARTS` that is used build transition states with the `Molecule` class.
+__RDKit__ is a critical package that would be very hard to replace. Very good at handling if `smiles` and `SMARTS` strings, machine readable information for chemical structures. Has atom mapping capabilities, heavily utilised in this project by mapping `SMARTS` that is used build transition states with the `Molecule` class.
 
-__Openbabel__ has extreamly useful functionality for assigning 3D coordinates to `smiles` strings and thus converting them to `.xyz` files or our prefered file `.mol2` files. `.mol2` files are very useful sincy they contain not only the cartesian coordinates of the atoms but also the bonding, and atom properties information. Openbabel has optimising functions to optimise molecules with the Universal Force Field (UFF).
+__Openbabel__ has extremely useful functionality for assigning 3D coordinates to `smiles` strings and thus converting them to `.xyz` files or our preferred file `.mol2` files. `.mol2` files are very useful since they contain not only the cartesian coordinates of the atoms but also the bonding, and atom properties information. Openbabel has optimising functions to optimise molecules with the Universal Force Field (UFF).
 
-__xyzgraph__ and __RCgraph__ are excellent packages developed by Alister Goodfellow, really handy for characterising transtion states and assigning bonds to XYZ coordinates.
+__xyzgraph__ and __RCgraph__ are excellent packages developed by Alister Goodfellow, really handy for characterising transition states and assigning bonds to XYZ coordinates.
 
 __ASE__ (Atomic Simulation Environment) Can be thought of as an adapter for linking packages that calculate molecular properties to interface with python. For example, it can interface with xTB to optimise molecules, or maybe a Machine Learning Potential (MLP). It would be faster to interface with xTB direct in the command line but ASE can do constrained optimisations and Nudge Elastic Band (NEB) calculations to find Transition States (TS).
 
-__PySCF__ can run all sorts of quantum chemical calculations and is highly customisable. Only works on linux, so if useing windows please use __wsl__ to run __PySCF__.
+__PySCF__ can run all sorts of quantum chemical calculations and is highly customisable. Only works on linux, so if using windows please use __wsl__ to run __PySCF__.
+
+__tblite__ can run xtb calculations very quickly with the added benefit of retrieving the matrices used to perform the calculations.
 
 ## Python Classics
-__Numpy__, __Pandas__, and __Matplotlib__ are the holy trinity of basic scientific python programming. Numpy and pandas are by far the most useful, matplotlib is occasionally used to visulise results and trying to understand certain problems better but it is not integral for the project at all. But I like to have it installed just incase.
+__Numpy__, __Pandas__, and __Matplotlib__ are the holy trinity of basic scientific python programming. Numpy and pandas are by far the most useful, matplotlib is occasionally used to visualise results and trying to understand certain problems better but it is not integral for the project at all. But I like to have it installed just in case.
 
 ## Add ons that may or may not be useful in the final product
 __Scipy__ and __scikit-learn__
