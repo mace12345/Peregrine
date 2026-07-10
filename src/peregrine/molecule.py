@@ -25,6 +25,7 @@ from openbabel import openbabel as ob
 from ase import Atoms as aseAtoms
 
 import tblite.interface as tb
+from berny import Berny, geomlib, angstrom
 
 from dscribe.descriptors import SOAP
 
@@ -403,6 +404,7 @@ class Molecule:
                 raise ValueError("No atoms in AtomsList")
 
         # Calculated Attributes
+        self.calculation_method: str | None = None
         self.num_basis_functions: int | None = None
         self.electronic_energy: float | None = None
         self.enthalpy: float | None = None
@@ -618,7 +620,7 @@ class Molecule:
                 continue
             else:
                 unpaired_electrons += (atomObj.Multiplicity - 1) / 2
-        self.Multiplicity = (2 * unpaired_electrons) + 1
+        self.Multiplicity = int((2 * unpaired_electrons) + 1)
 
     def GetCentreOfMass(self) -> np.ndarray:
         centre = np.array([0.0, 0.0, 0.0])
@@ -2089,7 +2091,7 @@ class Molecule:
         for atomObj in self.AtomsList:
             atomObj.Coordinates = atomObj.Coordinates + geometric_midpoint
 
-    # === Optimise Geometries and Calculate Energies Functions ===
+    # === Optimise Geometries and Calculate Energies ===
 
     def LennardJonesPotential(
         self,
@@ -2350,6 +2352,7 @@ $end
             encoding="utf-8",
             cwd=f"{Path(__file__).parent}",
         )
+        print(result.stdout)
         if result.returncode != 0:
             print(result.stderr)
             return result.stdout
@@ -2388,9 +2391,78 @@ $end
         opt_tol: str | None = None,
         opt_cycles: int | None = None,
         xtb_method: str = "GFN2-xTB",
-        fixed_atoms: list[int] | None = None,
-    ):
-        pass
+        save_trajectory: bool = False,
+    ) -> list["Molecule"] | None:
+        # Write temp xyz file
+        xyz_string = self.WriteXYZString()
+        with open(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz", "w") as f:
+            f.write(xyz_string)
+            f.close()
+        
+        # Read in coordinates for pyberny
+        optimizer = Berny(geomlib.readfile(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz"))
+        os.remove(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz")
+        geom = next(optimizer)
+        elements = [symbol for symbol, _ in geom]
+        initial_coordinates = np.asarray([coordinate for _, coordinate in geom])
+
+        # Initialise calculation
+        xtb = tb.Calculator(xtb_method, tb.symbols_to_numbers(elements), initial_coordinates * angstrom)
+        xtb.update(charge=self.FormalCharge)
+        xtb.update(uhf=self.Multiplicity-1)
+        if solvent != None and solvent_model != None:
+            xtb.add(solvent_model, solvent)
+        xtb.set("verbosity", 0)
+        results = xtb.singlepoint()
+        initial_energy = results["energy"]
+        initial_gradient = results["gradient"]
+
+        # Optimise Geometry
+        trajectory = [(initial_energy, initial_gradient, initial_coordinates)]
+        num_opts = 0
+        prev_en = initial_energy
+        for geom in optimizer:
+            coordinates = np.asarray([coordinate for _, coordinate in geom])
+            xtb.update(positions=coordinates * angstrom)
+            results = xtb.singlepoint(results)
+            energy = results["energy"]
+            gradient = results["gradient"]
+            optimizer.send((energy, gradient / angstrom))
+            trajectory.append((energy, gradient, coordinates))
+            num_opts += 1
+            if opt_cycles is not None:
+                if num_opts >= opt_cycles:
+                    break
+            if opt_tol is not None:
+                if prev_en - energy < opt_tol and num_opts > 2:
+                    break
+            prev_en = energy
+        
+        # Retrieve final geometry
+        final_geom = trajectory[-1]
+        self.electronic_energy = final_geom[0]
+        self.calculation_method = xtb_method
+        for atomObj, coor, grad in zip(self.AtomsList, final_geom[2], final_geom[1]):
+            atomObj.Coordinates = coor
+            atomObj.Gradient = grad
+
+        # Return optimisation trajectory
+        if save_trajectory == True:
+            traj_molObj_list = []
+            opt_num = 0
+            for traj in trajectory:
+                molObj_copy = deepcopy(self)
+                molObj_copy.electronic_energy = traj[0]
+                molObj_copy.calculation_method = xtb_method
+                for atomObj, coor, grad in zip(molObj_copy.AtomsList, traj[2], traj[1]):
+                    atomObj.Coordinates = coor
+                    atomObj.Gradient = grad
+                molObj_copy.Identifier = f"{self.Identifier}_opt{opt_num}"
+                opt_num += 1
+                traj_molObj_list.append(molObj_copy)
+            return traj_molObj_list
+        else:
+            return None                
 
     def OptimiseGeometry(
         self,
@@ -2475,3 +2547,11 @@ $end
             )
         if tblite == True:
             pass
+
+    # === Construct Transition State ===
+
+    def ConstructTS(
+        self,
+        SMILES: list[str],
+    ) -> list["Molecule"]:
+        pass

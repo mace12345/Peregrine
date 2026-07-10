@@ -713,4 +713,41 @@ def test_OptimiseGeometry_tblite():
         molecule_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molecule_str)
-    molObj.OptimiseGeometry_tblite()
+    for atomObj in molObj.AtomsList:
+        atomObj.SOAPDescriptor = None
+    molObj_copy = deepcopy(molObj)
+    """molObj.Identifier = "BIHGEE-S2"
+    molObj.OptimiseGeometry_tblite(
+        solvent_model="alpb-solvation",
+        solvent="water",
+        opt_cycles=10,
+    )
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/tbliteTests/BIHGEE-S2_opt.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()"""
+
+    molObj = molObj_copy
+    molObj.AtomsList[0].Multiplicity = 4
+    molObj.Identifier = "BIHGEE-S4"
+    molObj_traj_list = molObj.OptimiseGeometry_tblite(
+        solvent_model="alpb-solvation",
+        solvent="water",
+        opt_tol=1e-6,
+        save_trajectory=True,
+    )
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/tbliteTests/BIHGEE-S4_opt.mol",
+        "w",
+    ) as f:
+        f.write(molObj.WriteMolString())
+        f.close()
+    for traj_molObj in molObj_traj_list:
+        with open(
+            f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/tbliteTests/{traj_molObj.Identifier}.mol",
+            "w",
+        ) as f:
+            f.write(traj_molObj.WriteMolString())
+            f.close()
