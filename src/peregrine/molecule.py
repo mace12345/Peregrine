@@ -2345,6 +2345,11 @@ $end
                 "--cycles",
                 str(opt_cycles),
             ]
+        cmd += [
+            "-v",
+            ">",
+            "xtb.out",
+        ]
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -2352,7 +2357,6 @@ $end
             encoding="utf-8",
             cwd=f"{Path(__file__).parent}",
         )
-        print(result.stdout)
         if result.returncode != 0:
             print(result.stderr)
             return result.stdout
@@ -2553,5 +2557,7 @@ $end
     def ConstructTS(
         self,
         SMILES: list[str],
+        construct_NEB: bool = False,
+        optimise_TS: bool = False,
     ) -> list["Molecule"]:
         pass

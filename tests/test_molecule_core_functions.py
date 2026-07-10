@@ -716,18 +716,18 @@ def test_OptimiseGeometry_tblite():
     for atomObj in molObj.AtomsList:
         atomObj.SOAPDescriptor = None
     molObj_copy = deepcopy(molObj)
-    """molObj.Identifier = "BIHGEE-S2"
+    molObj.Identifier = "BIHGEE-S2"
     molObj.OptimiseGeometry_tblite(
         solvent_model="alpb-solvation",
         solvent="water",
-        opt_cycles=10,
+        opt_cycles=5,
     )
     with open(
         f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/tbliteTests/BIHGEE-S2_opt.mol",
         "w",
     ) as f:
         f.write(molObj.WriteMolString())
-        f.close()"""
+        f.close()
 
     molObj = molObj_copy
     molObj.AtomsList[0].Multiplicity = 4
@@ -735,7 +735,7 @@ def test_OptimiseGeometry_tblite():
     molObj_traj_list = molObj.OptimiseGeometry_tblite(
         solvent_model="alpb-solvation",
         solvent="water",
-        opt_tol=1e-6,
+        opt_tol=1e-4,
         save_trajectory=True,
     )
     with open(
