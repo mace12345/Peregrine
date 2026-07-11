@@ -558,7 +558,7 @@ class Molecule:
         if CheckMolObj == True:
             if self.BondOrderMatrix.shape != (self.NumberOfAtoms, self.NumberOfAtoms):
                 raise ValueError(
-                    f"bond_matrix shape {self.bond_matrix.shape} does not match number of atoms ({self.NumberOfAtoms})"
+                    f"BondOrderMatrix shape {self.BondOrderMatrix.shape} does not match number of atoms ({self.NumberOfAtoms})"
                 )
             if not np.array_equal(self.BondOrderMatrix, self.BondOrderMatrix.T):
                 raise ValueError("bond_matrix must be symmetric")
@@ -943,6 +943,21 @@ class Molecule:
         # Calculate angle in radians
         return np.arccos(cos_angle)
 
+    def AtomicSymbolCount(self, AtomicSymbol: str) -> int:
+        atom_count = 0
+        for atomObj in self.AtomsList:
+            if AtomicSymbol == atomObj.AtomicSymbol:
+                atom_count += 1
+        return atom_count
+
+    def MetalAtomCount(self) -> int:
+        metal_atom_count = 0
+        for atomObj in self.AtomsList:
+            if atomObj.IsMetal == True:
+                metal_atom_count += 1
+        return metal_atom_count
+
+    
     # === Get atomic descriptors ===
 
     def GetSOAPDescriptors(
@@ -1629,11 +1644,26 @@ class Molecule:
             bond_order_matrix = np.array([[0]])
 
         # Create Molecule object
-        mol_obj = cls(
-            Identifier=identifier,
-            AtomsList=atoms_list,
-            BondOrderMatrix=bond_order_matrix,
-        )
+        if len(atoms_list) == 1:
+            mol_obj = cls(
+                Identifier=identifier,
+                AtomsList=atoms_list,
+                BondOrderMatrix=None,
+            )
+        elif bond_order_matrix.sum().sum() == 0 and len(atoms_list) > 1:
+            mol_obj = cls(
+                Identifier=identifier,
+                AtomsList=atoms_list,
+                BondOrderMatrix=None,
+            )
+        elif len(atoms_list) > 1:
+            mol_obj = cls(
+                Identifier=identifier,
+                AtomsList=atoms_list,
+                BondOrderMatrix=bond_order_matrix,
+            )
+        else:
+            return None
 
         # Handle multiplicities if present in mol2 string
         if "Multiplicities: " in molucule_info_string:

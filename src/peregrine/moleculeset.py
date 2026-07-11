@@ -68,6 +68,8 @@ class MoleculeSet:
         molecule_list = []
         for molecule_string in molecule_string_list:
             mol_obj = Molecule.ReadMol2String(molecule_string)
+            if mol_obj is None:
+                continue
             molecule_list.append(mol_obj)
         # Store molecules in dictionary
         self.MoleculesDict = {mol.Identifier: mol for mol in molecule_list}

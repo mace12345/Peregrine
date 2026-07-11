@@ -469,6 +469,126 @@ ATOMIC_VALENCE_ELECTRON_COUNT = {
     "Og": 8,
 }
 
+BOOL_METAL = {
+    "H": False,
+    "He": False,
+    "Li": True,
+    "Be": True,
+    "B": False,
+    "C": False,
+    "N": False,
+    "O": False,
+    "F": False,
+    "Ne": False,
+    "Na": True,
+    "Mg": True,
+    "Al": True,
+    "Si": False,
+    "P": False,
+    "S": False,
+    "Cl": False,
+    "Ar": False,
+    "K": True,
+    "Ca": True,
+    "Sc": True,
+    "Ti": True,
+    "V": True,
+    "Cr": True,
+    "Mn": True,
+    "Fe": True,
+    "Co": True,
+    "Ni": True,
+    "Cu": True,
+    "Zn": True,
+    "Ga": True,
+    "Ge": True,
+    "As": False,
+    "Se": False,
+    "Br": False,
+    "Kr": False,
+    "Rb": True,
+    "Sr": True,
+    "Y": True,
+    "Zr": True,
+    "Nb": True,
+    "Mo": True,
+    "Tc": True,
+    "Ru": True,
+    "Rh": True,
+    "Pd": True,
+    "Ag": True,
+    "Cd": True,
+    "In": True,
+    "Sn": True,
+    "Sb": True,
+    "Te": False,
+    "I": False,
+    "Xe": False,
+    "Cs": True,
+    "Ba": True,
+    "La": True,
+    "Ce": True,
+    "Pr": True,
+    "Nd": True,
+    "Pm": True,
+    "Sm": True,
+    "Eu": True,
+    "Gd": True,
+    "Tb": True,
+    "Dy": True,
+    "Ho": True,
+    "Er": True,
+    "Tm": True,
+    "Yb": True,
+    "Lu": True,
+    "Hf": True,
+    "Ta": True,
+    "W": True,
+    "Re": True,
+    "Os": True,
+    "Ir": True,
+    "Pt": True,
+    "Au": True,
+    "Hg": True,
+    "Tl": True,
+    "Pb": True,
+    "Bi": True,
+    "Po": True,
+    "At": False,
+    "Rn": False,
+    "Fr": True,
+    "Ra": True,
+    "Ac": True,
+    "Th": True,
+    "Pa": True,
+    "U": True,
+    "Np": True,
+    "Pu": True,
+    "Am": True,
+    "Cm": True,
+    "Bk": True,
+    "Cf": True,
+    "Es": True,
+    "Fm": True,
+    "Md": True,
+    "No": True,
+    "Lr": True,
+    "Rf": True,
+    "Db": True,
+    "Sg": True,
+    "Bh": True,
+    "Hs": True,
+    "Mt": True,
+    "Ds": True,
+    "Rg": True,
+    "Cn": True,
+    "Nh": True,
+    "Fl": True,
+    "Mc": True,
+    "Lv": True,
+    "Ts": True,
+    "Og": False,
+}
 
 class Atom:
     def __init__(
@@ -558,9 +678,18 @@ class Atom:
             - Typically only needed if you modify the ATOMIC_MASSES or ATOMIC_NUMBERS
               dictionaries after instantiation.
         """
-        self.AtomicMass = ATOMIC_MASSES[self.AtomicSymbol]
-        self.AtomicNumber = ATOMIC_NUMBERS[self.AtomicSymbol]
-        self.AtomicRadii = ATOMIC_VDW_RADII[self.AtomicSymbol]
-        self.AtomicValenceElectronCount = ATOMIC_VALENCE_ELECTRON_COUNT[
-            self.AtomicSymbol
-        ]
+        if self.AtomicSymbol not in ATOMIC_MASSES and self.AtomicSymbol == "Du":
+            # Dummy atom from a CSD file, ignore
+            self.AtomicMass = 0
+            self.AtomicNumber = 0
+            self.AtomicRadii = 0
+            self.AtomicValenceElectronCount = 0
+            self.IsMetal = None
+        else:
+            self.AtomicMass = ATOMIC_MASSES[self.AtomicSymbol]
+            self.AtomicNumber = ATOMIC_NUMBERS[self.AtomicSymbol]
+            self.AtomicRadii = ATOMIC_VDW_RADII[self.AtomicSymbol]
+            self.AtomicValenceElectronCount = ATOMIC_VALENCE_ELECTRON_COUNT[
+                self.AtomicSymbol
+            ]
+            self.IsMetal = BOOL_METAL[self.AtomicSymbol]
