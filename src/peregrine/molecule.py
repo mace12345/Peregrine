@@ -33,6 +33,12 @@ from xyzgraph import build_graph
 
 from .atom import Atom
 
+# === Important Conversions ===
+
+eV_to_Eh = 27.211407953
+
+# === Useful Dictionarys ==
+
 RDKIT_BONDTYPE_TRANSLATION = {
     1: Chem.BondType.SINGLE,
     1.5: Chem.BondType.AROMATIC,
@@ -47,18 +53,29 @@ RDKIT_BONDTYPE_TRANSLATION = {
     6: Chem.BondType.HEXTUPLE,
 }
 
-PYSCF_DFT_FUNCTIONS = {
-    "wb97m_v",
-    "m06_l",
-    "r2scan"
-}
+PYSCF_DFT_FUNCTIONS = {"wb97m_v", "m06_l", "r2scan"}
 
 # === Helper functions ===
 
 
-def _XYZBlockToAtomsList(
+def _ORCAHelper_XYZBlockToAtomsList(
     xyz_block: str, template_molObj: "Molecule | None" = None
 ) -> tuple[list[Atom], int]:
+    """
+    Parse an XYZ coordinate block into a list of Atom objects.
+
+    Args:
+        xyz_block: A string containing XYZ-format coordinates. Each non-empty
+            line should contain an atomic symbol followed by x, y, and z
+            coordinates.
+        template_molObj: Optional molecule used as a template for copying
+            formal charge and multiplicity values onto the generated atoms.
+
+    Returns:
+        A tuple containing:
+            - A list of Atom objects created from the XYZ data.
+            - The number of atoms parsed from the block.
+    """
     symbols = []
     coords = []
     for line in xyz_block.split("\n"):
@@ -90,7 +107,20 @@ def _XYZBlockToAtomsList(
     return AtomsList, len(AtomsList)
 
 
-def _GradBlockInToAtomsList(AtomsList: list[Atom], grad_block: str) -> list[Atom]:
+def _ORCAHelper_GradBlockInToAtomsList(
+    AtomsList: list[Atom], grad_block: str
+) -> list[Atom]:
+    """
+    Populate atomic gradients from a gradient block.
+
+    Args:
+        AtomsList: The list of Atom objects to update.
+        grad_block: A string containing gradient data, where each line provides
+            an atom index and its x, y, and z gradient components.
+
+    Returns:
+        The same list of Atom objects with each atom's Gradient attribute set.
+    """
     for line in grad_block.split("\n"):
         line = line.split()
         idx = int(line[0]) - 1
@@ -104,7 +134,24 @@ def _GradBlockInToAtomsList(AtomsList: list[Atom], grad_block: str) -> list[Atom
     return AtomsList
 
 
-def _BondBlockToBondOrderMatrix(bond_block: str, AtomsListLen: int) -> np.ndarray:
+def _ORCAHelper_BondBlockToBondOrderMatrix(
+    bond_block: str, AtomsListLen: int
+) -> np.ndarray:
+    """
+    Build a bond-order matrix from a bond block string.
+
+    Args:
+        bond_block: A string containing bond information in the format used by
+            the ORCA-style bond block.
+        AtomsListLen: The number of atoms in the molecule, used to size the
+            output matrix.
+
+    Returns:
+        A tuple containing:
+            - A symmetric bond-order matrix with bond orders assigned between
+              atom pairs.
+            - The number of bonds parsed from the bond block.
+    """
     BondOrderMatrix = np.zeros((AtomsListLen, AtomsListLen))
     bonds_list = bond_block.split("B(")[1:]
     for line in bonds_list:
@@ -119,7 +166,22 @@ def _BondBlockToBondOrderMatrix(bond_block: str, AtomsListLen: int) -> np.ndarra
     return BondOrderMatrix, len(bonds_list)
 
 
-def _GetCalculatedEnergies(orca_string: str, check_final_energies: bool) -> dict:
+def _ORCAHelper_GetCalculatedEnergies(
+    orca_string: str, check_final_energies: bool
+) -> dict:
+    """
+    Extract calculated energy values from an ORCA output string.
+
+    Args:
+        orca_string: The full ORCA output text to parse.
+        check_final_energies: Whether to also extract final thermochemical
+            quantities such as enthalpy, entropy, and Gibbs free energy.
+
+    Returns:
+        dict: A dictionary containing the extracted energy values under the
+        keys "Electronic Energy", "Enthalpy", "Entropy", and
+        "Gibbs Free Energy". Any unavailable value is left as None.
+    """
     en_output_dict = {
         "Electronic Energy": None,
         "Enthalpy": None,
@@ -154,6 +216,16 @@ def _GetCalculatedEnergies(orca_string: str, check_final_energies: bool) -> dict
 
 
 def _PySCFHelper_DetermineMethodType(method: str) -> str:
+    """
+    Determine the PySCF method category for a given quantum chemistry method.
+
+    Args:
+        method: The method name to classify, such as "hf" or a DFT functional.
+
+    Returns:
+        str: The method category as either "DFT" or "HF". Returns None if the
+        method is not recognized.
+    """
     method_type = None
     if method in PYSCF_DFT_FUNCTIONS:
         method_type = "DFT"
@@ -162,7 +234,22 @@ def _PySCFHelper_DetermineMethodType(method: str) -> str:
     return method_type
 
 
-def _PySCFHelper_DetermineRestriction(restricted: bool, method_type: str, Multiplicity: int) -> str:
+def _PySCFHelper_DetermineRestriction(
+    restricted: bool, method_type: str, Multiplicity: int
+) -> str:
+    """
+    Determine the appropriate PySCF restriction string for a calculation.
+
+    Args:
+        restricted: Whether the calculation should use a restricted formalism.
+        method_type: The method category, either "HF" or "DFT".
+        Multiplicity: The spin multiplicity of the molecule.
+
+    Returns:
+        str: The corresponding PySCF restriction label, such as "UHF", "ROHF",
+        "RHF", "UKS", "ROKS", or "RKS". Returns "UNDETERMINED_RESTRICTION"
+        if no matching case is found.
+    """
     restricted_str = "UNDETERMINED_RESTRICTION"
     if restricted == False and method_type == "HF":
         restricted_str = "UHF"
@@ -179,7 +266,21 @@ def _PySCFHelper_DetermineRestriction(restricted: bool, method_type: str, Multip
     return restricted_str
 
 
-def _PySCFHelper_DetermineImports(method_type: str, get_gradients: bool, get_fock_matrix: bool) -> str:
+def _PySCFHelper_DetermineImports(
+    method_type: str, get_gradients: bool, get_fock_matrix: bool
+) -> str:
+    """
+    Build the import section for a PySCF input script.
+
+    Args:
+        method_type: The method category, either "HF" or "DFT".
+        get_gradients: Whether gradient-related imports are required.
+        get_fock_matrix: Whether Fock matrix support and NumPy imports are required.
+
+    Returns:
+        str: A string containing the necessary Python import statements and an
+        initial metadata dictionary definition.
+    """
     pyscf_str = "import json\nfrom pyscf import gto\n"
     if method_type == "HF":
         pyscf_str += "from pyscf import scf\n"
@@ -193,7 +294,29 @@ def _PySCFHelper_DetermineImports(method_type: str, get_gradients: bool, get_foc
     return pyscf_str
 
 
-def _PySCFHelper_DefineMolecule(molObj: "Molecule", basisset: str, max_memory: int, method_type: str, restricted_str: str, method: str) -> str:
+def _PySCFHelper_DefineMolecule(
+    molObj: "Molecule",
+    basisset: str,
+    max_memory: int,
+    method_type: str,
+    restricted_str: str,
+    method: str,
+) -> str:
+    """
+    Build the PySCF molecule-definition block for a calculation script.
+
+    Args:
+        molObj: The Molecule object whose geometry and properties will be used.
+        basisset: The basis set name to use for the calculation.
+        max_memory: Maximum memory in megabytes for the PySCF calculation.
+        method_type: The method category, such as "HF" or "DFT".
+        restricted_str: The PySCF restriction label, such as "RHF" or "UKS".
+        method: The specific electronic-structure method name.
+
+    Returns:
+        str: A string containing the PySCF molecule setup code and metadata
+        assignments for the calculation.
+    """
     return f"""# Define Molecule
 pyscfMolObj = gto.Mole(
     atom='''{molObj.WriteXYZBlock()}''',
@@ -214,14 +337,35 @@ metadata['Multiplicity'] = {int(molObj.Multiplicity)}\n\n"""
 
 
 def _PySCFHelper_DefineAndRunCalculation(
-    calculation_type: str, method_type: str, restricted_str: str, method: str, grid_density: str, prune_grids: bool,
+    calculation_type: str,
+    method_type: str,
+    restricted_str: str,
+    method: str,
+    grid_density: str,
+    prune_grids: bool,
 ) -> str:
+    """
+    Construct the PySCF calculation block for a supported electronic-structure run.
+
+    Args:
+        calculation_type: The type of calculation to define, such as
+            "single point".
+        method_type: The method category, either "HF" or "DFT".
+        restricted_str: The PySCF restriction string to use for the
+            calculation, such as "RHF", "UHF", or "RKS".
+        method: The underlying method or functional name, such as "hf" or a
+            DFT functional.
+        grid_density: The integration-grid density to use for DFT calculations.
+        prune_grids: Whether to prune the integration grid for DFT calculations.
+
+    Returns:
+        str: A string containing the PySCF code block that initializes the
+        calculation, runs the kernel, and records energy-related metadata.
+        Returns a placeholder string for unsupported calculation types.
+    """
     pyscf_str = "# UNDETERMINED CALCULATION"
     # HF calculations
-    if (
-        calculation_type == "single point"
-        and method_type == "HF"
-    ):
+    if calculation_type == "single point" and method_type == "HF":
         pyscf_str = f"""pyscfMolObj_calc = scf.{restricted_str}(pyscfMolObj)
 pyscfMolObj_calc.kernel()
 metadata['AO Labels'] = pyscfMolObj.ao_labels()
@@ -231,10 +375,7 @@ metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscf
 metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
 """
     # DFT Calculations
-    elif (
-        calculation_type == "single point"
-        and method_type == "DFT"
-    ):
+    elif calculation_type == "single point" and method_type == "DFT":
         pyscf_str = f"""pyscfMolObj_calc = dft.{restricted_str}(pyscfMolObj)
 pyscfMolObj_calc.xc = '{method}'
 pyscfMolObj_calc.grids.level = {grid_density}
@@ -255,6 +396,21 @@ def _PySCFHelper_GetFockMatrix(
     get_fock_matrix: bool,
     restricted: bool,
 ) -> str:
+    """
+    Construct a PySCF code block for exporting the Fock matrix.
+
+    Args:
+        molObj: The Molecule object used to name the output files.
+        calculation_type: The type of calculation being generated, such as
+            "single point".
+        get_fock_matrix: Whether Fock-matrix output should be included.
+        restricted: Whether the calculation uses a restricted formalism.
+
+    Returns:
+        str: A string containing the PySCF code needed to write the Fock matrix
+        to one or two output files, or a placeholder message when Fock-matrix
+        output is not requested.
+    """
     pyscf_str = "# No fock matrix was returned"
     if (
         calculation_type == "single point"
@@ -290,11 +446,20 @@ def _PySCFHelper_GetGradients(
     calculation_type: str,
     get_gradients: bool,
 ) -> str:
+    """
+    Construct a PySCF code block for computing atomic gradients.
+
+    Args:
+        calculation_type: The type of calculation being generated, such as
+            "single point".
+        get_gradients: Whether gradient output should be included.
+
+    Returns:
+        str: A string containing the PySCF code needed to compute and store
+        atomic gradients, or a placeholder message when gradients are not requested.
+    """
     pyscf_str = "# No atomic force gradients returned"
-    if (
-        calculation_type == "single point"
-        and get_gradients == True
-    ):
+    if calculation_type == "single point" and get_gradients == True:
         pyscf_str = """
 # Get Gradients
 g = pyscfMolObj_calc.Gradients()
@@ -916,6 +1081,8 @@ class Molecule:
                 idx += 1
         mol_str += "M V30 END BOND\nM V30 END CTAB\nM END\n"
         # Add properties
+        if self.calculation_method is not None:
+            mol_str += f"> <Calculation Method>\n{self.calculation_method}\n"
         if self.electronic_energy is not None:
             mol_str += f"> <Electronic Energy (Eh)>\n{self.electronic_energy}\n"
         if self.gibbs_free_energy is not None:
@@ -1090,13 +1257,13 @@ class Molecule:
 
     def WritePySCFInput(
         self,
-        method: str =  "hf",
+        method: str = "hf",
         basisset: str = "def2svp",
         restricted: bool = True,
         calculation_type: str = "single point",
         get_gradients: bool = True,
         get_fock_matrix: bool = True,
-        max_memory: int = 1000, # in MB
+        max_memory: int = 1000,  # in MB
         grid_density: int = 5,
         prune_grids: None | bool = True,
     ) -> str:
@@ -1122,7 +1289,7 @@ class Molecule:
         pyscf_str += _PySCFHelper_DetermineImports(
             method_type=method_type,
             get_gradients=get_gradients,
-            get_fock_matrix=get_fock_matrix
+            get_fock_matrix=get_fock_matrix,
         )
 
         # Declare atoms and basis set
@@ -1325,6 +1492,7 @@ class Molecule:
 
         # Parse for molecule properties
         property_map = {
+            "> <Calculation Method>": "calculation_method",
             "> <Electronic Energy (Eh)>": "electronic_energy",
             "> <Gibbs Free Energy (Eh)>": "gibbs_free_energy",
             "> <Enthalpy (Eh)>": "enthalpy",
@@ -1563,14 +1731,18 @@ class Molecule:
             xyz_block = opt_step.rpartition(
                 "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
             )[2].partition("\n\n")[0]
-            AtomsList, NumberOfAtoms = _XYZBlockToAtomsList(xyz_block, template_molObj)
+            AtomsList, NumberOfAtoms = _ORCAHelper_XYZBlockToAtomsList(
+                xyz_block, template_molObj
+            )
             # Get Mayer bond orders
             if template_molObj is None:
                 parts = opt_step.split("Mayer bond orders larger than 0.100000")
                 if len(parts) > 1:
                     bond_block = parts[-1].split("\n\n")[0]
-                    BondOrderMatrix, NumberOfBonds = _BondBlockToBondOrderMatrix(
-                        bond_block, len(AtomsList)
+                    BondOrderMatrix, NumberOfBonds = (
+                        _ORCAHelper_BondBlockToBondOrderMatrix(
+                            bond_block, len(AtomsList)
+                        )
                     )
                     prev_BondOrderMatrix = BondOrderMatrix
                     prev_NumberOfBonds = NumberOfBonds
@@ -1584,7 +1756,7 @@ class Molecule:
             parts = opt_step.split("CARTESIAN GRADIENT\n------------------\n\n")
             if len(parts) > 1:
                 grad_block = parts[-1].split("\n\n", 1)[0]
-                AtomsList = _GradBlockInToAtomsList(AtomsList, grad_block)
+                AtomsList = _ORCAHelper_GradBlockInToAtomsList(AtomsList, grad_block)
             molObj = Molecule(
                 Identifier=f"{Identifier}_opt{opt_step_idx}",
                 AtomsList=AtomsList,
@@ -1603,7 +1775,7 @@ class Molecule:
             # Get molecule energies
             if opt_step_idx + 1 == num_opt_step:
                 check_final_energies = True
-            calc_en_dict = _GetCalculatedEnergies(
+            calc_en_dict = _ORCAHelper_GetCalculatedEnergies(
                 opt_step, check_final_energies=check_final_energies
             )
             molObj.electronic_energy = calc_en_dict["Electronic Energy"]
@@ -2397,23 +2569,45 @@ $end
         xtb_method: str = "GFN2-xTB",
         save_trajectory: bool = False,
     ) -> list["Molecule"] | None:
+        """
+        Optimize a molecule geometry with the tblite/xTB interface.
+
+        Args:
+            solvent_model: Optional solvent model name for the calculation
+                ("alpb-solvation", "gbsa-solvation", "cosmo-solvation",
+                "cpcm-solvation", "pcm-solvation").
+            solvent: Optional solvent name to use with the selected solvent model.
+            opt_tol: Optional convergence tolerance for the optimization.
+            opt_cycles: Optional maximum number of optimization cycles.
+            xtb_method: The xTB method to use, such as "GFN2-xTB".
+            save_trajectory: Whether to return the full optimization trajectory as
+                a list of Molecule objects.
+
+        Returns:
+            list[Molecule] | None: A list of molecule snapshots from the optimization
+            trajectory if save_trajectory is True; otherwise None.
+        """
         # Write temp xyz file
         xyz_string = self.WriteXYZString()
         with open(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz", "w") as f:
             f.write(xyz_string)
             f.close()
-        
+
         # Read in coordinates for pyberny
-        optimizer = Berny(geomlib.readfile(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz"))
+        optimizer = Berny(
+            geomlib.readfile(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz")
+        )
         os.remove(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz")
         geom = next(optimizer)
         elements = [symbol for symbol, _ in geom]
         initial_coordinates = np.asarray([coordinate for _, coordinate in geom])
 
         # Initialise calculation
-        xtb = tb.Calculator(xtb_method, tb.symbols_to_numbers(elements), initial_coordinates * angstrom)
+        xtb = tb.Calculator(
+            xtb_method, tb.symbols_to_numbers(elements), initial_coordinates * angstrom
+        )
         xtb.update(charge=self.FormalCharge)
-        xtb.update(uhf=self.Multiplicity-1)
+        xtb.update(uhf=self.Multiplicity - 1)
         if solvent != None and solvent_model != None:
             xtb.add(solvent_model, solvent)
         xtb.set("verbosity", 0)
@@ -2441,7 +2635,7 @@ $end
                 if prev_en - energy < opt_tol and num_opts > 2:
                     break
             prev_en = energy
-        
+
         # Retrieve final geometry
         final_geom = trajectory[-1]
         self.electronic_energy = final_geom[0]
@@ -2466,7 +2660,7 @@ $end
                 traj_molObj_list.append(molObj_copy)
             return traj_molObj_list
         else:
-            return None                
+            return None
 
     def OptimiseGeometry(
         self,
@@ -2479,7 +2673,6 @@ $end
         xTB_bin_path: str | None = None,
         tblite: bool | None = None,
         tblite_settings: dict | None = None,
-
     ):
         lj_defaults = {
             "Max Steps": 100,

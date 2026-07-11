@@ -5,12 +5,14 @@ from copy import deepcopy
 from peregrine.molecule import Molecule
 from peregrine.atom import Atom
 
-xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin/"
-#xtb_binary_path = "/home/samue/bin/xtb-6.7.1/bin/"
+xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin/"
+# xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin/"
+# xtb_binary_path = "/home/samue/bin/xtb-6.7.1/bin/"
 
 # TODO: Sort our aromatic representations in SMILES
 
 # === Test edit molecule and other core functions ===
+
 
 def test_atom_initialization():
     """Test basic atom initialization with required parameters."""
@@ -587,6 +589,7 @@ def test_RemoveMolecule():
 
 # === Get Molecule properties ===
 
+
 def test_AtomIsAromatic():
     with open(
         f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/AromaticSandwich.mol",
@@ -598,6 +601,7 @@ def test_AtomIsAromatic():
     molObj.GetAromaticAtoms(MolecularMechanicsPreOpt=True)
     assert molObj.AtomsList[1].IsAromatic == True
     assert molObj.AtomsList[7].IsAromatic == False
+
 
 # === Get atomic descriptors ===
 
@@ -634,6 +638,7 @@ def test_GetSOAPDescriptors():
 
 # === Read/Write files & SMILES/SMARTS & convert molecule objects ===
 
+
 def test_MoleculeToASEMolecule():
     with open(
         f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/CoIILig-S2_Gradient-Output/BIHGEE-S4_opt0.mol",
@@ -658,6 +663,7 @@ def test_MoleculeToASEMolecule():
 # === Translate and Rotate Molecule ===
 
 # === Optimise Molecule Geometries ===
+
 
 def test_OptimiseGeometry():
     with open(
