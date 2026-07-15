@@ -1149,26 +1149,14 @@ class Molecule:
         return xyz_str
 
     def WriteSMILESString(self) -> str:
-        # Create an empty RDKit molecule
-        rdkit_mol = Chem.RWMol()
-        # Add atoms to the RDKit molecule
-        for atomObj in self.AtomsList:
-            rdkit_atom = Chem.Atom(atomObj.AtomicSymbol)
-            rdkit_atom.SetFormalCharge(atomObj.FormalCharge)
-            atom_idx = rdkit_mol.AddAtom(rdkit_atom)
-        # Add bonds based on the connectivity matrix
-        if self.ConnectivityMatrix is not None:
-            for i in range(self.NumberOfAtoms):
-                for j in range(i + 1, self.NumberOfAtoms):
-                    if self.ConnectivityMatrix[i][j] > 0:  # Bond exists
-                        bond_type = RDKIT_BONDTYPE_TRANSLATION[
-                            self.BondOrderMatrix[i][j]
-                        ]
-                        rdkit_mol.AddBond(i, j, bond_type)
-        # Finalize the molecule and make SMILES string
-        rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
+        rdkit_mol = self.MoleculeToRDKitMol()
         SMILES_str = Chem.MolToSmiles(rdkit_mol)
         return SMILES_str
+
+    def WriteInchiString(self) -> str:
+        rdkit_mol = self.MoleculeToRDKitMol()
+        inchi_str = Chem.MolToInchi(rdkit_mol)
+        return inchi_str
 
     def WriteSMARTSString(
         self,
@@ -1381,8 +1369,26 @@ class Molecule:
 
     # === Convert Molecule Objects ===
 
-    def MoleculeToRDKitMol(self):
-        pass
+    def MoleculeToRDKitMol(self) -> Chem.RWMol:
+        # Create an empty RDKit molecule
+        rdkit_mol = Chem.RWMol()
+        # Add atoms to the RDKit molecule
+        for atomObj in self.AtomsList:
+            rdkit_atom = Chem.Atom(atomObj.AtomicSymbol)
+            rdkit_atom.SetFormalCharge(atomObj.FormalCharge)
+            atom_idx = rdkit_mol.AddAtom(rdkit_atom)
+        # Add bonds based on the connectivity matrix
+        if self.ConnectivityMatrix is not None:
+            for i in range(self.NumberOfAtoms):
+                for j in range(i + 1, self.NumberOfAtoms):
+                    if self.ConnectivityMatrix[i][j] > 0:  # Bond exists
+                        bond_type = RDKIT_BONDTYPE_TRANSLATION[
+                            self.BondOrderMatrix[i][j]
+                        ]
+                        rdkit_mol.AddBond(i, j, bond_type)
+        # Finalize the molecule and make SMILES string
+        rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
+        return rdkit_mol
 
     def MoleculeToASEMolecule(self) -> aseAtoms:
         ASEMolecule = aseAtoms(
