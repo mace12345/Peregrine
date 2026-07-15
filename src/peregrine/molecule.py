@@ -950,6 +950,13 @@ class Molecule:
                 atom_count += 1
         return atom_count
 
+    def GetAtomsFromAtomicSymbol(self, AtomicSymbol: str) -> list[Atom]:
+        atomlist = []
+        for atomObj in self.AtomsList:
+            if AtomicSymbol == atomObj.AtomicSymbol:
+                atomlist.append(atomObj)
+        return atomlist
+
     def MetalAtomCount(self) -> int:
         metal_atom_count = 0
         for atomObj in self.AtomsList:
@@ -957,7 +964,29 @@ class Molecule:
                 metal_atom_count += 1
         return metal_atom_count
 
-    
+    def GetAtomNeighbours(
+        self,
+        AtomLabel: str | None=None,
+        AtomIndex: int | None=None,
+        AtomObject: Atom | None=None
+    ) -> list[Atom]:
+        # Determine atom indices
+        if AtomIndex is not None:
+            pass
+        elif AtomLabel is not None:
+            AtomIndex = self.AtomsDict[AtomLabel][0]
+        elif AtomObject is not None:
+            AtomIndex = self.AtomsDict[AtomObject.Label][0]
+        else:
+            raise ValueError(
+                "GetBondAngle requires AtomLabel, AtomIndex, or AtomObject"
+            )
+        n_atoms = []
+        for idx, bond in enumerate(self.ConnectivityMatrix[AtomIndex]):
+            if bond == True:
+                n_atoms.append(self.AtomsList[idx])
+        return n_atoms
+
     # === Get atomic descriptors ===
 
     def GetSOAPDescriptors(
@@ -2230,6 +2259,12 @@ class Molecule:
         # Update bond order
         self.BondOrderMatrix[atomIdx1][atomIdx2] = NewBondOrder
         self.BondOrderMatrix[atomIdx2][atomIdx1] = NewBondOrder
+
+    def CorrectAtomCharge(
+        self,
+
+    ):
+        pass
 
     # === Translate and Rotate Molecule ===
 
