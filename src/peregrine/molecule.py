@@ -31,6 +31,8 @@ from dscribe.descriptors import SOAP
 
 from xyzgraph import build_graph
 
+import networkx as nx
+
 from .atom import Atom
 
 # === Important Conversions ===
@@ -854,6 +856,17 @@ class Molecule:
             if atomObj.IsAromatic is None:
                 atomObj.IsAromatic = False
 
+    def GetRingAtoms(self):
+        """
+        conn_matrix: NxN adjacency matrix (symmetric). Nonzero entry [i,j]
+                    means point i connects to point j.
+        Returns a list of rings, each a list of point indices in cycle order.
+        """
+        G = nx.from_numpy_array(self.ConnectivityMatrix)
+        rings = nx.cycle_basis(G)
+        print(rings)
+        return rings
+
     def GetBondAngle(
         self,
         AtomLabels: list[str] | None = None,
@@ -1148,20 +1161,27 @@ class Molecule:
         xyz_str += self.WriteXYZBlock()
         return xyz_str
 
-    def WriteSMILESString(self) -> str:
-        rdkit_mol = self.MoleculeToRDKitMol()
+    def WriteSMILESString(self, SuppressRDKitWarnings: bool = True) -> str:
+        rdkit_mol = self.MoleculeToRDKitMol(SuppressRDKitWarnings=SuppressRDKitWarnings)
         SMILES_str = Chem.MolToSmiles(rdkit_mol)
         return SMILES_str
 
-    def WriteInchiString(self) -> str:
-        rdkit_mol = self.MoleculeToRDKitMol()
-        inchi_str = Chem.MolToInchi(rdkit_mol)
+    def WriteInchiString(self, SuppressRDKitWarnings: bool = True) -> str | None:
+        rdkit_mol = self.MoleculeToRDKitMol(SuppressRDKitWarnings=SuppressRDKitWarnings)
+        try:
+            inchi_str = Chem.MolToInchi(rdkit_mol)
+        except rdkit.Chem.rdchem.KekulizeException:
+            return None
         return inchi_str
 
     def WriteSMARTSString(
         self,
         HandleAromaticity: bool = True,
-    ) -> str:
+        SuppressRDKitWarnings: bool = True
+    ) -> str | None:
+        if SuppressRDKitWarnings == True:
+            RDLogger.DisableLog('rdApp.warning')
+            RDLogger.DisableLog('rdApp.error')
         # Create initial SMARTS string
         # Convert molObj to rdKitMolObj
         rdkitMolObj = Chem.EditableMol(Chem.Mol())
@@ -1206,10 +1226,14 @@ class Molecule:
             if sub_SMARTS == "":
                 continue
             sub_SMARTS = sub_SMARTS.split("[")[-1]
-            rdkitAtomObj_idx = int(sub_SMARTS.split(":")[-1])
-            Old_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
-                f"[{sub_SMARTS}]"
-            )
+            try:
+                rdkitAtomObj_idx = int(sub_SMARTS.split(":")[-1])
+                Old_rdkitAtomObjIdx_to_SMARTS_pattern_dict[rdkitAtomObj_idx] = (
+                    f"[{sub_SMARTS}]"
+                )
+            except ValueError:
+                print(self.Identifier)
+                return None
 
         # Edit SMARTS string
         # Collect rdkit atom properties from own molObj
@@ -1369,7 +1393,10 @@ class Molecule:
 
     # === Convert Molecule Objects ===
 
-    def MoleculeToRDKitMol(self) -> Chem.RWMol:
+    def MoleculeToRDKitMol(self, SuppressRDKitWarnings: bool = True) -> Chem.RWMol:
+        if SuppressRDKitWarnings == True:
+            RDLogger.DisableLog('rdApp.warning')
+            RDLogger.DisableLog('rdApp.error')
         # Create an empty RDKit molecule
         rdkit_mol = Chem.RWMol()
         # Add atoms to the RDKit molecule
@@ -1387,7 +1414,10 @@ class Molecule:
                         ]
                         rdkit_mol.AddBond(i, j, bond_type)
         # Finalize the molecule and make SMILES string
-        rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
+        try:
+            rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
+        except rdkit.Chem.rdchem.KekulizeException:
+            pass
         return rdkit_mol
 
     def MoleculeToASEMolecule(self) -> aseAtoms:
@@ -2266,12 +2296,81 @@ class Molecule:
         self.BondOrderMatrix[atomIdx1][atomIdx2] = NewBondOrder
         self.BondOrderMatrix[atomIdx2][atomIdx1] = NewBondOrder
 
-    def CorrectAtomCharge(
-        self,
-
-    ):
-        pass
-
+    def CorrectAtomicFormalCharges(self):
+        """
+        Correct formal charges using L-type ligand rules for metal-ligand bonding (lewis basic)
+        """
+        for idx, atomObj in enumerate(self.AtomsList):
+            bond_valence = self.BondOrderMatrix[idx].sum()
+            # Halogens and Hydrogen
+            if (
+                atomObj.AtomicSymbol == "F"
+                or atomObj.AtomicSymbol == "Cl"
+                or atomObj.AtomicSymbol == "Br"
+                or atomObj.AtomicSymbol == "I"
+                or atomObj.AtomicSymbol == "H"
+            ):
+                if bond_valence == 0:
+                    atomObj.FormalCharge = -1
+                elif bond_valence == 1:
+                    atomObj.FormalCharge = 0
+            # Chalcogens
+            elif (
+                atomObj.AtomicSymbol == "O"
+                or atomObj.AtomicSymbol == "S"
+                or atomObj.AtomicSymbol == "Se"
+            ):
+                if bond_valence == 0:
+                    atomObj.FormalCharge = -2
+                elif bond_valence == 1:
+                    atomObj.FormalCharge = -1
+                elif bond_valence == 2:
+                    atomObj.FormalCharge = 0
+                elif bond_valence == 3:
+                    atomObj.FormalCharge = 1
+            # Pnictogens
+            elif (
+                atomObj.AtomicSymbol == "N"
+                or atomObj.AtomicSymbol == "P"
+            ):
+                if bond_valence == 0:
+                    atomObj.FormalCharge = -3
+                elif bond_valence == 1:
+                    atomObj.FormalCharge = -2
+                elif bond_valence == 2:
+                    atomObj.FormalCharge = -1
+                elif bond_valence == 3:
+                    atomObj.FormalCharge = 0
+                elif bond_valence == 4:
+                    atomObj.FormalCharge = 1
+            # Carbon - Exist as cation, anion, carbene or charged aromatic species
+            elif atomObj.AtomicSymbol == "C":
+                if bond_valence == 0:
+                    atomObj.FormalCharge = -4
+                elif bond_valence == 1:
+                    atomObj.FormalCharge = -3
+                elif bond_valence == 2:
+                    # Does Carbon exist in ring, if so aromatic?
+                    self.GetRingAtoms()
+                    pass
+                elif bond_valence == 3:
+                    # Planar - Carbocation, not planar - carbanion
+                    pass
+                elif bond_valence == 4:
+                    atomObj.FormalCharge = 0
+            # Boron
+            elif atomObj.AtomicSymbol == "B":
+                if bond_valence == 0:
+                    atomObj.FormalCharge = 3
+                elif bond_valence == 1:
+                    atomObj.FormalCharge = 2
+                elif bond_valence == 2:
+                    atomObj.FormalCharge = 1
+                elif bond_valence == 3:
+                    atomObj.FormalCharge = 0
+                elif bond_valence == 4:
+                    atomObj.FormalCharge = -1
+    
     # === Translate and Rotate Molecule ===
 
     def TranslateMolecule(
