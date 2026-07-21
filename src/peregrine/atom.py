@@ -597,7 +597,7 @@ class Atom:
         Coordinates: np.ndarray,
         Gradient: np.ndarray | None = None,
         Label: str | None = None,
-        FormalCharge: int = 0,
+        FormalCharge: float | int = 0,
         Multiplicity: int = 1,
         SubstructureIndex: int = 1,
         SMARTSCentre: bool = False,
@@ -653,6 +653,7 @@ class Atom:
         self.AssociatedSMILES = None
         self.AssociatedSMARTS = None
         self.IsAromatic = None
+        self.IsInRing = None
         self.SOAPDescriptor = SOAPDescriptor
         if GetAtomAttributes == True:
             self.Update()
