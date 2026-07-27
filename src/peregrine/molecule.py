@@ -856,7 +856,7 @@ class Molecule:
             if atomObj.IsAromatic is None:
                 atomObj.IsAromatic = False
 
-    def GetRingAtoms(self):
+    def GetRingAtoms(self) -> list[list[Atom]]:
         """
         conn_matrix: NxN adjacency matrix (symmetric). Nonzero entry [i,j]
                     means point i connects to point j.
@@ -864,8 +864,8 @@ class Molecule:
         """
         G = nx.from_numpy_array(self.ConnectivityMatrix)
         rings = nx.cycle_basis(G)
-        print(rings)
-        return rings
+        atomObj_rings = [[self.AtomsList[idx] for idx in ring] for ring in rings]
+        return atomObj_rings
 
     def GetBondAngle(
         self,
@@ -2299,9 +2299,19 @@ class Molecule:
     def CorrectAtomicFormalCharges(self):
         """
         Correct formal charges using L-type ligand rules for metal-ligand bonding (lewis basic)
+        Bonds must be correctly assigned before charge correction can be done
+        Cannot handle radical organic compounds
         """
+        # Determine ring atoms
+        rings = self.GetRingAtoms()
+        rings = [ring for ring in rings if len(ring) <= 8]
+        # Determine aromatic atoms if there are rings
+        if len(rings) > 0:
+            self.GetAromaticAtoms()
+        # Adjust charges of heteroaromatic atoms
         for idx, atomObj in enumerate(self.AtomsList):
             bond_valence = self.BondOrderMatrix[idx].sum()
+            bond_number = self.ConnectivityMatrix[idx].sum()
             # Halogens and Hydrogen
             if (
                 atomObj.AtomicSymbol == "F"
@@ -2345,33 +2355,69 @@ class Molecule:
                     atomObj.FormalCharge = 1
             # Carbon - Exist as cation, anion, carbene or charged aromatic species
             elif atomObj.AtomicSymbol == "C":
-                if bond_valence == 0:
-                    atomObj.FormalCharge = -4
-                elif bond_valence == 1:
+                if bond_valence == 1:
                     atomObj.FormalCharge = -3
-                elif bond_valence == 2:
-                    # Does Carbon exist in ring, if so aromatic?
-                    self.GetRingAtoms()
-                    pass
-                elif bond_valence == 3:
-                    # Planar - Carbocation, not planar - carbanion
-                    pass
-                elif bond_valence == 4:
+                if bond_valence == 2:
+                    # Assume carbene when total bond valence is equal to 2
+                    # set charge to 0
                     atomObj.FormalCharge = 0
+                elif bond_valence == 3:
+                    if bond_number == 2:
+                        atomObj.FormalCharge = -1
+                    elif bond_number == 3:
+                        # Planar - Carbocation, not planar - carbanion
+                        n_atoms = self.GetAtomNeighbours(AtomObject=atomObj)
+                        angles = []
+                        for idx, atomObj1 in enumerate(n_atoms):
+                            for atomObj2 in n_atoms[idx+1:]:
+                                angles.append(
+                                    np.rad2deg(
+                                        self.GetBondAngle(
+                                            atomObj1, atomObj, atomObj2
+                                        )
+                                    )
+                                )
+                        if sum(angles) > 350:
+                            atomObj.FormalCharge = 1
+                        else:
+                            atomObj.FormalCharge = -1
+                elif bond_valence == 4:
+                        atomObj.FormalCharge = 0
             # Boron
             elif atomObj.AtomicSymbol == "B":
-                if bond_valence == 0:
-                    atomObj.FormalCharge = 3
-                elif bond_valence == 1:
-                    atomObj.FormalCharge = 2
-                elif bond_valence == 2:
-                    atomObj.FormalCharge = 1
-                elif bond_valence == 3:
+                if bond_valence == 3:
                     atomObj.FormalCharge = 0
                 elif bond_valence == 4:
                     atomObj.FormalCharge = -1
+        # After sorting heteroatoms, sort 5 membered aromatic charge
+        for ring in rings:
+            ring_size = len(ring)
+            all_aromatic = True
+            for r_atom in ring:
+                if r_atom.IsAromatic == True:
+                    pass
+                else:
+                    all_aromatic = False
+                    break
+            all_carbon = True
+            for r_atom in ring:
+                if r_atom.AtomicSymbol == "C":
+                    pass
+                else:
+                    all_carbon = False
+                    break
+            if (
+                ring_size == 5
+                and all_aromatic == True
+                and all_carbon == True
+            ):
+                for r_atom in ring:
+                    if r_atom.FormalCharge == 0:
+                        r_atom.FormalCharge = -0.2
+                    else:
+                        r_atom.FormalCharge += -0.2
     
-    # === Translate and Rotate Molecule ===
+    # === Translate and Rotate Molecule, and Geometry Functions ===
 
     def TranslateMolecule(
         self,
@@ -2432,6 +2478,46 @@ class Molecule:
         # Translate back to original position
         for atomObj in self.AtomsList:
             atomObj.Coordinates = atomObj.Coordinates + geometric_midpoint
+
+    def GetBondAngle(
+        self,
+        AtomObject1: Atom,
+        AtomObject2: Atom,
+        AtomObject3: Atom | None,
+    ):
+      # Writtern by ChatGPT
+        """
+        Calculate the angle (in radians) between two vectors.
+
+        Parameters:
+            v1 (array-like): First vector.
+            v2 (array-like): Second vector.
+
+        Returns:
+            float: Angle between the vectors in radians.
+        """
+        if AtomObject3 is not None:
+            # Calculate bond vectors
+            v1 = AtomObject1.Coordinates - AtomObject2.Coordinates
+            v2 = AtomObject3.Coordinates - AtomObject2.Coordinates
+        else:
+            v1 = AtomObject1.Coordinates
+            v2 = AtomObject2.Coordinates
+        # Calculate dot product and magnitudes
+        dot_product = np.dot(v1, v2)
+        magnitude_v1 = np.linalg.norm(v1)
+        magnitude_v2 = np.linalg.norm(v2)
+
+        # Calculate cosine of the angle
+        cos_theta = dot_product / (magnitude_v1 * magnitude_v2)
+
+        # Ensure the value is within valid range for arccos (handle numerical precision issues)
+        cos_theta = np.clip(cos_theta, -1.0, 1.0)
+
+        # Calculate the angle in radians
+        angle_radians = np.arccos(cos_theta)
+
+        return angle_radians
 
     # === Optimise Geometries and Calculate Energies ===
 
