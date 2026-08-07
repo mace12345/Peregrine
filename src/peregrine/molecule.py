@@ -18,6 +18,8 @@ from rdkit.Chem import SanitizeMol, SanitizeFlags
 from rdkit import RDLogger
 import rdkit
 from rdkit import rdBase
+from rdkit.Chem import rdFingerprintGenerator
+from rdkit import DataStructs
 
 from openbabel import pybel
 from openbabel import openbabel as ob
@@ -469,6 +471,16 @@ grad = g.kernel()
 metadata['Gradients (Eh/Bohr)'] = grad.tolist()
 """
     return pyscf_str
+
+
+def _RDKitHelper_SanitizeMol(RDKitMolObj: Chem.RWMol) -> Chem.RWMol:
+    RDKitMolObj.UpdatePropertyCache(strict=False)
+    Problem = Chem.SanitizeMol(RDKitMolObj, catchErrors=True)
+    if Problem != Chem.SanitizeFlags.SANITIZE_NONE:
+        # Full sanitization failed (bad valences, metals, etc.).
+        # Fall back to the minimum the fingerprinter needs.
+        Chem.FastFindRings(RDKitMolObj)
+    return RDKitMolObj
 
 
 class Molecule:
@@ -979,9 +991,9 @@ class Molecule:
 
     def GetAtomNeighbours(
         self,
-        AtomLabel: str | None=None,
-        AtomIndex: int | None=None,
-        AtomObject: Atom | None=None
+        AtomLabel: str | None = None,
+        AtomIndex: int | None = None,
+        AtomObject: Atom | None = None,
     ) -> list[Atom]:
         # Determine atom indices
         if AtomIndex is not None:
@@ -1038,6 +1050,23 @@ class Molecule:
             atomObj.SOAPDescriptor = list(
                 float(i) for i in soap.create(aseMolObj, centers=[idx])[0]
             )
+
+    # === Get molecule descriptors ===
+
+    def GetMorganFingerPrint(
+        self,
+        Radius: int = 1,
+        Length: int = 2**10,
+    ) -> np.ndarray:
+        RDKitMolObj = self.MoleculeToRDKitMol()
+        RDKitMolObj = _RDKitHelper_SanitizeMol(RDKitMolObj)
+        FingerPrintGen = rdFingerprintGenerator.GetMorganGenerator(
+            radius=Radius, fpSize=Length
+        )
+        RawMorganFingerPrint = FingerPrintGen.GetFingerprint(RDKitMolObj)
+        ReadableMorganFingerPrint = np.zeros((0,), dtype=np.int8)
+        DataStructs.ConvertToNumpyArray(RawMorganFingerPrint, ReadableMorganFingerPrint)
+        return ReadableMorganFingerPrint
 
     # === Read/Write files & SMILES/SMARTS ===
 
@@ -1175,13 +1204,11 @@ class Molecule:
         return inchi_str
 
     def WriteSMARTSString(
-        self,
-        HandleAromaticity: bool = True,
-        SuppressRDKitWarnings: bool = True
+        self, HandleAromaticity: bool = True, SuppressRDKitWarnings: bool = True
     ) -> str | None:
         if SuppressRDKitWarnings == True:
-            RDLogger.DisableLog('rdApp.warning')
-            RDLogger.DisableLog('rdApp.error')
+            RDLogger.DisableLog("rdApp.warning")
+            RDLogger.DisableLog("rdApp.error")
         # Create initial SMARTS string
         # Convert molObj to rdKitMolObj
         rdkitMolObj = Chem.EditableMol(Chem.Mol())
@@ -1395,8 +1422,8 @@ class Molecule:
 
     def MoleculeToRDKitMol(self, SuppressRDKitWarnings: bool = True) -> Chem.RWMol:
         if SuppressRDKitWarnings == True:
-            RDLogger.DisableLog('rdApp.warning')
-            RDLogger.DisableLog('rdApp.error')
+            RDLogger.DisableLog("rdApp.warning")
+            RDLogger.DisableLog("rdApp.error")
         # Create an empty RDKit molecule
         rdkit_mol = Chem.RWMol()
         # Add atoms to the RDKit molecule
@@ -2339,10 +2366,7 @@ class Molecule:
                 elif bond_valence == 3:
                     atomObj.FormalCharge = 1
             # Pnictogens
-            elif (
-                atomObj.AtomicSymbol == "N"
-                or atomObj.AtomicSymbol == "P"
-            ):
+            elif atomObj.AtomicSymbol == "N" or atomObj.AtomicSymbol == "P":
                 if bond_valence == 0:
                     atomObj.FormalCharge = -3
                 elif bond_valence == 1:
@@ -2369,12 +2393,10 @@ class Molecule:
                         n_atoms = self.GetAtomNeighbours(AtomObject=atomObj)
                         angles = []
                         for idx, atomObj1 in enumerate(n_atoms):
-                            for atomObj2 in n_atoms[idx+1:]:
+                            for atomObj2 in n_atoms[idx + 1 :]:
                                 angles.append(
                                     np.rad2deg(
-                                        self.GetBondAngle(
-                                            atomObj1, atomObj, atomObj2
-                                        )
+                                        self.GetBondAngle(atomObj1, atomObj, atomObj2)
                                     )
                                 )
                         if sum(angles) > 350:
@@ -2382,7 +2404,7 @@ class Molecule:
                         else:
                             atomObj.FormalCharge = -1
                 elif bond_valence == 4:
-                        atomObj.FormalCharge = 0
+                    atomObj.FormalCharge = 0
             # Boron
             elif atomObj.AtomicSymbol == "B":
                 if bond_valence == 3:
@@ -2406,17 +2428,13 @@ class Molecule:
                 else:
                     all_carbon = False
                     break
-            if (
-                ring_size == 5
-                and all_aromatic == True
-                and all_carbon == True
-            ):
+            if ring_size == 5 and all_aromatic == True and all_carbon == True:
                 for r_atom in ring:
                     if r_atom.FormalCharge == 0:
                         r_atom.FormalCharge = -0.2
                     else:
                         r_atom.FormalCharge += -0.2
-    
+
     # === Translate and Rotate Molecule, and Geometry Functions ===
 
     def TranslateMolecule(
@@ -2485,7 +2503,7 @@ class Molecule:
         AtomObject2: Atom,
         AtomObject3: Atom | None,
     ):
-      # Writtern by ChatGPT
+        # Writtern by ChatGPT
         """
         Calculate the angle (in radians) between two vectors.
 

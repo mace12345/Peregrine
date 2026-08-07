@@ -2,12 +2,16 @@ import numpy as np
 import os
 import time
 from copy import deepcopy
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 from .atom import Atom
 from .molecule import Molecule
+
+
+def _parse_mol2_batch(strings):
+    return [m for m in map(Molecule.ReadMol2String, strings) if m is not None]
 
 
 class MoleculeSet:
@@ -22,7 +26,8 @@ class MoleculeSet:
     def WriteXYZFileDirectory(self):
         pass
 
-    def ReadMolFileDirectory(self, mol_file_directory: str):
+    @classmethod
+    def ReadMolFileDirectory(cls, mol_file_directory: str) -> "MoleculeSet":
         mol_file_list = [
             i for i in os.listdir(mol_file_directory) if i.endswith(".mol")
         ]
@@ -31,11 +36,14 @@ class MoleculeSet:
             with open(f"{mol_file_directory}/{mol_file}") as f:
                 return Molecule.ReadMolString(f.read())
 
+        self = cls()
         with ThreadPoolExecutor(max_workers=int(os.cpu_count() / 2)) as executor:
             for molObj in executor.map(load, mol_file_list):
                 self.MoleculesDict[molObj.Identifier] = molObj
+        return self
 
-    def ReadMol2File(self, mol2_file: str):
+    @classmethod
+    def ReadMol2File(cls, mol2_file: str) -> "MoleculeSet":
         """
         Reads all `.mol2` files in a given directory and parses them into Molecule objects.
 
@@ -65,14 +73,15 @@ class MoleculeSet:
             for i in file_content.split("@<TRIPOS>MOLECULE\n")
             if i != "" and "@<TRIPOS>ATOM" in i
         ]
-        molecule_list = []
+
+        # Read in the .MOL2 strings as molObj
+        self = cls()
         for molecule_string in molecule_string_list:
-            mol_obj = Molecule.ReadMol2String(molecule_string)
-            if mol_obj is None:
+            molObj = Molecule.ReadMol2String(molecule_string)
+            if molObj is None:
                 continue
-            molecule_list.append(mol_obj)
-        # Store molecules in dictionary
-        self.MoleculesDict = {mol.Identifier: mol for mol in molecule_list}
+            self.MoleculesDict[molObj.Identifier] = molObj
+        return self
 
     def ReadORCA6OutputDirectory(
         self,
@@ -171,11 +180,16 @@ class MoleculeSet:
 
     def WriteMolFileDirectory(self, mol_file_directory: str):
         os.makedirs(mol_file_directory, exist_ok=True)
-        for Identifier in self.MoleculesDict:
-            molObj = self.MoleculesDict[Identifier]
-            with open(f"{mol_file_directory}/{Identifier}.mol", "w") as f:
+
+        def write(item):
+            identifier, molObj = item
+            with open(f"{mol_file_directory}/{identifier}.mol", "w") as f:
                 f.write(molObj.WriteMolString())
-                f.close()
+
+        workers = max(1, (os.cpu_count() or 2) // 2)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            # list() forces iteration, so exceptions propagate instead of being swallowed
+            list(executor.map(write, self.MoleculesDict.items()))
 
     # === Execute a workflow of some kind ===
 

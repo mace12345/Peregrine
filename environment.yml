@@ -30,5 +30,6 @@ dependencies:
   - pyscf
   - tblite-python
   - pyberny
+  - umap-learn
   - pip:
     - xyzgraph
