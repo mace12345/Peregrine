@@ -63,7 +63,7 @@ RDKIT_TO_BONDTYPE_TRANSLATION = {
 
 PYSCF_DFT_FUNCTIONS = {"wb97m_v", "m06_l", "r2scan"}
 
-PYSCF_CC_FUNCTIONS = {"ccs", "ccsd", "ccsd(t)"}
+PYSCF_CC_FUNCTIONS = {"ccsdt", "ccsd(t)"}
 
 # === Helper functions ===
 
@@ -348,6 +348,7 @@ pyscfMolObj = gto.Mole(
     charge = {molObj.FormalCharge},
     spin = {int(molObj.Multiplicity - 1)}
 )
+pyscfMolObj.build()
 metadata['Identifier'] = '{molObj.Identifier}'
 metadata['Method Type'] = '{method_type}'
 metadata['Method'] = '{restricted_str.lower()} {method}'
@@ -407,17 +408,18 @@ metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
 metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
 metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
 """
+    # Coupled Cluster Calculations
     elif calculation_type == "single point" and method_type == "CC":
-        pyscf_str = f"""pyscfMolObj_HF_calc = scf.{restricted_str}(pyscfMolObj).run()
+        pyscf_str = f"""pyscfMolObj_calc = scf.{restricted_str}(pyscfMolObj).run()
 metadata['AO Labels'] = pyscfMolObj.ao_labels()
-metadata['HF Electronic Energy (Eh)'] = pyscfMolObj_HF_calc.e_tot
-metadata['HF Two Electron Energy (Eh)'] = pyscfMolObj_HF_calc.energy_elec()[1]
-metadata['HF One Electron Energy (Eh)'] = pyscfMolObj_HF_calc.energy_elec()[0] - pyscfMolObj_HF_calc.energy_elec()[1]
-pyscfMolObj_CC_calc = cc.CCSD(pyscfMolObj_HF_calc).run()
-ccsdt_en = pyscfMolObj_CC_calc.ccsd_t()
-metadata['CCSD Electronic Energy (Eh)'] = pyscfMolObj_CC_calc.e_tot
+metadata['HF Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
+metadata['HF Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
+metadata['HF One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
+metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
+pyscfMolObj_calc = cc.CCSD(pyscfMolObj_calc).run()
+ccsdt_en = pyscfMolObj_calc.ccsd_t()
+metadata['CCSD Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
 metadata['CCSD(T) Electronic Energy (Eh)'] = metadata['CCSD Electronic Energy (Eh)'] + ccsdt_en
-metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_CC_calc.energy_nuc()
 """
     return pyscf_str
 
@@ -497,6 +499,7 @@ def _PySCFHelper_GetGradients(
 g = pyscfMolObj_calc.Gradients()
 grad = g.kernel()
 metadata['Gradients (Eh/Bohr)'] = grad.tolist()
+
 """
     return pyscf_str
 
@@ -1372,7 +1375,8 @@ class Molecule:
     def WritePySCFInput(
         self,
         method: str = "hf",
-        basisset: str = "def2svp",
+        basisset: dict | str = "def2svp",
+        ecp: dict | None=None,
         restricted: bool = True,
         calculation_type: str = "single point",
         get_gradients: bool = True,
@@ -1427,20 +1431,22 @@ class Molecule:
             prune_grids=prune_grids,
         )
 
-        # Post-Processing of single point calculations
+        # Post-Processing of single point and calculations
         # Get atomic force gradients
         pyscf_str += _PySCFHelper_GetGradients(
             calculation_type=calculation_type,
             get_gradients=get_gradients,
         )
 
+        # Only save fock matricies for single-reference HF and DFT calculations
         # Get fock matricies
-        pyscf_str += _PySCFHelper_GetFockMatrix(
-            molObj=self,
-            calculation_type=calculation_type,
-            get_fock_matrix=get_fock_matrix,
-            restricted=restricted,
-        )
+        if method_type in ["HF", "DFT"]:
+            pyscf_str += _PySCFHelper_GetFockMatrix(
+                molObj=self,
+                calculation_type=calculation_type,
+                get_fock_matrix=get_fock_matrix,
+                restricted=restricted,
+            )
 
         # Get time taken to run program
         pyscf_str += "end = time.time()\ntime_taken = round(end - start, 2)\nmetadata['Time Taken (s)'] = time_taken\n"
@@ -1891,7 +1897,6 @@ class Molecule:
         )
         molObj.OptimiseGeometry_UFF()
         return molObj
-
 
     @classmethod
     def ReadORCA6Output(cls, ORCA_output_filepath: str) -> "Molecule":
