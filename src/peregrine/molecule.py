@@ -43,7 +43,7 @@ eV_to_Eh = 27.211407953
 
 # === Useful Dictionarys ==
 
-RDKIT_BONDTYPE_TRANSLATION = {
+BONDTYPE_TO_RDKIT_TRANSLATION = {
     1: Chem.BondType.SINGLE,
     1.5: Chem.BondType.AROMATIC,
     2: Chem.BondType.DOUBLE,
@@ -57,7 +57,13 @@ RDKIT_BONDTYPE_TRANSLATION = {
     6: Chem.BondType.HEXTUPLE,
 }
 
+RDKIT_TO_BONDTYPE_TRANSLATION = {
+    v: k for k, v in BONDTYPE_TO_RDKIT_TRANSLATION.items()
+}
+
 PYSCF_DFT_FUNCTIONS = {"wb97m_v", "m06_l", "r2scan"}
+
+PYSCF_CC_FUNCTIONS = {"ccs", "ccsd", "ccsd(t)"}
 
 # === Helper functions ===
 
@@ -235,6 +241,8 @@ def _PySCFHelper_DetermineMethodType(method: str) -> str:
         method_type = "DFT"
     elif method == "hf":
         method_type = "HF"
+    elif method in PYSCF_CC_FUNCTIONS:
+        method_type = "CC"
     return method_type
 
 
@@ -260,6 +268,12 @@ def _PySCFHelper_DetermineRestriction(
     elif Multiplicity > 1 and restricted == True and method_type == "HF":
         restricted_str = "ROHF"
     elif Multiplicity == 1 and restricted == True and method_type == "HF":
+        restricted_str = "RHF"
+    elif restricted == False and method_type == "CC":
+        restricted_str = "UHF"
+    elif Multiplicity > 1 and restricted == True and method_type == "CC":
+        restricted_str = "ROHF"
+    elif Multiplicity == 1 and restricted == True and method_type == "CC":
         restricted_str = "RHF"
     elif restricted == False and method_type == "DFT":
         restricted_str = "UKS"
@@ -288,6 +302,8 @@ def _PySCFHelper_DetermineImports(
     pyscf_str = "import json\nfrom pyscf import gto\n"
     if method_type == "HF":
         pyscf_str += "from pyscf import scf\n"
+    if method_type == "CC":
+        pyscf_str += "from pyscf import scf\nfrom pyscf import cc\n"
     if get_gradients == True:
         pyscf_str += "from pyscf import grad\n"
     if method_type == "DFT":
@@ -390,6 +406,18 @@ metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
 metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
 metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
 metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
+"""
+    elif calculation_type == "single point" and method_type == "CC":
+        pyscf_str = f"""pyscfMolObj_HF_calc = scf.{restricted_str}(pyscfMolObj).run()
+metadata['AO Labels'] = pyscfMolObj.ao_labels()
+metadata['HF Electronic Energy (Eh)'] = pyscfMolObj_HF_calc.e_tot
+metadata['HF Two Electron Energy (Eh)'] = pyscfMolObj_HF_calc.energy_elec()[1]
+metadata['HF One Electron Energy (Eh)'] = pyscfMolObj_HF_calc.energy_elec()[0] - pyscfMolObj_HF_calc.energy_elec()[1]
+pyscfMolObj_CC_calc = cc.CCSD(pyscfMolObj_HF_calc).run()
+ccsdt_en = pyscfMolObj_CC_calc.ccsd_t()
+metadata['CCSD Electronic Energy (Eh)'] = pyscfMolObj_CC_calc.e_tot
+metadata['CCSD(T) Electronic Energy (Eh)'] = metadata['CCSD Electronic Energy (Eh)'] + ccsdt_en
+metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_CC_calc.energy_nuc()
 """
     return pyscf_str
 
@@ -827,6 +855,7 @@ class Molecule:
         self,
         MolecularMechanicsPreOpt: bool = False,
         SemiEmpiricalxTBPreOpt: bool = False,
+        SemiEmpiricaltblitePreOpt: bool = True,
     ):
         components = self.SplitMoleculeIntoComponents(UpdateAtomLabels=False)
         for component in components:
@@ -841,6 +870,8 @@ class Molecule:
                 component.OptimiseGeometry(
                     xTB_bin=SemiEmpiricalxTBPreOpt,
                 )
+            if SemiEmpiricaltblitePreOpt == True:
+                component.OptimiseGeometry_tblite()
             # Convert to xyz file
             xyz_string = component.WriteXYZString()
             with open(
@@ -1230,7 +1261,7 @@ class Molecule:
                             rdkitMolObj.AddBond(
                                 molObj_to_rdkitMolObj_atomIdx_dict[i],
                                 molObj_to_rdkitMolObj_atomIdx_dict[j],
-                                RDKIT_BONDTYPE_TRANSLATION[self.BondOrderMatrix[i][j]],
+                                BONDTYPE_TO_RDKIT_TRANSLATION[self.BondOrderMatrix[i][j]],
                             )
         rdkitMolObj = rdkitMolObj.GetMol()
         # convert rdkitMolObj to SMARTS string
@@ -1357,6 +1388,7 @@ class Molecule:
         method = method.lower()
         method = method.replace("-", "_")
         basisset = basisset.lower()
+        calculation_type = calculation_type.lower()
 
         # Check what type of method is being called
         method_type = _PySCFHelper_DetermineMethodType(method)
@@ -1436,7 +1468,7 @@ class Molecule:
             for i in range(self.NumberOfAtoms):
                 for j in range(i + 1, self.NumberOfAtoms):
                     if self.ConnectivityMatrix[i][j] > 0:  # Bond exists
-                        bond_type = RDKIT_BONDTYPE_TRANSLATION[
+                        bond_type = BONDTYPE_TO_RDKIT_TRANSLATION[
                             self.BondOrderMatrix[i][j]
                         ]
                         rdkit_mol.AddBond(i, j, bond_type)
@@ -1446,6 +1478,31 @@ class Molecule:
         except rdkit.Chem.rdchem.KekulizeException:
             pass
         return rdkit_mol
+
+    @classmethod
+    def RDKitMolToMolecule(cls, RDKitMolObj: Chem.RWMol, Identifier: str) -> "Molecule":
+        # Get Atoms
+        AtomsList = []
+        conformer = RDKitMolObj.GetConformer()
+        for idx, RDKitAtomObj in enumerate(RDKitMolObj.GetAtoms()):
+            AtomsList.append(Atom(
+                AtomicSymbol=RDKitAtomObj.GetSymbol(),
+                Coordinates=np.array(conformer.GetAtomPosition(idx)),
+                FormalCharge=RDKitAtomObj.GetFormalCharge(),
+            ))
+        # Get Bonds
+        BondOrderMatrix = np.zeros((len(AtomsList), len(AtomsList)))
+        for bond in RDKitMolObj.GetBonds():
+            idx1 = bond.GetBeginAtomIdx()
+            idx2 = bond.GetEndAtomIdx()
+            bond_type = bond.GetBondType()
+            BO = RDKIT_TO_BONDTYPE_TRANSLATION[bond_type]
+            BondOrderMatrix[idx1][idx2] = BO
+            BondOrderMatrix[idx2][idx1] = BO
+
+        molObj = cls(Identifier, AtomsList, BondOrderMatrix)
+
+        return molObj
 
     def MoleculeToASEMolecule(self) -> aseAtoms:
         ASEMolecule = aseAtoms(
@@ -1817,8 +1874,24 @@ class Molecule:
         return molObj
 
     @classmethod
-    def ReadSMILESString(cls, SMILES: str) -> "Molecule":
-        pass
+    def ReadSMILESString(cls, SMILES: str, Identifier: str) -> "Molecule":
+        RDKitMolObj = Chem.MolFromSmiles(SMILES)
+        if RDKitMolObj is None:
+            raise ValueError(f"RDKit failed to parse SMILES: {SMILES}")
+        RDKitMolObj = Chem.AddHs(RDKitMolObj)
+        embed_result = AllChem.EmbedMolecule(RDKitMolObj)
+        if embed_result != 0:
+            for _ in range(10):
+                embed_result = AllChem.EmbedMolecule(RDKitMolObj, useRandomCoords=True, randomSeed=np.random.randint(0, 1001))
+            if embed_result != 0:
+                raise ValueError(f"3D embedding failed for SMILES: {SMILES}")
+        molObj = cls.RDKitMolToMolecule(
+            RDKitMolObj,
+            Identifier,
+        )
+        molObj.OptimiseGeometry_UFF()
+        return molObj
+
 
     @classmethod
     def ReadORCA6Output(cls, ORCA_output_filepath: str) -> "Molecule":
@@ -2496,46 +2569,6 @@ class Molecule:
         # Translate back to original position
         for atomObj in self.AtomsList:
             atomObj.Coordinates = atomObj.Coordinates + geometric_midpoint
-
-    def GetBondAngle(
-        self,
-        AtomObject1: Atom,
-        AtomObject2: Atom,
-        AtomObject3: Atom | None,
-    ):
-        # Writtern by ChatGPT
-        """
-        Calculate the angle (in radians) between two vectors.
-
-        Parameters:
-            v1 (array-like): First vector.
-            v2 (array-like): Second vector.
-
-        Returns:
-            float: Angle between the vectors in radians.
-        """
-        if AtomObject3 is not None:
-            # Calculate bond vectors
-            v1 = AtomObject1.Coordinates - AtomObject2.Coordinates
-            v2 = AtomObject3.Coordinates - AtomObject2.Coordinates
-        else:
-            v1 = AtomObject1.Coordinates
-            v2 = AtomObject2.Coordinates
-        # Calculate dot product and magnitudes
-        dot_product = np.dot(v1, v2)
-        magnitude_v1 = np.linalg.norm(v1)
-        magnitude_v2 = np.linalg.norm(v2)
-
-        # Calculate cosine of the angle
-        cos_theta = dot_product / (magnitude_v1 * magnitude_v2)
-
-        # Ensure the value is within valid range for arccos (handle numerical precision issues)
-        cos_theta = np.clip(cos_theta, -1.0, 1.0)
-
-        # Calculate the angle in radians
-        angle_radians = np.arccos(cos_theta)
-
-        return angle_radians
 
     # === Optimise Geometries and Calculate Energies ===
 

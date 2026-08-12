@@ -96,8 +96,7 @@ def test_moleculeset_ReadORCA6OptOutput():
     }
     for metal in metal_mult:
         for mult in metal_mult[metal]:
-            ms = MoleculeSet()
-            ms.ReadMol2File(
+            ms = MoleculeSet.ReadMol2File(
                 mol2_file=f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/ReadORCA6Outputs/{metal}Lig-S{mult}_XRD-Structures.mol2",
             )
             ms.ReadORCA6OptimisationOutput(

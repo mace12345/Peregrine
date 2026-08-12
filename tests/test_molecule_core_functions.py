@@ -5,7 +5,8 @@ from copy import deepcopy
 from peregrine.molecule import Molecule
 from peregrine.atom import Atom
 
-xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin/"
+xtb_binary_path = "/Users/samuelmace/Desktop/xtb-bleed-macos-arm64/bin/"
+# xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin/"
 # xtb_binary_path = "C:/Users/samue/xtb-bleed-windows/bin/"
 # xtb_binary_path = "/home/samue/bin/xtb-6.7.1/bin/"
 

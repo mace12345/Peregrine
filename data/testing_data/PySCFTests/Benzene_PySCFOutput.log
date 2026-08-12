@@ -1,4 +1,4 @@
-#INFO: **** input file is /home/samue/Desktop/Peregrine/data/testing_data/PySCFTests/benzene_calc.py ****
+#INFO: **** input file is /Users/samuelmace/Desktop/Peregrine/data/testing_data/PySCFTests/benzene_calc.py ****
 import time
 start = time.time()
 import json
@@ -66,12 +66,12 @@ with open('Benzene_PySCFOutput.meta.json', 'w') as f:
    json.dump(metadata, f, indent=2)#INFO: ******************** input file end ********************
 
 
-System: uname_result(system='Linux', node='DESKTOP-8FN552C', release='6.18.33.2-microsoft-standard-WSL2', version='#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026', machine='x86_64')  Threads 12
-Python 3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]
+System: uname_result(system='Darwin', node='Samuels-MacBook-Pro.local', release='25.3.0', version='Darwin Kernel Version 25.3.0: Wed Jan 28 20:48:41 PST 2026; root:xnu-12377.81.4~5/RELEASE_ARM64_T6041', machine='arm64')  Threads 16
+Python 3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 17:06:14) [Clang 19.1.7 ]
 numpy 2.4.6  scipy 1.18.0  h5py 3.16.0
-Date: Sun Jul  5 15:08:24 2026
-PySCF version 2.13.1
-PySCF path  /home/samue/miniforge3/envs/chem-env/lib/python3.12/site-packages/pyscf
+Date: Mon Aug 10 15:17:57 2026
+PySCF version 2.14.0
+PySCF path  /Users/samuelmace/miniforge3/envs/chem-env/lib/python3.12/site-packages/pyscf
 
 [CONFIG] conf_file None
 [INPUT] verbose = 4
@@ -101,7 +101,7 @@ number of NR pGTOs = 186
 number of NR cGTOs = 114
 basis = def2svp
 ecp = {}
-CPU time:         1.35
+CPU time:         0.36
 
 
 ******** <class 'pyscf.scf.hf.RHF'> ********
@@ -118,35 +118,35 @@ SCF conv_tol_grad = None
 SCF max_cycles = 50
 direct_scf = True
 direct_scf_tol = 1e-13
-chkfile to save SCF result = /tmp/tmpbwuy032f
-max_memory 1000 MB (current use 105 MB)
+chkfile to save SCF result = /var/folders/8_/lqsqgby51d564ymltyrlyzl00000gn/T/tmphy95tucd
+max_memory 1000 MB (current use 0 MB)
 Set gradient conv threshold to 3.16228e-05
 Initial guess from minao.
 init E= -230.464238913963
-  HOMO = -0.230562218372241  LUMO = -0.0375391684667896
-cycle= 1 E= -229.920054787331  delta_E= 0.544  |g|= 0.466  |ddm|= 3.35
-  HOMO = -0.420404733570088  LUMO = 0.0103173025285841
-cycle= 2 E= -230.002515707501  delta_E= -0.0825  |g|= 0.229  |ddm|= 1.06
-  HOMO = -0.343562200703797  LUMO = 0.044453754594334
+  HOMO = -0.230562218372241  LUMO = -0.0375391684667892  gap/eV = 5.25242
+cycle= 1 E= -229.920054787332  delta_E= 0.544  |g|= 0.466  |ddm|= 3.35
+  HOMO = -0.420404733570073  LUMO = 0.0103173025285872  gap/eV = 11.72054
+cycle= 2 E= -230.002515707503  delta_E= -0.0825  |g|= 0.229  |ddm|= 1.06
+  HOMO = -0.343562200703792  LUMO = 0.0444537545943424  gap/eV = 10.55845
 cycle= 3 E= -230.018776024214  delta_E= -0.0163  |g|= 0.0872  |ddm|= 0.338
-  HOMO = -0.363512742991886  LUMO = 0.0441462901407648
+  HOMO = -0.363512742991882  LUMO = 0.0441462901407559  gap/eV = 11.09297
 cycle= 4 E= -230.022011008971  delta_E= -0.00323  |g|= 0.00572  |ddm|= 0.173
-  HOMO = -0.364117086423976  LUMO = 0.0438912275283858
-cycle= 5 E= -230.022028045123  delta_E= -1.7e-05  |g|= 0.0013  |ddm|= 0.0101
-  HOMO = -0.363758203134276  LUMO = 0.0440335720304992
-cycle= 6 E= -230.022028993862  delta_E= -9.49e-07  |g|= 0.000188  |ddm|= 0.00295
-  HOMO = -0.363737569056496  LUMO = 0.0440538749419521
+  HOMO = -0.364117086423972  LUMO = 0.0438912275283871  gap/eV = 11.10247
+cycle= 5 E= -230.022028045124  delta_E= -1.7e-05  |g|= 0.0013  |ddm|= 0.0101
+  HOMO = -0.363758203134274  LUMO = 0.0440335720304885  gap/eV = 11.09658
+cycle= 6 E= -230.022028993861  delta_E= -9.49e-07  |g|= 0.000188  |ddm|= 0.00295
+  HOMO = -0.363737569056496  LUMO = 0.0440538749419561  gap/eV = 11.09657
 cycle= 7 E= -230.022029021178  delta_E= -2.73e-08  |g|= 3.32e-05  |ddm|= 0.00048
-  HOMO = -0.363739380773549  LUMO = 0.0440536353287069
+  HOMO = -0.363739380773536  LUMO = 0.0440536353287153  gap/eV = 11.09661
 cycle= 8 E= -230.022029021742  delta_E= -5.63e-10  |g|= 6.37e-06  |ddm|= 8.22e-05
-  HOMO = -0.363738678934903  LUMO = 0.0440541151238389
-Extra cycle  E= -230.02202902175  delta_E= -8.01e-12  |g|= 4.8e-06  |ddm|= 1.27e-05
+  HOMO = -0.363738678934891  LUMO = 0.0440541151238398  gap/eV = 11.09661
+Extra cycle  E= -230.02202902175  delta_E= -8.19e-12  |g|= 4.8e-06  |ddm|= 1.27e-05
 converged SCF energy = -230.02202902175
 
 
 ******** <class 'pyscf.grad.rhf.Gradients'> for <class 'pyscf.scf.hf.RHF'> ********
 unit = Eh/Bohr
-max_memory 1000 MB (current use 291 MB)
+max_memory 1000 MB (current use 0 MB)
 --------------- RHF gradients ---------------
          x                y                z
 0 C     0.0818653811     0.0464986787     0.0000191725

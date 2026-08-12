@@ -1,4 +1,4 @@
-#INFO: **** input file is /home/samue/Desktop/Peregrine/data/testing_data/PySCFTests/water_cation_calc.py ****
+#INFO: **** input file is /Users/samuelmace/Desktop/Peregrine/data/testing_data/PySCFTests/water_cation_calc.py ****
 import time
 start = time.time()
 import json
@@ -61,12 +61,12 @@ with open('WaterCation_PySCFOutput.meta.json', 'w') as f:
    json.dump(metadata, f, indent=2)#INFO: ******************** input file end ********************
 
 
-System: uname_result(system='Linux', node='DESKTOP-8FN552C', release='6.18.33.2-microsoft-standard-WSL2', version='#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026', machine='x86_64')  Threads 12
-Python 3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]
+System: uname_result(system='Darwin', node='Samuels-MacBook-Pro.local', release='25.3.0', version='Darwin Kernel Version 25.3.0: Wed Jan 28 20:48:41 PST 2026; root:xnu-12377.81.4~5/RELEASE_ARM64_T6041', machine='arm64')  Threads 16
+Python 3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 17:06:14) [Clang 19.1.7 ]
 numpy 2.4.6  scipy 1.18.0  h5py 3.16.0
-Date: Sun Jul  5 15:07:28 2026
-PySCF version 2.13.1
-PySCF path  /home/samue/miniforge3/envs/chem-env/lib/python3.12/site-packages/pyscf
+Date: Mon Aug 10 15:17:04 2026
+PySCF version 2.14.0
+PySCF path  /Users/samuelmace/miniforge3/envs/chem-env/lib/python3.12/site-packages/pyscf
 
 [CONFIG] conf_file None
 [INPUT] verbose = 4
@@ -88,7 +88,7 @@ number of NR pGTOs = 45
 number of NR cGTOs = 29
 basis = def2svp
 ecp = {}
-CPU time:         1.62
+CPU time:         0.66
 
 
 ******** <class 'pyscf.dft.rks.RKS'> ********
@@ -105,12 +105,12 @@ SCF conv_tol_grad = None
 SCF max_cycles = 50
 direct_scf = True
 direct_scf_tol = 1e-13
-chkfile to save SCF result = /tmp/tmp6rhrbq3l
-max_memory 1000 MB (current use 105 MB)
-XC library pyscf.dft.libxc version 7.0.0
-    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+chkfile to save SCF result = /var/folders/8_/lqsqgby51d564ymltyrlyzl00000gn/T/tmpf6chorvt
+max_memory 1000 MB (current use 0 MB)
+XC library pyscf.dft.libxc version 7.1.2
+    S. Lehtola, C. Steigemann, M. J. T. Oliveira, and M. A. L. Marques,  SoftwareX 7, 1–5 (2018)
 XC functionals = wb97m_v
-    N. Mardirossian and M. Head-Gordon.,  J. Chem. Phys. 144, 214110 (2016)
+    N. Mardirossian and M. Head-Gordon,  J. Chem. Phys. 144, 214110 (2016)
 radial grids: 
     Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
     
@@ -118,47 +118,47 @@ becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
 pruning grids: True
 grids dens level: 5
 symmetrized grids: False
-atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7bd089e00360>
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x13126cb80>
 ** Following is NLC and NLC Grids **
 NLC functional = wb97m_v
 radial grids: 
     Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
     
 becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
-pruning grids: <function nwchem_prune at 0x7bd089e00400>
+pruning grids: <function nwchem_prune at 0x13126c5e0>
 grids dens level: 3
 symmetrized grids: False
-atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7bd089e00360>
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x13126cb80>
 small_rho_cutoff = 0
 Set gradient conv threshold to 3.16228e-05
 Initial guess from minao.
 tot grids = 204752
 tot grids = 43512
 init E= -76.795792144257
-  HOMO = -0.563843572566864  LUMO = -0.00645093074058156
-cycle= 1 E= -76.5318010868744  delta_E= 0.264  |g|= 0.374  |ddm|= 1.49
-  HOMO = -0.872526298383983  LUMO = -0.243861221161706
+  HOMO = -0.563843572566862  LUMO = -0.00645093074057579  gap/eV = 15.16743
+cycle= 1 E= -76.5318010868743  delta_E= 0.264  |g|= 0.374  |ddm|= 1.49
+  HOMO = -0.872526298383986  LUMO = -0.243861221161707  gap/eV = 17.10685
 cycle= 2 E= -76.5618232273326  delta_E= -0.03  |g|= 0.19  |ddm|= 0.391
-  HOMO = -0.925621886594824  LUMO = -0.236543665302714
-cycle= 3 E= -76.5669479122474  delta_E= -0.00512  |g|= 0.0782  |ddm|= 0.138
-  HOMO = -0.904752562244125  LUMO = -0.22729659385639
-cycle= 4 E= -76.5680239649789  delta_E= -0.00108  |g|= 0.00771  |ddm|= 0.0445
-  HOMO = -0.904791946538773  LUMO = -0.227027740338038
-cycle= 5 E= -76.5680396830936  delta_E= -1.57e-05  |g|= 0.000647  |ddm|= 0.00741
-  HOMO = -0.904906983358796  LUMO = -0.227116647368423
-cycle= 6 E= -76.5680398646567  delta_E= -1.82e-07  |g|= 0.000106  |ddm|= 0.000773
-  HOMO = -0.904928293414205  LUMO = -0.22712210820263
+  HOMO = -0.925621886594825  LUMO = -0.236543665302718  gap/eV = 18.75077
+cycle= 3 E= -76.5669479122472  delta_E= -0.00512  |g|= 0.0782  |ddm|= 0.138
+  HOMO = -0.904752562244125  LUMO = -0.227296593856388  gap/eV = 18.43452
+cycle= 4 E= -76.568023964979  delta_E= -0.00108  |g|= 0.00771  |ddm|= 0.0445
+  HOMO = -0.904791946538771  LUMO = -0.227027740338036  gap/eV = 18.44290
+cycle= 5 E= -76.5680396830935  delta_E= -1.57e-05  |g|= 0.000647  |ddm|= 0.00741
+  HOMO = -0.9049069833588  LUMO = -0.227116647368423  gap/eV = 18.44361
+cycle= 6 E= -76.5680398646568  delta_E= -1.82e-07  |g|= 0.000106  |ddm|= 0.000773
+  HOMO = -0.904928293414202  LUMO = -0.22712210820263  gap/eV = 18.44405
 cycle= 7 E= -76.5680398724624  delta_E= -7.81e-09  |g|= 2.86e-05  |ddm|= 0.000177
-  HOMO = -0.904930490880261  LUMO = -0.227122679125421
+  HOMO = -0.904930490880246  LUMO = -0.227122679125422  gap/eV = 18.44409
 cycle= 8 E= -76.5680398731155  delta_E= -6.53e-10  |g|= 5.13e-06  |ddm|= 5.96e-05
-  HOMO = -0.904929020515936  LUMO = -0.227122642558968
-Extra cycle  E= -76.5680398731285  delta_E= -1.3e-11  |g|= 2.65e-06  |ddm|= 6.56e-06
-converged SCF energy = -76.5680398731285
+  HOMO = -0.904929020515934  LUMO = -0.22712264255897  gap/eV = 18.44405
+Extra cycle  E= -76.5680398731283  delta_E= -1.29e-11  |g|= 2.65e-06  |ddm|= 6.56e-06
+converged SCF energy = -76.5680398731283
 
 
 ******** <class 'pyscf.grad.rks.Gradients'> for <class 'pyscf.dft.rks.RKS'> ********
 unit = Eh/Bohr
-max_memory 1000 MB (current use 148 MB)
+max_memory 1000 MB (current use 0 MB)
 grid_response = False
 --------------- RKS gradients ---------------
          x                y                z

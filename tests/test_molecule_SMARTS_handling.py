@@ -640,6 +640,7 @@ def test_WriteSMARTSString_BH9():
         molObj_str = f.read()
         f.close()
     molObj_prod = Molecule.ReadMolString(molObj_str)
+    print("\n\nLooke Here!\n\n")
     SMARTS_6_prod = molObj_prod.WriteSMARTSString(HandleAromaticity=True)
     for atomObj in molObj_prod.AtomsList:
         atomObj.SMARTSCentre = False

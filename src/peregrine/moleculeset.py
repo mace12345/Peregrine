@@ -1,17 +1,10 @@
-import numpy as np
 import os
-import time
 from copy import deepcopy
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
 
 from .atom import Atom
 from .molecule import Molecule
 
-
-def _parse_mol2_batch(strings):
-    return [m for m in map(Molecule.ReadMol2String, strings) if m is not None]
 
 
 class MoleculeSet:
@@ -74,14 +67,14 @@ class MoleculeSet:
             if i != "" and "@<TRIPOS>ATOM" in i
         ]
 
-        # Read in the .MOL2 strings as molObj
-        self = cls()
+        # Instantiate a new MoleculeSet
+        instance = cls()
         for molecule_string in molecule_string_list:
             molObj = Molecule.ReadMol2String(molecule_string)
             if molObj is None:
                 continue
-            self.MoleculesDict[molObj.Identifier] = molObj
-        return self
+            instance.MoleculesDict[molObj.Identifier] = molObj
+        return instance
 
     def ReadORCA6OutputDirectory(
         self,
