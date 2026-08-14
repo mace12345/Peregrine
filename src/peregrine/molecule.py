@@ -285,7 +285,11 @@ def _PySCFHelper_DetermineRestriction(
 
 
 def _PySCFHelper_DetermineImports(
-    method_type: str, get_gradients: bool, get_fock_matrix: bool
+    method_type: str,
+    get_gradients: bool,
+    get_fock_matrix: bool,
+    calculation_type: str,
+    CPU_count: int,
 ) -> str:
     """
     Build the import section for a PySCF input script.
@@ -299,17 +303,22 @@ def _PySCFHelper_DetermineImports(
         str: A string containing the necessary Python import statements and an
         initial metadata dictionary definition.
     """
-    pyscf_str = "import json\nfrom pyscf import gto\n"
+    pyscf_str = "import json\nimport resource\nimport basis_set_exchange as bse\nimport pyscf.gto.basis.bse as pbse\nfrom pyscf import gto\nfrom pyscf import lib\n"
     if method_type == "HF":
         pyscf_str += "from pyscf import scf\n"
     if method_type == "CC":
         pyscf_str += "from pyscf import scf\nfrom pyscf import cc\n"
+    if method_type == "CC" and get_gradients == True:
+        pyscf_str += "from pyscf.cc import ccsd_t_lambda_slow\nfrom pyscf.grad import ccsd_t as ccsd_t_grad\n"
     if get_gradients == True:
         pyscf_str += "from pyscf import grad\n"
     if method_type == "DFT":
         pyscf_str += "from pyscf import dft\n"
     if get_fock_matrix == True:
         pyscf_str += "import numpy as np\n"
+    if "opt" in calculation_type:
+        pyscf_str += "from pyscf.geomopt.geometric_solver import optimize as optimise\nfrom pyscf.geomopt.addons import as_pyscf_method\n"
+    pyscf_str += f"lib.num_threads({CPU_count})"
     pyscf_str += "\nmetadata = {}\n\n"
     return pyscf_str
 
@@ -321,6 +330,8 @@ def _PySCFHelper_DefineMolecule(
     method_type: str,
     restricted_str: str,
     method: str,
+    CPU_count: int,
+    ecp: list[int] | None,
 ) -> str:
     """
     Build the PySCF molecule-definition block for a calculation script.
@@ -337,10 +348,31 @@ def _PySCFHelper_DefineMolecule(
         str: A string containing the PySCF molecule setup code and metadata
         assignments for the calculation.
     """
-    return f"""# Define Molecule
+    # Retreive relevent basis sets
+    AtomicSymbols = molObj.GetAtomicSymbols()
+    processed_basis = "{"
+    for AtomicSymbol in AtomicSymbols:
+        processed_basis += f"'{AtomicSymbol}': orbital_basis['{AtomicSymbol}'], "
+    processed_basis += "}"
+    # Retreive relevent ECPs
+    if ecp is not None:
+        processed_ecp = "{"
+        for AtomicSymbol in ecp:
+            processed_ecp += f"'{AtomicSymbol}': ecp_basis['{AtomicSymbol}'], "
+        processed_ecp += "}"
+        retreive_ecp = "\necp_basis = pbse._ecp_basis(raw)"
+    else:
+        processed_ecp = r"{}"
+        retreive_ecp = ""
+    return f"""# Retrieve basis set from basis set exchange
+raw = bse.api.get_basis('{basisset}', elements={AtomicSymbols})
+orbital_basis, _ = pbse._orbital_basis(raw){retreive_ecp}
+        
+# Define Molecule
 pyscfMolObj = gto.Mole(
     atom='''{molObj.WriteXYZBlock()}''',
-    basis='{basisset}',
+    basis={processed_basis},
+    ecp={processed_ecp},
     unit = 'Ang',
     output = '{molObj.Identifier}_PySCFOutput.log',
     verbose = 4,
@@ -350,11 +382,15 @@ pyscfMolObj = gto.Mole(
 )
 pyscfMolObj.build()
 metadata['Identifier'] = '{molObj.Identifier}'
+metadata['CPU Count'] = {CPU_count}
 metadata['Method Type'] = '{method_type}'
 metadata['Method'] = '{restricted_str.lower()} {method}'
 metadata['Basis Set'] = '{basisset}'
 metadata['Charge'] = {molObj.FormalCharge}
-metadata['Multiplicity'] = {int(molObj.Multiplicity)}\n\n"""
+metadata['Multiplicity'] = {int(molObj.Multiplicity)}
+metadata['Number of Electrons'] = pyscfMolObj.nelectron
+metadata['Number of Primitive Basis Functions'] = pyscfMolObj.npgto_nr() 
+metadata['AO Labels'] = pyscfMolObj.ao_labels()\n\n"""
 
 
 def _PySCFHelper_DefineAndRunCalculation(
@@ -389,7 +425,6 @@ def _PySCFHelper_DefineAndRunCalculation(
     if calculation_type == "single point" and method_type == "HF":
         pyscf_str = f"""pyscfMolObj_calc = scf.{restricted_str}(pyscfMolObj)
 pyscfMolObj_calc.kernel()
-metadata['AO Labels'] = pyscfMolObj.ao_labels()
 metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
 metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
 metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
@@ -402,7 +437,6 @@ pyscfMolObj_calc.xc = '{method}'
 pyscfMolObj_calc.grids.level = {grid_density}
 pyscfMolObj_calc.grids.prune = {prune_grids}
 pyscfMolObj_calc.kernel()
-metadata['AO Labels'] = pyscfMolObj.ao_labels()
 metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
 metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
 metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
@@ -411,7 +445,6 @@ metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
     # Coupled Cluster Calculations
     elif calculation_type == "single point" and method_type == "CC":
         pyscf_str = f"""pyscfMolObj_calc = scf.{restricted_str}(pyscfMolObj).run()
-metadata['AO Labels'] = pyscfMolObj.ao_labels()
 metadata['HF Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
 metadata['HF Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
 metadata['HF One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
@@ -420,6 +453,47 @@ pyscfMolObj_calc = cc.CCSD(pyscfMolObj_calc).run()
 ccsdt_en = pyscfMolObj_calc.ccsd_t()
 metadata['CCSD Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
 metadata['CCSD(T) Electronic Energy (Eh)'] = metadata['CCSD Electronic Energy (Eh)'] + ccsdt_en
+"""
+
+    # Optimisation Calculations with Coupled Cluster
+    elif calculation_type == "opt" and method_type == "CC":
+        pyscf_str = f"""# Define gradient calculation function
+def CalculateCCSDTEnergyAndGradient(pyscfMolObj):
+
+    # Calculate Electronic Energy
+    pyscfMolObj_calc = scf.{restricted_str}(pyscfMolObj).run()
+    pyscfMolObj_calc = cc.CCSD(pyscfMolObj_calc).run()
+    ccsdt_en = pyscfMolObj_calc.ccsd_t()
+    e_tot = pyscfMolObj_calc.e_tot + ccsdt_en
+    # Calculate Gradients
+
+    ElecRepulsInteg = pyscfMolObj_calc.ao2mo()
+    t1, t2 = pyscfMolObj_calc.t1, pyscfMolObj_calc.t2
+    l1, l2 = ccsd_t_lambda_slow.kernel(pyscfMolObj_calc, ElecRepulsInteg, t1, t2)[1:]
+    g = grad.ccsd_t.Gradients(pyscfMolObj_calc)
+    grad_vector = g.kernel(t1, t2, l1, l2)
+
+    return e_tot, grad_vector
+
+# Set up and optimise geometry
+CCSDT_Method = as_pyscf_method(
+    pyscfMolObj,
+    CalculateCCSDTEnergyAndGradient,
+)
+pyscfMolObj_GeomEq = optimise(CCSDT_Method, **conv_params)
+metadata['Optimised Coordinates (Angstrom)'] = pyscfMolObj_GeomEq.atom_coords(unit='Angstrom').tolist()
+
+# Calculate final energies and gradients
+pyscfMolObj_calc = scf.{restricted_str}(pyscfMolObj).run()
+metadata['Final HF Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
+metadata['Final HF Two Electronic Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
+metadata['Final HF One Electronic Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
+metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
+pyscfMolObj_calc = cc.CCSD(pyscfMolObj_calc).run()
+ccsdt_en = pyscfMolObj_calc.ccsd_t()
+metadata['CCSD Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
+metadata['CCSD(T) Electronic Energy (Eh)'] = metadata['CCSD Electronic Energy (Eh)'] + ccsdt_en
+
 """
     return pyscf_str
 
@@ -477,8 +551,8 @@ np.savetxt('{molObj.Identifier}_PySCFOutput.beta.fock', F[1], fmt='%.16e')
 
 
 def _PySCFHelper_GetGradients(
-    calculation_type: str,
     get_gradients: bool,
+    method_type: str,
 ) -> str:
     """
     Construct a PySCF code block for computing atomic gradients.
@@ -492,12 +566,29 @@ def _PySCFHelper_GetGradients(
         str: A string containing the PySCF code needed to compute and store
         atomic gradients, or a placeholder message when gradients are not requested.
     """
-    pyscf_str = "# No atomic force gradients returned"
-    if calculation_type == "single point" and get_gradients == True:
+    pyscf_str = "\n# No atomic force gradients returned\n"
+    if (
+        get_gradients == True 
+        and method_type != "CC"
+    ):
         pyscf_str = """
 # Get Gradients
 g = pyscfMolObj_calc.Gradients()
 grad = g.kernel()
+metadata['Gradients (Eh/Bohr)'] = grad.tolist()
+
+"""
+    elif (
+            get_gradients == True 
+            and method_type == "CC"
+        ):
+            pyscf_str = """
+# Get Gradients
+ElecRepulsInteg = pyscfMolObj_calc.ao2mo()
+t1, t2 = pyscfMolObj_calc.t1, pyscfMolObj_calc.t2
+l1, l2 = cc.ccsd_t_lambda_slow.kernel(pyscfMolObj_calc, ElecRepulsInteg, t1, t2)[1:]
+g = grad.ccsd_t.Gradients(pyscfMolObj_calc)
+grad = g.kernel(t1, t2, l1, l2)
 metadata['Gradients (Eh/Bohr)'] = grad.tolist()
 
 """
@@ -1016,6 +1107,9 @@ class Molecule:
                 atomlist.append(atomObj)
         return atomlist
 
+    def GetAtomicSymbols(self) -> list[str]:
+        return list(set([atomObj.AtomicSymbol for atomObj in self.AtomsList]))
+
     def MetalAtomCount(self) -> int:
         metal_atom_count = 0
         for atomObj in self.AtomsList:
@@ -1102,7 +1196,7 @@ class Molecule:
         DataStructs.ConvertToNumpyArray(RawMorganFingerPrint, ReadableMorganFingerPrint)
         return ReadableMorganFingerPrint
 
-    # === Read/Write files & SMILES/SMARTS ===
+    # === SMILES Matching ===
 
     def EquivelentMoleculeInchi(self, SMILES1: str, SMILES2: str) -> bool:
         SMILES1_rdkitObj = Chem.MolFromSmiles(SMILES1)
@@ -1129,6 +1223,8 @@ class Molecule:
             return False
         matches = SMILES_rdkitObj.GetSubstructMatches(SMARTS_rdkitObj)
         return matches
+
+    # === Write files & SMILES/SMARTS ===
 
     def WriteMolString(self):
         """
@@ -1369,24 +1465,160 @@ class Molecule:
 
         return SMARTS
 
-    def WriteORCAInput(self) -> str:
-        pass
+    def WriteORCAInput(
+        self,
+        method: str = "hf",
+        basisset: str = "def2-svp",
+        ORCA_commands: str = "opt freq",
+        CPU_count: int = 4,
+        max_memory: int = 1000, # MB
+        max_time: None | int = 2880, # minuets
+        job_scheduler: None | str="SLURM",
+        file_types_to_save: list[str] = [".out", ".xyz"]
+    ) -> tuple[str, str | None]:
+        ORCA_commands = ORCA_commands.lower()
+        orca_str = self.WriteORCAString(
+            method=method,
+            basisset=basisset,
+            ORCA_commands=ORCA_commands,
+            CPU_count=CPU_count,
+            max_memory=max_memory,
+        )
+        job_scheduler = job_scheduler.lower()
+        if job_scheduler == "slurm":
+            sche_str = self.WriteSLURMStringForORCA(
+                job_name=self.Identifier,
+                CPU_count=CPU_count,
+                max_memory=max_memory,
+                max_time=max_time,
+                file_types_to_save=file_types_to_save,
+                ORCA_commands=ORCA_commands,
+            )
+        else:
+            sche_str = None
+        return (orca_str, sche_str)
 
+    def WriteORCAString(
+        self,
+        method: str = "hf",
+        basisset: str = "def2-svp",
+        ORCA_commands: str = "opt freq",
+        CPU_count: int = 4,
+        max_memory: int = 1000, # MB
+    ) -> str:
+        max_memory_per_CPU_core = int((max_memory / CPU_count) * 0.95)
+        orca_str = f"""! {method} {basisset} {ORCA_commands}
+
+%maxcore {max_memory_per_CPU_core}
+
+"""
+        if CPU_count > 1:
+            orca_str += f"""%pal
+    nprocs {CPU_count}
+end
+
+"""
+        orca_str += f"""*xyz {self.FormalCharge} {self.Multiplicity}
+{self.WriteXYZBlock()}*"""
+        return orca_str
+
+    def WriteSLURMStringForORCA(
+        self,
+        job_name: str,
+        ORCA_commands: str,
+        file_types_to_save: list[str] = [".out", ".xyz"],
+        CPU_count: int = 4,
+        max_memory: int = 1000,
+        max_time: None | int = 2880,
+    ) -> str:
+        hours = int(max_time / 60)
+        minuets = int(max_time - int(max_time / 60))
+        slurm_str = f"""#!/bin/bash
+#SBATCH --job-name={job_name}
+#SBATCH --time={hours}:{minuets}:00
+#SBATCH --mem={max_memory}
+#SBATCH --nodes=1
+#SBATCH --ntasks={CPU_count}
+#SBATCH --cpus-per-task=1
+
+# Load in modules
+module load openmpi
+module load orca
+orca_exe=$(which orca)
+
+# Ensure OpenMPI uses the allocated SLURM resources
+# export OMPI_MCA_btl=self,tcp
+export OMPI_MCA_orte_default_hostfile=$SLURM_JOB_NODELIST
+
+INPUT_DIR=$(pwd)
+
+# Create a scratch directory and navigate to it
+SCRATCH_DIR=/scratch/$USER/$SLURM_JOB_ID
+mkdir -p $SCRATCH_DIR
+cd $SCRATCH_DIR
+
+# Set up trap to copy .xyz files and .out file upon job termination or exit
+trap 'rsync -av "$SCRATCH_DIR/"*.xyz "$INPUT_DIR/"; echo "XYZ files copied on termination."' TERM EXIT
+trap 'rsync -av "$SCRATCH_DIR/"*.out "$INPUT_DIR/"; echo "ORCA6 OUT file copied on termination."' TERM EXIT
+
+# Copy input files to the scratch directory
+cp $INPUT_DIR/{job_name}.inp $SCRATCH_DIR
+cp $INPUT_DIR/{job_name}.gbw $SCRATCH_DIR
+
+# Run ORCA with MPI
+$orca_exe {job_name}.inp > {job_name}.out
+
+# Copy results back to permanent storage
+"""
+        for file_type in file_types_to_save:
+            file_type = file_type.replace(".", "")
+            slurm_str += f"cp *.{file_type} $INPUT_DIR/\n"
+        slurm_str += """
+# Clean up the scratch directory
+rm -rf $SCRATCH_DIR
+
+cd $INPUT_DIR
+# Remove slurm.out file
+rm slurm-$SLURM_JOB_ID.out
+
+"""
+        if "freq" in ORCA_commands:
+            slurm_str += f"""
+# Produce Vibration .xyz files if frequency calculation
+orca_pltvib_exe=$(which orca_pltvib)
+$orca_pltvib_exe {job_name}.out 6 7 8 9"""
+        return slurm_str
+    
     def WritePySCFInput(
         self,
         method: str = "hf",
-        basisset: dict | str = "def2svp",
-        ecp: dict | None=None,
+        basisset: dict | str = "def2-svp",
+        ecp: list[str] | None=None,
         restricted: bool = True,
         calculation_type: str = "single point",
         get_gradients: bool = True,
         get_fock_matrix: bool = True,
         max_memory: int = 1000,  # in MB
+        CPU_count: int = 4,
         grid_density: int = 5,
         prune_grids: None | bool = True,
+        optimisation_convergence_settings: dict | None=None
     ) -> str:
 
-        pyscf_str = "import time\nstart = time.time()\n"
+        # Optimisation Settings using geomeTRIC
+        opt_default_settings = {
+            'convergence_energy': 1e-6,  # Eh
+            'convergence_grms': 3e-5,    # Eh/Bohr
+            'convergence_gmax': 4.5e-5,  # Eh/Bohr
+            'convergence_drms': 1.2e-4,  # Angstrom
+            'convergence_dmax': 1.8e-4,  # Angstrom
+        }
+        optimisation_convergence_settings = {
+            **opt_default_settings, 
+            **(optimisation_convergence_settings or {})
+        }
+
+        pyscf_str = f"import time\nstart = time.time()\n\nconv_params = {str(optimisation_convergence_settings)}\n\n"
 
         # Standardise method and basis set names
         method = method.lower()
@@ -1409,6 +1641,8 @@ class Molecule:
             method_type=method_type,
             get_gradients=get_gradients,
             get_fock_matrix=get_fock_matrix,
+            calculation_type=calculation_type,
+            CPU_count=CPU_count,
         )
 
         # Declare atoms and basis set
@@ -1419,6 +1653,8 @@ class Molecule:
             method_type=method_type,
             restricted_str=restricted_str,
             method=method,
+            CPU_count=CPU_count,
+            ecp=ecp,
         )
 
         # Set up calculation and run calculation
@@ -1434,8 +1670,8 @@ class Molecule:
         # Post-Processing of single point and calculations
         # Get atomic force gradients
         pyscf_str += _PySCFHelper_GetGradients(
-            calculation_type=calculation_type,
             get_gradients=get_gradients,
+            method_type=method_type,
         )
 
         # Only save fock matricies for single-reference HF and DFT calculations
@@ -1450,7 +1686,8 @@ class Molecule:
 
         # Get time taken to run program
         pyscf_str += "end = time.time()\ntime_taken = round(end - start, 2)\nmetadata['Time Taken (s)'] = time_taken\n"
-
+        # Get maximum RAM usage
+        pyscf_str += "metadata['Maximum RAM used (MB)'] = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)\n"
         # Write meta data .json file
         pyscf_str += f"# Write metadata to .json file\nwith open('{self.Identifier}_PySCFOutput.meta.json', 'w') as f:\n   json.dump(metadata, f, indent=2)"
 
@@ -1880,11 +2117,12 @@ class Molecule:
         return molObj
 
     @classmethod
-    def ReadSMILESString(cls, SMILES: str, Identifier: str) -> "Molecule":
+    def ReadSMILESString(cls, SMILES: str, Identifier: str, AddHydrogens: bool = True) -> "Molecule":
         RDKitMolObj = Chem.MolFromSmiles(SMILES)
         if RDKitMolObj is None:
             raise ValueError(f"RDKit failed to parse SMILES: {SMILES}")
-        RDKitMolObj = Chem.AddHs(RDKitMolObj)
+        if AddHydrogens == True:
+            RDKitMolObj = Chem.AddHs(RDKitMolObj)
         embed_result = AllChem.EmbedMolecule(RDKitMolObj)
         if embed_result != 0:
             for _ in range(10):

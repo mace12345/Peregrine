@@ -31,5 +31,7 @@ dependencies:
   - tblite-python
   - pyberny
   - umap-learn
+  - geometric
   - pip:
     - xyzgraph
+    - basis_set_exchange

@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .atom import Atom
 from .molecule import Molecule
 
-
+import pandas as pd
 
 class MoleculeSet:
     def __init__(self):
@@ -73,6 +73,14 @@ class MoleculeSet:
             molObj = Molecule.ReadMol2String(molecule_string)
             if molObj is None:
                 continue
+            instance.MoleculesDict[molObj.Identifier] = molObj
+        return instance
+
+    @classmethod
+    def ReadSMILESList(cls, SMILES_list: list, Identifier_List: list, AddHydrogens: bool = True) -> "MoleculeSet":
+        instance = cls()
+        for SMILES, Identifier in zip(SMILES_list, Identifier_List):
+            molObj = Molecule.ReadSMILESString(SMILES, Identifier, AddHydrogens=AddHydrogens)
             instance.MoleculesDict[molObj.Identifier] = molObj
         return instance
 
@@ -183,6 +191,40 @@ class MoleculeSet:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             # list() forces iteration, so exceptions propagate instead of being swallowed
             list(executor.map(write, self.MoleculesDict.items()))
+
+    def WritePySCFInput(
+        self,
+        pyscf_file_directory: str,
+        method: str = "hf",
+        basisset: dict | str = "def2-svp",
+        ecp: dict | None=None,
+        restricted: bool = True,
+        calculation_type: str = "single point",
+        get_gradients: bool = True,
+        get_fock_matrix: bool = True,
+        max_memory: int = 1000,  # in MB
+        grid_density: int = 5,
+        prune_grids: None | bool = True,
+        optimisation_convergence_settings: dict | None=None,
+    ):
+        os.makedirs(pyscf_file_directory, exist_ok=True)
+        for molObj in self.MoleculesDict.values():
+            pyscf_str = molObj.WritePySCFInput(
+                method=method,
+                basisset=basisset,
+                ecp=ecp,
+                restricted=restricted,
+                calculation_type=calculation_type,
+                get_gradients=get_gradients,
+                get_fock_matrix=get_fock_matrix,
+                max_memory=max_memory,  # in MB
+                grid_density=grid_density,
+                prune_grids=prune_grids,
+                optimisation_convergence_settings=optimisation_convergence_settings,
+            )
+            with open(pyscf_file_directory / f"{molObj.Identifier}_PySCFInput.py", "w") as f:
+                f.write(pyscf_str)
+                f.close()
 
     # === Execute a workflow of some kind ===
 
