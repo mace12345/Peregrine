@@ -1522,7 +1522,7 @@ end
 {self.WriteXYZBlock()}*"""
         return orca_str
 
-    def WriteSLURMStringForORCA(
+    def WriteSLURMStringForOpenMPIAndORCA(
         self,
         job_name: str,
         ORCA_commands: str,
