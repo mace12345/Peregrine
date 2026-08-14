@@ -1473,7 +1473,8 @@ class Molecule:
         CPU_count: int = 4,
         max_memory: int = 1000, # MB
         max_time: None | int = 2880, # minuets
-        job_scheduler: None | str="SLURM",
+        job_scheduler_used: None | str="SLURM",
+        MPI_used: None | str="OpenMPI",
         file_types_to_save: list[str] = [".out", ".xyz"]
     ) -> tuple[str, str | None]:
         ORCA_commands = ORCA_commands.lower()
@@ -1485,8 +1486,8 @@ class Molecule:
             max_memory=max_memory,
         )
         job_scheduler = job_scheduler.lower()
-        if job_scheduler == "slurm":
-            sche_str = self.WriteSLURMStringForORCA(
+        if job_scheduler_used == "slurm" and MPI_used == "OpenMPI":
+            sche_str = self.WriteSLURMStringForOpenMPIAndORCA(
                 job_name=self.Identifier,
                 CPU_count=CPU_count,
                 max_memory=max_memory,
