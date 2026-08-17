@@ -231,6 +231,15 @@ def _ORCAHelper_GetCalculatedEnergies(
     return en_output_dict
 
 
+def _ORCAHelper_GetChargeAndMultiplicity(m_c_block: str, AtomsList: list[Atom]) -> list[Atom]:
+    for atomObj, line in zip(AtomsList, m_c_block.split("\n")):
+        line = [i for i in line.split(":")[-1].split(" ") if i != ""]
+        if len(line) == 2:
+            atomObj.FormalCharge = int(round(float(line[0]), 0))
+            atomObj.Multiplicity = int(round(float(line[1]), 0)) + 1
+    return AtomsList
+
+
 def _PySCFHelper_DetermineMethodType(method: str) -> str:
     """
     Determine the PySCF method category for a given quantum chemistry method.
@@ -2157,9 +2166,57 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         return molObj
 
     @classmethod
-    def ReadORCA6Output(cls, ORCA_output_filepath: str) -> "Molecule":
-        #
-        pass
+    def ReadORCA6Output(
+        cls, ORCA_output_filepath: str, template_molObj: "Molecule | None" = None
+    ) -> "Molecule":
+        with open(ORCA_output_filepath, "r") as f:
+            out_file = f.read()
+            f.close()
+        # Retreive Coordinates, Bonds, Multiplicity, Charge
+        if template_molObj is None:
+            # Get XYZ coordinates
+            xyz_block = out_file.split(
+                "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
+            )[-1].split("\n\n")[0]
+            AtomsList, NumberOfAtoms = _ORCAHelper_XYZBlockToAtomsList(
+                xyz_block, template_molObj
+            )
+            # Get bonds
+            bond_block = out_file.split(
+                "Mayer bond orders larger than 0.100000"
+            )[-1].split("\n\n")[0]
+            BondOrderMatrix, NumberOfBonds = (
+                _ORCAHelper_BondBlockToBondOrderMatrix(
+                    bond_block, len(AtomsList)
+                )
+            )
+            # Get multiplicities and formal charges
+            m_c_block = out_file.split(
+                "MULLIKEN ATOMIC CHARGES AND SPIN POPULATIONS\n--------------------------------------------\n"
+            )[-1].split("\nSum of atomic charges         :")[0]
+            AtomsList = _ORCAHelper_GetChargeAndMultiplicity(
+                m_c_block, AtomsList
+            )
+            # Declare Molecule Object
+            molObj = Molecule(
+                Identifier=str(ORCA_output_filepath).split("/")[-1].split(".")[0],
+                AtomsList=AtomsList,
+                BondOrderMatrix=BondOrderMatrix,
+            )
+            # Check formal charge and multiplicity is correct
+            print(molObj.Identifier)
+            input_m_c_block = [i for i in out_file.split("*xyz")[1].split("\n")[0].split(" ") if i != ""]
+            input_charge = int(input_m_c_block[0])
+            input_multiplicity = int(input_m_c_block[1])
+            if input_charge != molObj.FormalCharge:
+                difference = input_charge - molObj.FormalCharge
+                print(difference)
+                for atomObj in molObj.AtomsList:
+                    print(f"{atomObj.AtomicSymbol}: {atomObj.FormalCharge}")
+                    print(f"{atomObj.AtomicSymbol}: {input_charge}")
+            if input_multiplicity != molObj.Multiplicity:
+                pass
+            print("")
 
     @classmethod
     def ReadORCA6OutputGradients(
@@ -2250,6 +2307,26 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         return [
             [coor for coor in line.split(" ") if coor != ""]
             for line in xyz_file.split("\n")[2:]
+        ]
+
+    def XYZFileToAtomsList(self, xyz_file: str) -> list[Atom]:
+        with open(xyz_file, "r") as f:
+            xyz_file = f.read()
+            f.close()
+        coors = [
+            [coor for coor in line.split(" ") if coor != ""]
+            for line in xyz_file.split("\n")[2:]
+        ]
+        return [
+            Atom(AtomicSymbol=coor[0],
+                 Coordinates=np.array(
+                    [
+                        float(coor[1]),
+                        float(coor[2]),
+                        float(coor[3]),
+                    ]
+                )
+            ) for coor in coors
         ]
 
     def ReadXYZFileMapCoords(self, xyz_file: str):

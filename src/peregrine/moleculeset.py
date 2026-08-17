@@ -1,4 +1,5 @@
 import os
+import re
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 
@@ -9,6 +10,7 @@ import pandas as pd
 
 class MoleculeSet:
     def __init__(self):
+        self.ResultsDF: pd.DataFrame
         self.MoleculesDict: dict[str, Molecule] = {}
 
     # === Read in molecule information (mainly from directories) ===
@@ -266,6 +268,42 @@ class MoleculeSet:
         with open(orca_file_directory / "submit_jobs.sh", "w") as f:
             f.write(submit_jobs)
             f.close()
+
+    def ReadORCAOutput(
+        self,
+        orca_file_directory: str,
+    ):
+        dir_list = os.listdir(orca_file_directory)
+        # Remove unnessicary files
+        # Track files to .out files to read
+        files_to_remove = []
+        out_files = []
+        remove_patterns = [
+            "slurm",
+            r"atom(\d+)\.out",
+            r"\.sh"
+        ]
+        out_pattern = r"\.out"
+        for file in dir_list:
+            # Look for files to remove
+            for pattern in remove_patterns:
+                if re.search(pattern, file) is not None:
+                    files_to_remove.append(file)
+            # Look for .out files to keep
+            if (
+                re.search(remove_patterns[1], file) is None
+                and re.search(out_pattern, file) is not None
+            ):
+                out_files.append(file)
+        for file in files_to_remove:
+            os.remove(orca_file_directory / file)
+        for out_file in out_files:
+            molObj = Molecule.ReadORCA6Output(
+                orca_file_directory / out_file
+            )
+                
+            
+            
 
     # === Execute a workflow of some kind ===
 
