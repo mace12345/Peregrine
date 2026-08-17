@@ -226,6 +226,47 @@ class MoleculeSet:
                 f.write(pyscf_str)
                 f.close()
 
+    def WriteORCAInput(
+        self,
+        orca_file_directory: str,
+        method: str = "hf",
+        basisset: str = "def2-svp",
+        ORCA_commands: str = "opt freq",
+        CPU_count: int = 4,
+        max_memory: int = 1000, # MB
+        max_time: None | int = 2880, # minuets
+        job_scheduler_used: None | str="SLURM",
+        MPI_used: None | str="OpenMPI",
+        file_types_to_save: list[str] = [".out", ".xyz"]
+    ):
+        if job_scheduler_used is not None:
+            job_scheduler_used = job_scheduler_used.lower()
+        os.makedirs(orca_file_directory, exist_ok=True)
+        submit_jobs = ""
+        for molObj in self.MoleculesDict.values():
+            orca_inp, queue_sh = molObj.WriteORCAInput(
+                method=method,
+                basisset=basisset,
+                ORCA_commands=ORCA_commands,
+                CPU_count=CPU_count,
+                max_memory=max_memory,
+                max_time=max_time,
+                job_scheduler_used=job_scheduler_used,
+                MPI_used=MPI_used,
+                file_types_to_save=file_types_to_save,
+            )
+            with open(orca_file_directory / f"{molObj.Identifier}.inp", "w") as f:
+                f.write(orca_inp)
+                f.close()
+            with open(orca_file_directory / f"{molObj.Identifier}.sh", "w") as f:
+                f.write(queue_sh)
+                f.close()
+            if job_scheduler_used == "slurm":
+                submit_jobs += f"sbatch {molObj.Identifier}.sh\n"
+        with open(orca_file_directory / "submit_jobs.sh", "w") as f:
+            f.write(submit_jobs)
+            f.close()
+
     # === Execute a workflow of some kind ===
 
     def CalculateAtomicSOAPDescriptors(

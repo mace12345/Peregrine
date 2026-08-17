@@ -67,6 +67,12 @@ PYSCF_CC_FUNCTIONS = {"ccsdt", "ccsd(t)"}
 
 # === Helper functions ===
 
+def _GeneralHelper_MinutesToHHMMSS(minutes):
+    total_seconds = round(minutes * 60)
+    hours, remainder = divmod(total_seconds, 3600)
+    mins, secs = divmod(remainder, 60)
+    return f"{hours:02d}:{mins:02d}:{secs:02d}"
+
 
 def _ORCAHelper_XYZBlockToAtomsList(
     xyz_block: str, template_molObj: "Molecule | None" = None
@@ -915,6 +921,9 @@ class Molecule:
             self.FormalCharge += atomObj.FormalCharge
 
     def GetMultiplicity(self):
+        """
+        Update multiplicity of molecule object
+        """
         unpaired_electrons = 0
         for atomObj in self.AtomsList:
             if atomObj.Multiplicity == 1:
@@ -1485,8 +1494,11 @@ class Molecule:
             CPU_count=CPU_count,
             max_memory=max_memory,
         )
-        job_scheduler = job_scheduler.lower()
-        if job_scheduler_used == "slurm" and MPI_used == "OpenMPI":
+        if job_scheduler_used is not None:
+            job_scheduler_used = job_scheduler_used.lower()
+        if MPI_used is not None:
+            MPI_used = MPI_used.lower()
+        if job_scheduler_used == "slurm" and MPI_used == "openmpi":
             sche_str = self.WriteSLURMStringForOpenMPIAndORCA(
                 job_name=self.Identifier,
                 CPU_count=CPU_count,
@@ -1532,11 +1544,10 @@ end
         max_memory: int = 1000,
         max_time: None | int = 2880,
     ) -> str:
-        hours = int(max_time / 60)
-        minuets = int(max_time - int(max_time / 60))
+        time = _GeneralHelper_MinutesToHHMMSS(max_time)
         slurm_str = f"""#!/bin/bash
 #SBATCH --job-name={job_name}
-#SBATCH --time={hours}:{minuets}:00
+#SBATCH --time={time}
 #SBATCH --mem={max_memory}
 #SBATCH --nodes=1
 #SBATCH --ntasks={CPU_count}
@@ -2118,7 +2129,15 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         return molObj
 
     @classmethod
-    def ReadSMILESString(cls, SMILES: str, Identifier: str, AddHydrogens: bool = True) -> "Molecule":
+    def ReadSMILESString(cls,
+        SMILES: str,
+        Identifier: str,
+        AddHydrogens: bool = True,
+        SuppressRDKitWarnings: bool = True,
+    ) -> "Molecule":
+        if SuppressRDKitWarnings == True:
+            RDLogger.DisableLog("rdApp.warning")
+            RDLogger.DisableLog("rdApp.error")
         RDKitMolObj = Chem.MolFromSmiles(SMILES)
         if RDKitMolObj is None:
             raise ValueError(f"RDKit failed to parse SMILES: {SMILES}")
