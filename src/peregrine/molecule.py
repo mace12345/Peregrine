@@ -236,8 +236,86 @@ def _ORCAHelper_GetChargeAndMultiplicity(m_c_block: str, AtomsList: list[Atom]) 
         line = [i for i in line.split(":")[-1].split(" ") if i != ""]
         if len(line) == 2:
             atomObj.FormalCharge = int(round(float(line[0]), 0))
-            atomObj.Multiplicity = int(round(float(line[1]), 0)) + 1
+            multiplicity = abs(int(round(float(line[1]), 0))) + 1
+            atomObj.Multiplicity = multiplicity
     return AtomsList
+
+
+def _ORCAHelper_ConstructMolObj(ORCA_out_str: str, Identifier: str) -> "Molecule":
+    # Get XYZ coordinates
+    xyz_block = ORCA_out_str.split(
+        "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
+    )[-1].split("\n\n")[0]
+    AtomsList, NumberOfAtoms = _ORCAHelper_XYZBlockToAtomsList(
+        xyz_block, None
+    )
+    # Get bonds
+    bond_block = ORCA_out_str.split(
+        "Mayer bond orders larger than 0.100000"
+    )[-1].split("\n\n")[0]
+    BondOrderMatrix, NumberOfBonds = (
+        _ORCAHelper_BondBlockToBondOrderMatrix(
+            bond_block, len(AtomsList)
+        )
+    )
+    # Get multiplicities and formal charges
+    m_c_block = ORCA_out_str.split(
+        "MULLIKEN ATOMIC CHARGES AND SPIN POPULATIONS\n--------------------------------------------\n"
+    )[-1].split("\nSum of atomic charges         :")[0]
+    AtomsList = _ORCAHelper_GetChargeAndMultiplicity(
+        m_c_block, AtomsList
+    )
+    # Declare Molecule Object
+    molObj = Molecule(
+        Identifier=Identifier,
+        AtomsList=AtomsList,
+        BondOrderMatrix=BondOrderMatrix,
+    )
+    # Check formal charge and multiplicity is correct
+    input_m_c_block = [i for i in ORCA_out_str.split("*xyz")[1].split("\n")[0].split(" ") if i != ""]
+    input_charge = int(input_m_c_block[0])
+    input_multiplicity = int(input_m_c_block[1])
+    if input_charge != molObj.FormalCharge:
+        difference = input_charge - molObj.FormalCharge
+        atom_electronegativities = [
+            [atomObj.Label, atomObj.PaulingElectronegativity] 
+            for atomObj in molObj.AtomsList
+        ]
+        if difference > 0:
+            elec_pos_atom_label = None
+            pos_pauling_value = 4
+            for atom_label_pauling_value in atom_electronegativities:
+                if atom_label_pauling_value[1] < pos_pauling_value:
+                    pos_pauling_value = atom_label_pauling_value[1]
+                    elec_pos_atom_label = atom_label_pauling_value[0]
+            molObj.AtomsDict[elec_pos_atom_label][1].FormalCharge += difference
+        elif difference < 0:
+            elec_neg_atom_label = None
+            neg_pauling_value = 0
+            for atom_label_pauling_value in atom_electronegativities:
+                if atom_label_pauling_value[1] > neg_pauling_value:
+                    neg_pauling_value = atom_label_pauling_value[1]
+                    elec_neg_atom_label = atom_label_pauling_value[0]
+            molObj.AtomsDict[elec_neg_atom_label][1].FormalCharge += difference
+    if input_multiplicity != molObj.Multiplicity:
+        difference = input_multiplicity - molObj.Multiplicity
+        atom_electronegativities = [
+            [atomObj.Label, atomObj.PaulingElectronegativity] 
+            for atomObj in molObj.AtomsList
+        ]
+        if difference > 0:
+            elec_pos_atom_label = None
+            pos_pauling_value = 4
+            for atom_label_pauling_value in atom_electronegativities:
+                if atom_label_pauling_value[1] < pos_pauling_value:
+                    pos_pauling_value = atom_label_pauling_value[1]
+                    elec_pos_atom_label = atom_label_pauling_value[0]
+            molObj.AtomsDict[elec_pos_atom_label][1].Multiplicity += difference
+        elif difference < 0:
+            print(difference)
+            print("FIX THIS: multiplicity is too high and it needs to be reduced")
+        molObj.GetMultiplicity()
+    return molObj
 
 
 def _PySCFHelper_DetermineMethodType(method: str) -> str:
@@ -2174,49 +2252,12 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
             f.close()
         # Retreive Coordinates, Bonds, Multiplicity, Charge
         if template_molObj is None:
-            # Get XYZ coordinates
-            xyz_block = out_file.split(
-                "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
-            )[-1].split("\n\n")[0]
-            AtomsList, NumberOfAtoms = _ORCAHelper_XYZBlockToAtomsList(
-                xyz_block, template_molObj
-            )
-            # Get bonds
-            bond_block = out_file.split(
-                "Mayer bond orders larger than 0.100000"
-            )[-1].split("\n\n")[0]
-            BondOrderMatrix, NumberOfBonds = (
-                _ORCAHelper_BondBlockToBondOrderMatrix(
-                    bond_block, len(AtomsList)
-                )
-            )
-            # Get multiplicities and formal charges
-            m_c_block = out_file.split(
-                "MULLIKEN ATOMIC CHARGES AND SPIN POPULATIONS\n--------------------------------------------\n"
-            )[-1].split("\nSum of atomic charges         :")[0]
-            AtomsList = _ORCAHelper_GetChargeAndMultiplicity(
-                m_c_block, AtomsList
-            )
-            # Declare Molecule Object
-            molObj = Molecule(
+            molObj = _ORCAHelper_ConstructMolObj(
+                ORCA_out_str=out_file,
                 Identifier=str(ORCA_output_filepath).split("/")[-1].split(".")[0],
-                AtomsList=AtomsList,
-                BondOrderMatrix=BondOrderMatrix,
             )
-            # Check formal charge and multiplicity is correct
-            print(molObj.Identifier)
-            input_m_c_block = [i for i in out_file.split("*xyz")[1].split("\n")[0].split(" ") if i != ""]
-            input_charge = int(input_m_c_block[0])
-            input_multiplicity = int(input_m_c_block[1])
-            if input_charge != molObj.FormalCharge:
-                difference = input_charge - molObj.FormalCharge
-                print(difference)
-                for atomObj in molObj.AtomsList:
-                    print(f"{atomObj.AtomicSymbol}: {atomObj.FormalCharge}")
-                    print(f"{atomObj.AtomicSymbol}: {input_charge}")
-            if input_multiplicity != molObj.Multiplicity:
-                pass
-            print("")
+        else:
+            pass
 
     @classmethod
     def ReadORCA6OutputGradients(
