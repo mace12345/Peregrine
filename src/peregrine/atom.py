@@ -711,6 +711,7 @@ ATOMIC_PAULING_ELECTRONEGATIVITIES = {
     "Og": None,
 }
 
+
 class Atom:
     def __init__(
         self,
@@ -816,4 +817,6 @@ class Atom:
                 self.AtomicSymbol
             ]
             self.IsMetal = BOOL_METAL[self.AtomicSymbol]
-            self.PaulingElectronegativity = ATOMIC_PAULING_ELECTRONEGATIVITIES[self.AtomicSymbol]
+            self.PaulingElectronegativity = ATOMIC_PAULING_ELECTRONEGATIVITIES[
+                self.AtomicSymbol
+            ]

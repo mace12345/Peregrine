@@ -5,6 +5,7 @@ from copy import deepcopy
 from peregrine.molecule import Molecule
 from peregrine.atom import Atom
 
+
 def test_write_PySCF_RHF_input():
     with open(
         f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/benzene.mol",
@@ -20,6 +21,7 @@ def test_write_PySCF_RHF_input():
     ) as f:
         f.write(benzene_pyscf_str)
         f.close()
+
 
 def test_write_PySCF_RKS_input():
     with open(
@@ -41,6 +43,7 @@ def test_write_PySCF_RKS_input():
         f.write(water_cation_pyscf_str)
         f.close()
 
+
 def test_write_PySCF_ROKS_input():
     with open(
         f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/water_triplet.mol",
@@ -60,6 +63,7 @@ def test_write_PySCF_ROKS_input():
     ) as f:
         f.write(water_triplet_pyscf_str)
         f.close()
+
 
 def test_write_PySCF_UKS_input():
     with open(

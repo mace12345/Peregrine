@@ -8,6 +8,7 @@ from .molecule import Molecule
 
 import pandas as pd
 
+
 class MoleculeSet:
     def __init__(self):
         self.ResultsDF: pd.DataFrame | None = None
@@ -79,10 +80,14 @@ class MoleculeSet:
         return instance
 
     @classmethod
-    def ReadSMILESList(cls, SMILES_list: list, Identifier_List: list, AddHydrogens: bool = True) -> "MoleculeSet":
+    def ReadSMILESList(
+        cls, SMILES_list: list, Identifier_List: list, AddHydrogens: bool = True
+    ) -> "MoleculeSet":
         instance = cls()
         for SMILES, Identifier in zip(SMILES_list, Identifier_List):
-            molObj = Molecule.ReadSMILESString(SMILES, Identifier, AddHydrogens=AddHydrogens)
+            molObj = Molecule.ReadSMILESString(
+                SMILES, Identifier, AddHydrogens=AddHydrogens
+            )
             instance.MoleculesDict[molObj.Identifier] = molObj
         return instance
 
@@ -199,7 +204,7 @@ class MoleculeSet:
         pyscf_file_directory: str,
         method: str = "hf",
         basisset: dict | str = "def2-svp",
-        ecp: dict | None=None,
+        ecp: dict | None = None,
         restricted: bool = True,
         calculation_type: str = "single point",
         get_gradients: bool = True,
@@ -207,7 +212,7 @@ class MoleculeSet:
         max_memory: int = 1000,  # in MB
         grid_density: int = 5,
         prune_grids: None | bool = True,
-        optimisation_convergence_settings: dict | None=None,
+        optimisation_convergence_settings: dict | None = None,
     ):
         os.makedirs(pyscf_file_directory, exist_ok=True)
         for molObj in self.MoleculesDict.values():
@@ -224,7 +229,9 @@ class MoleculeSet:
                 prune_grids=prune_grids,
                 optimisation_convergence_settings=optimisation_convergence_settings,
             )
-            with open(pyscf_file_directory / f"{molObj.Identifier}_PySCFInput.py", "w") as f:
+            with open(
+                pyscf_file_directory / f"{molObj.Identifier}_PySCFInput.py", "w"
+            ) as f:
                 f.write(pyscf_str)
                 f.close()
 
@@ -235,18 +242,19 @@ class MoleculeSet:
         basisset: str = "def2-svp",
         ORCA_commands: str = "opt freq",
         CPU_count: int = 4,
-        max_memory: int = 1000, # MB
-        max_time: None | int = 2880, # minuets
-        job_scheduler_used: None | str="SLURM",
-        MPI_used: None | str="OpenMPI",
-        file_types_to_save: list[str] = [".out", ".xyz"]
+        max_memory: int = 1000,  # MB
+        max_time: None | int = 2880,  # minuets
+        job_scheduler_used: None | str = "SLURM",
+        MPI_used: None | str = "OpenMPI",
+        file_types_to_save: list[str] = [".out", ".xyz"],
     ):
         if job_scheduler_used is not None:
             job_scheduler_used = job_scheduler_used.lower()
         os.makedirs(orca_file_directory, exist_ok=True)
         submit_jobs = ""
         if self.ResultsDF is not None:
-            molObj_list = [self.MoleculesDict[identifier]
+            molObj_list = [
+                self.MoleculesDict[identifier]
                 for identifier in self.ResultsDF[
                     self.ResultsDF["Error Code"].isna() == False
                 ]["Identifier"]
@@ -283,18 +291,14 @@ class MoleculeSet:
         cls,
         orca_file_directory: str,
         output_mol_file_directory: str,
-        template_moleculeset: "MoleculeSet | None"=None,
+        template_moleculeset: "MoleculeSet | None" = None,
     ) -> "MoleculeSet":
         dir_list = os.listdir(orca_file_directory)
         # Remove unnessicary files
         # Track files to .out files to read
         files_to_remove = []
         out_files = []
-        remove_patterns = [
-            "slurm",
-            r"atom(\d+)\.out",
-            r"\.sh"
-        ]
+        remove_patterns = ["slurm", r"atom(\d+)\.out", r"\.sh"]
         out_pattern = r"\.out"
         for file in dir_list:
             # Look for files to remove
@@ -326,17 +330,17 @@ class MoleculeSet:
         # Construct Results DataFrame
         instance.ResultsDF = pd.DataFrame(
             {
-                "Identifier": [
-                    identifier for identifier in instance.MoleculesDict
-                ],
+                "Identifier": [identifier for identifier in instance.MoleculesDict],
                 "Method": [
-                    molObj.calculation_method for molObj in instance.MoleculesDict.values()
+                    molObj.calculation_method
+                    for molObj in instance.MoleculesDict.values()
                 ],
                 "Dispersion": [
                     molObj.dispersion for molObj in instance.MoleculesDict.values()
                 ],
                 "Number of primitive basis functions": [
-                    molObj.num_prim_basis_functions for molObj in instance.MoleculesDict.values()
+                    molObj.num_prim_basis_functions
+                    for molObj in instance.MoleculesDict.values()
                 ],
                 "RAM used per CPU core (MB)": [
                     molObj.RAM_used for molObj in instance.MoleculesDict.values()
@@ -348,13 +352,16 @@ class MoleculeSet:
                     molObj.error_code for molObj in instance.MoleculesDict.values()
                 ],
                 "wallclock time taken (seconds)": [
-                    molObj.wallclock_time_sec for molObj in instance.MoleculesDict.values()
+                    molObj.wallclock_time_sec
+                    for molObj in instance.MoleculesDict.values()
                 ],
                 "Electronic Energy (Eh)": [
-                    molObj.electronic_energy for molObj in instance.MoleculesDict.values()
+                    molObj.electronic_energy
+                    for molObj in instance.MoleculesDict.values()
                 ],
                 "Gibbs Free Energy (Eh)": [
-                    molObj.gibbs_free_energy for molObj in instance.MoleculesDict.values()
+                    molObj.gibbs_free_energy
+                    for molObj in instance.MoleculesDict.values()
                 ],
                 "Enthalpy (Eh)": [
                     molObj.enthalpy for molObj in instance.MoleculesDict.values()
@@ -363,22 +370,23 @@ class MoleculeSet:
                     molObj.entropy for molObj in instance.MoleculesDict.values()
                 ],
                 "Spin Contaimination (<S**2>)": [
-                    molObj.spin_contamination for molObj in instance.MoleculesDict.values()
+                    molObj.spin_contamination
+                    for molObj in instance.MoleculesDict.values()
                 ],
                 "Vibrational Frequency 6 (cm-1)": [
-                    molObj.vibrational_frequencies[0][1] 
-                    if molObj.vibrational_frequencies is not None else None 
+                    (
+                        molObj.vibrational_frequencies[0][1]
+                        if molObj.vibrational_frequencies is not None
+                        else None
+                    )
                     for molObj in instance.MoleculesDict.values()
                 ],
             }
         )
         instance.ResultsDF.to_csv(str(output_mol_file_directory) + ".csv")
         # Save molObj files as V3000 .mol files
-        instance.WriteMolFileDirectory(
-            output_mol_file_directory
-        )
+        instance.WriteMolFileDirectory(output_mol_file_directory)
         return instance
-
 
     # === Execute a workflow of some kind ===
 

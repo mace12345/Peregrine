@@ -57,15 +57,14 @@ BONDTYPE_TO_RDKIT_TRANSLATION = {
     6: Chem.BondType.HEXTUPLE,
 }
 
-RDKIT_TO_BONDTYPE_TRANSLATION = {
-    v: k for k, v in BONDTYPE_TO_RDKIT_TRANSLATION.items()
-}
+RDKIT_TO_BONDTYPE_TRANSLATION = {v: k for k, v in BONDTYPE_TO_RDKIT_TRANSLATION.items()}
 
 PYSCF_DFT_FUNCTIONS = {"wb97m_v", "m06_l", "r2scan"}
 
 PYSCF_CC_FUNCTIONS = {"ccsdt", "ccsd(t)"}
 
 # === Helper functions ===
+
 
 def _GeneralHelper_MinutesToHHMMSS(minutes):
     total_seconds = round(minutes * 60)
@@ -231,7 +230,9 @@ def _ORCAHelper_GetCalculatedEnergies(
     return en_output_dict
 
 
-def _ORCAHelper_GetChargeAndMultiplicity(m_c_block: str, AtomsList: list[Atom]) -> list[Atom]:
+def _ORCAHelper_GetChargeAndMultiplicity(
+    m_c_block: str, AtomsList: list[Atom]
+) -> list[Atom]:
     for atomObj, line in zip(AtomsList, m_c_block.split("\n")):
         line = [i for i in line.split(":")[-1].split(" ") if i != ""]
         if len(line) == 2:
@@ -241,30 +242,26 @@ def _ORCAHelper_GetChargeAndMultiplicity(m_c_block: str, AtomsList: list[Atom]) 
     return AtomsList
 
 
-def _ORCAHelper_ConstructMolObjFromScratch(ORCA_out_str: str, Identifier: str) -> "Molecule":
+def _ORCAHelper_ConstructMolObjFromScratch(
+    ORCA_out_str: str, Identifier: str
+) -> "Molecule":
     # Get XYZ coordinates
     xyz_block = ORCA_out_str.split(
         "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
     )[-1].split("\n\n")[0]
-    AtomsList, NumberOfAtoms = _ORCAHelper_XYZBlockToAtomsList(
-        xyz_block, None
-    )
+    AtomsList, NumberOfAtoms = _ORCAHelper_XYZBlockToAtomsList(xyz_block, None)
     # Get bonds
-    bond_block = ORCA_out_str.split(
-        "Mayer bond orders larger than 0.100000"
-    )[-1].split("\n\n")[0]
-    BondOrderMatrix, NumberOfBonds = (
-        _ORCAHelper_BondBlockToBondOrderMatrix(
-            bond_block, len(AtomsList)
-        )
+    bond_block = ORCA_out_str.split("Mayer bond orders larger than 0.100000")[-1].split(
+        "\n\n"
+    )[0]
+    BondOrderMatrix, NumberOfBonds = _ORCAHelper_BondBlockToBondOrderMatrix(
+        bond_block, len(AtomsList)
     )
     # Get multiplicities and formal charges
     m_c_block = ORCA_out_str.split(
         "MULLIKEN ATOMIC CHARGES AND SPIN POPULATIONS\n--------------------------------------------\n"
     )[-1].split("\nSum of atomic charges         :")[0]
-    AtomsList = _ORCAHelper_GetChargeAndMultiplicity(
-        m_c_block, AtomsList
-    )
+    AtomsList = _ORCAHelper_GetChargeAndMultiplicity(m_c_block, AtomsList)
     # Declare Molecule Object
     molObj = Molecule(
         Identifier=Identifier,
@@ -272,13 +269,15 @@ def _ORCAHelper_ConstructMolObjFromScratch(ORCA_out_str: str, Identifier: str) -
         BondOrderMatrix=BondOrderMatrix,
     )
     # Check formal charge and multiplicity is correct
-    input_m_c_block = [i for i in ORCA_out_str.split("*xyz")[1].split("\n")[0].split(" ") if i != ""]
+    input_m_c_block = [
+        i for i in ORCA_out_str.split("*xyz")[1].split("\n")[0].split(" ") if i != ""
+    ]
     input_charge = int(input_m_c_block[0])
     input_multiplicity = int(input_m_c_block[1])
     if input_charge != molObj.FormalCharge:
         difference = input_charge - molObj.FormalCharge
         atom_electronegativities = [
-            [atomObj.Label, atomObj.PaulingElectronegativity] 
+            [atomObj.Label, atomObj.PaulingElectronegativity]
             for atomObj in molObj.AtomsList
         ]
         if difference > 0:
@@ -300,7 +299,7 @@ def _ORCAHelper_ConstructMolObjFromScratch(ORCA_out_str: str, Identifier: str) -
     if input_multiplicity != molObj.Multiplicity:
         difference = input_multiplicity - molObj.Multiplicity
         atom_electronegativities = [
-            [atomObj.Label, atomObj.PaulingElectronegativity] 
+            [atomObj.Label, atomObj.PaulingElectronegativity]
             for atomObj in molObj.AtomsList
         ]
         if difference > 0:
@@ -330,7 +329,9 @@ def _ORCAHelper_ConstructMolObjFromTemplate(
         xyz_block, template_molObj
     )
     molObj.AtomsList = AtomsList
-    molObj.AtomsDict = {atomObj.Label: [idx, atomObj] for idx, atomObj in enumerate(molObj.AtomsList)}
+    molObj.AtomsDict = {
+        atomObj.Label: [idx, atomObj] for idx, atomObj in enumerate(molObj.AtomsList)
+    }
     return molObj
 
 
@@ -412,11 +413,7 @@ def _ORCAHelper_GetErrorCode(ORCA_out_str) -> str:
         else:
             print(error_code)
     elif (
-        len(
-            ORCA_out_str.split(
-                "*                      ERROR                        *"
-            )
-        )
+        len(ORCA_out_str.split("*                      ERROR                        *"))
         == 2
     ):
         error_code = ORCA_out_str.split(
@@ -436,55 +433,23 @@ def _ORCAHelper_GetErrorCode(ORCA_out_str) -> str:
     elif len(ORCA_out_str.split("ERROR (ORCA/SYM)")) == 2:
         return "Symmetry Error"
     elif len(ORCA_out_str.split(": ERROR ")) == 2:
-        if (
-            ORCA_out_str.split(": ERROR ")[-1]
-            == "in DFT dispersion correction!\n"
-        ):
+        if ORCA_out_str.split(": ERROR ")[-1] == "in DFT dispersion correction!\n":
             return "Error in DFT dispersion correction"
-    elif (
-        len(
-            ORCA_out_str.split(
-                "ORCA finished by error termination in LEANSCF"
-            )
-        )
-        == 2
-    ):
+    elif len(ORCA_out_str.split("ORCA finished by error termination in LEANSCF")) == 2:
         return "Error termination in LEANSCF"
     elif (
-        len(
-            ORCA_out_str.split(
-                "ORCA finished by error termination in SCF gradient"
-            )
-        )
+        len(ORCA_out_str.split("ORCA finished by error termination in SCF gradient"))
         == 2
     ):
         return "Error termination in SCF Gradient"
-    elif (
-        len(
-            ORCA_out_str.split(
-                "ORCA finished by error termination in Startup"
-            )
-        )
-        == 2
-    ):
+    elif len(ORCA_out_str.split("ORCA finished by error termination in Startup")) == 2:
         return "Error termination in Startup"
     elif (
-        len(
-            ORCA_out_str.split(
-                "ORCA finished by error termination in SCF RESPONSE"
-            )
-        )
+        len(ORCA_out_str.split("ORCA finished by error termination in SCF RESPONSE"))
         == 2
     ):
         return "Error termination in SCF RESPONSE"
-    elif (
-        len(
-            ORCA_out_str.split(
-                "ORCA finished by error termination in PROPINT"
-            )
-        )
-        == 2
-    ):
+    elif len(ORCA_out_str.split("ORCA finished by error termination in PROPINT")) == 2:
         return "Error termination in PROPINT (Low Memeory?)"
     elif len(ORCA_out_str.split("Zero distance between atoms")) == 2:
         return "Zero distance between atoms"
@@ -510,15 +475,13 @@ def _ORCAHelper_GetElecEnergy(ORCA_out_str):
         energy = float(
             [
                 i
-                for i in ORCA_out_str.split(
-                    "Electronic energy                ..."
-                )[1]
+                for i in ORCA_out_str.split("Electronic energy                ...")[1]
                 .split("\n")[0]
                 .split(" ")
                 if i != ""
             ][0]
         )
-        elec_en =  energy
+        elec_en = energy
     elif "FINAL SINGLE POINT ENERGY" in ORCA_out_str:
         energy = float(
             [
@@ -529,20 +492,14 @@ def _ORCAHelper_GetElecEnergy(ORCA_out_str):
                 if i != ""
             ][0]
         )
-        elec_en =  energy
-        if (
-            """ERROR !!!
+        elec_en = energy
+        if """ERROR !!!
 The optimization did not converge but reached the maximum 
-number of optimization cycles."""
-            in ORCA_out_str
-        ):
+number of optimization cycles.""" in ORCA_out_str:
             error_code = "Optimization Did Not Converge"
-    elif (
-        """ERROR !!!
+    elif """ERROR !!!
 The optimization did not converge but reached the maximum 
-number of optimization cycles."""
-        in ORCA_out_str
-    ):
+number of optimization cycles.""" in ORCA_out_str:
         error_code = "Optimization Did Not Converge"
     return elec_en, error_code
 
@@ -552,9 +509,7 @@ def _ORCAHelper_GetEnthalpy(ORCA_out_str) -> None | float:
         enthalpy = float(
             [
                 i
-                for i in ORCA_out_str.split(
-                    "Total Enthalpy                    ..."
-                )[1]
+                for i in ORCA_out_str.split("Total Enthalpy                    ...")[1]
                 .split("\n")[0]
                 .split(" ")
                 if i != ""
@@ -570,9 +525,7 @@ def _ORCAHelper_GetEntropy(ORCA_out_str) -> None | float:
         entropy = float(
             [
                 i
-                for i in ORCA_out_str.split(
-                    "Final entropy term                ..."
-                )[1]
+                for i in ORCA_out_str.split("Final entropy term                ...")[1]
                 .split("\n")[0]
                 .split(" ")
                 if i != ""
@@ -588,9 +541,7 @@ def _ORCAHelper_GetGibbsFreeEnergy(ORCA_out_str) -> None | float:
         gibbs_free_energy = float(
             [
                 i
-                for i in ORCA_out_str.split(
-                    "Final Gibbs free energy         ..."
-                )[1]
+                for i in ORCA_out_str.split("Final Gibbs free energy         ...")[1]
                 .split("\n")[0]
                 .split(" ")
                 if i != ""
@@ -610,17 +561,13 @@ def _ORCAHelper_GetVibrations(ORCA_out_str) -> None | list[list[int, float]]:
             "-----------------------\n\nScaling factor for frequencies =  1.000000000  (already applied!)\n\n"
         )[-1]
         vib_freq_list = vib_freq_list.split("\n")
-        vib_freq_list = [
-            [j for j in i.split(" ") if j != ""] for i in vib_freq_list
-        ]
+        vib_freq_list = [[j for j in i.split(" ") if j != ""] for i in vib_freq_list]
         vib_freq_list = [i for i in vib_freq_list if len(i) >= 2]
         for idx, line in enumerate(vib_freq_list):
             if line[0] == "0:":
                 vib_freq_list = vib_freq_list[idx:]
                 break
-        vib_freq_list = [
-            [int(i[0].split(":")[0]), float(i[1])] for i in vib_freq_list
-        ]
+        vib_freq_list = [[int(i[0].split(":")[0]), float(i[1])] for i in vib_freq_list]
         return vib_freq_list
     else:
         return None
@@ -639,7 +586,11 @@ def _ORCAHelper_GetSpinContaimination(ORCA_out_str) -> None | float:
 
 
 def _ORCAHelper_GetChargeMultiplicity(ORCA_out_str) -> list[int]:
-    return [int(i) for i in ORCA_out_str.split("*xyz")[1].split("\n")[0].split(" ") if i != ""]
+    return [
+        int(i)
+        for i in ORCA_out_str.split("*xyz")[1].split("\n")[0].split(" ")
+        if i != ""
+    ]
 
 
 def _PySCFHelper_DetermineMethodType(method: str) -> str:
@@ -984,10 +935,7 @@ def _PySCFHelper_GetGradients(
         atomic gradients, or a placeholder message when gradients are not requested.
     """
     pyscf_str = "\n# No atomic force gradients returned\n"
-    if (
-        get_gradients == True 
-        and method_type != "CC"
-    ):
+    if get_gradients == True and method_type != "CC":
         pyscf_str = """
 # Get Gradients
 g = pyscfMolObj_calc.Gradients()
@@ -995,11 +943,8 @@ grad = g.kernel()
 metadata['Gradients (Eh/Bohr)'] = grad.tolist()
 
 """
-    elif (
-            get_gradients == True 
-            and method_type == "CC"
-        ):
-            pyscf_str = """
+    elif get_gradients == True and method_type == "CC":
+        pyscf_str = """
 # Get Gradients
 ElecRepulsInteg = pyscfMolObj_calc.ao2mo()
 t1, t2 = pyscfMolObj_calc.t1, pyscfMolObj_calc.t2
@@ -1739,7 +1684,9 @@ class Molecule:
         if self.error_code is not None:
             mol_str += f"> <Error code>\n{self.error_code}\n"
         if self.wallclock_time_sec is not None:
-            mol_str += f"> <Wallclock time taken (seconds)>\n{self.wallclock_time_sec}\n"
+            mol_str += (
+                f"> <Wallclock time taken (seconds)>\n{self.wallclock_time_sec}\n"
+            )
         if self.electronic_energy is not None:
             mol_str += f"> <Electronic Energy (Eh)>\n{self.electronic_energy}\n"
         if self.gibbs_free_energy is not None:
@@ -1808,7 +1755,9 @@ class Molecule:
                             rdkitMolObj.AddBond(
                                 molObj_to_rdkitMolObj_atomIdx_dict[i],
                                 molObj_to_rdkitMolObj_atomIdx_dict[j],
-                                BONDTYPE_TO_RDKIT_TRANSLATION[self.BondOrderMatrix[i][j]],
+                                BONDTYPE_TO_RDKIT_TRANSLATION[
+                                    self.BondOrderMatrix[i][j]
+                                ],
                             )
         rdkitMolObj = rdkitMolObj.GetMol()
         # convert rdkitMolObj to SMARTS string
@@ -1919,11 +1868,11 @@ class Molecule:
         basisset: str = "def2-svp",
         ORCA_commands: str = "opt freq",
         CPU_count: int = 4,
-        max_memory: int = 1000, # MB
-        max_time: None | int = 2880, # minuets
-        job_scheduler_used: None | str="SLURM",
-        MPI_used: None | str="OpenMPI",
-        file_types_to_save: list[str] = [".out", ".xyz"]
+        max_memory: int = 1000,  # MB
+        max_time: None | int = 2880,  # minuets
+        job_scheduler_used: None | str = "SLURM",
+        MPI_used: None | str = "OpenMPI",
+        file_types_to_save: list[str] = [".out", ".xyz"],
     ) -> tuple[str, str | None]:
         ORCA_commands = ORCA_commands.lower()
         orca_str = self.WriteORCAString(
@@ -1956,7 +1905,7 @@ class Molecule:
         basisset: str = "def2-svp",
         ORCA_commands: str = "opt freq",
         CPU_count: int = 4,
-        max_memory: int = 1000, # MB
+        max_memory: int = 1000,  # MB
     ) -> str:
         max_memory_per_CPU_core = int((max_memory / CPU_count) * 0.95)
         orca_str = f"""! {method} {basisset} {ORCA_commands}
@@ -2039,12 +1988,12 @@ rm slurm-$SLURM_JOB_ID.out
 orca_pltvib_exe=$(which orca_pltvib)
 $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         return slurm_str
-    
+
     def WritePySCFInput(
         self,
         method: str = "hf",
         basisset: dict | str = "def2-svp",
-        ecp: list[str] | None=None,
+        ecp: list[str] | None = None,
         restricted: bool = True,
         calculation_type: str = "single point",
         get_gradients: bool = True,
@@ -2053,20 +2002,20 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         CPU_count: int = 4,
         grid_density: int = 5,
         prune_grids: None | bool = True,
-        optimisation_convergence_settings: dict | None=None
+        optimisation_convergence_settings: dict | None = None,
     ) -> str:
 
         # Optimisation Settings using geomeTRIC
         opt_default_settings = {
-            'convergence_energy': 1e-6,  # Eh
-            'convergence_grms': 3e-5,    # Eh/Bohr
-            'convergence_gmax': 4.5e-5,  # Eh/Bohr
-            'convergence_drms': 1.2e-4,  # Angstrom
-            'convergence_dmax': 1.8e-4,  # Angstrom
+            "convergence_energy": 1e-6,  # Eh
+            "convergence_grms": 3e-5,  # Eh/Bohr
+            "convergence_gmax": 4.5e-5,  # Eh/Bohr
+            "convergence_drms": 1.2e-4,  # Angstrom
+            "convergence_dmax": 1.8e-4,  # Angstrom
         }
         optimisation_convergence_settings = {
-            **opt_default_settings, 
-            **(optimisation_convergence_settings or {})
+            **opt_default_settings,
+            **(optimisation_convergence_settings or {}),
         }
 
         pyscf_str = f"import time\nstart = time.time()\n\nconv_params = {str(optimisation_convergence_settings)}\n\n"
@@ -2179,11 +2128,13 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         AtomsList = []
         conformer = RDKitMolObj.GetConformer()
         for idx, RDKitAtomObj in enumerate(RDKitMolObj.GetAtoms()):
-            AtomsList.append(Atom(
-                AtomicSymbol=RDKitAtomObj.GetSymbol(),
-                Coordinates=np.array(conformer.GetAtomPosition(idx)),
-                FormalCharge=RDKitAtomObj.GetFormalCharge(),
-            ))
+            AtomsList.append(
+                Atom(
+                    AtomicSymbol=RDKitAtomObj.GetSymbol(),
+                    Coordinates=np.array(conformer.GetAtomPosition(idx)),
+                    FormalCharge=RDKitAtomObj.GetFormalCharge(),
+                )
+            )
         # Get Bonds
         BondOrderMatrix = np.zeros((len(AtomsList), len(AtomsList)))
         for bond in RDKitMolObj.GetBonds():
@@ -2568,7 +2519,8 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         return molObj
 
     @classmethod
-    def ReadSMILESString(cls,
+    def ReadSMILESString(
+        cls,
         SMILES: str,
         Identifier: str,
         AddHydrogens: bool = True,
@@ -2585,7 +2537,11 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         embed_result = AllChem.EmbedMolecule(RDKitMolObj)
         if embed_result != 0:
             for _ in range(10):
-                embed_result = AllChem.EmbedMolecule(RDKitMolObj, useRandomCoords=True, randomSeed=np.random.randint(0, 1001))
+                embed_result = AllChem.EmbedMolecule(
+                    RDKitMolObj,
+                    useRandomCoords=True,
+                    randomSeed=np.random.randint(0, 1001),
+                )
             if embed_result != 0:
                 raise ValueError(f"3D embedding failed for SMILES: {SMILES}")
         molObj = cls.RDKitMolToMolecule(
@@ -2610,20 +2566,25 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
             )
         else:
             molObj = _ORCAHelper_ConstructMolObjFromTemplate(
-                ORCA_out_str=out_file, template_molObj=template_molObj,
+                ORCA_out_str=out_file,
+                template_molObj=template_molObj,
             )
-        # Retreive calculation attributes: method, basisset, dispersions, 
-        (
-            molObj.calculation_method, molObj.basisset, molObj.dispersion
-        ) = _ORCAHelper_GetMethodBasissetDispersions(out_file)
-        molObj.num_prim_basis_functions = _ORCAHelper_GetNumberOfPrimitiveBasisFunctions(out_file)
+        # Retreive calculation attributes: method, basisset, dispersions,
+        molObj.calculation_method, molObj.basisset, molObj.dispersion = (
+            _ORCAHelper_GetMethodBasissetDispersions(out_file)
+        )
+        molObj.num_prim_basis_functions = (
+            _ORCAHelper_GetNumberOfPrimitiveBasisFunctions(out_file)
+        )
         molObj.RAM_used = _ORCAHelper_GetRAM(out_file)
         molObj.num_CPU_used = _ORCAHelper_GetCPU(out_file)
         molObj.wallclock_time_sec = _ORCAHelper_GetTimeTaken(out_file)
         if molObj.wallclock_time_sec is None:
             molObj.error_code = _ORCAHelper_GetErrorCode(out_file)
         else:
-            molObj.electronic_energy, molObj.error_code = _ORCAHelper_GetElecEnergy(out_file)
+            molObj.electronic_energy, molObj.error_code = _ORCAHelper_GetElecEnergy(
+                out_file
+            )
             molObj.enthalpy = _ORCAHelper_GetEnthalpy(out_file)
             molObj.entropy = _ORCAHelper_GetEntropy(out_file)
             molObj.gibbs_free_energy = _ORCAHelper_GetGibbsFreeEnergy(out_file)
@@ -2631,7 +2592,10 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
             molObj.spin_contamination = _ORCAHelper_GetSpinContaimination(out_file)
         # Check charge and multiplicity match up
         charge_mult = _ORCAHelper_GetChargeMultiplicity(out_file)
-        if charge_mult[0] != molObj.FormalCharge and charge_mult[1] != molObj.Multiplicity:
+        if (
+            charge_mult[0] != molObj.FormalCharge
+            and charge_mult[1] != molObj.Multiplicity
+        ):
             molObj.error_code = "Formal charge  and multiplicity do not match"
         elif charge_mult[0] != molObj.FormalCharge:
             molObj.error_code = "Formal charge do not match"
@@ -2739,15 +2703,17 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
             for line in xyz_file.split("\n")[2:]
         ]
         return [
-            Atom(AtomicSymbol=coor[0],
-                 Coordinates=np.array(
+            Atom(
+                AtomicSymbol=coor[0],
+                Coordinates=np.array(
                     [
                         float(coor[1]),
                         float(coor[2]),
                         float(coor[3]),
                     ]
-                )
-            ) for coor in coors
+                ),
+            )
+            for coor in coors
         ]
 
     def ReadXYZFileMapCoords(self, xyz_file: str):
