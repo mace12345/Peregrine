@@ -10,7 +10,7 @@ import pandas as pd
 
 class MoleculeSet:
     def __init__(self):
-        self.ResultsDF: pd.DataFrame
+        self.ResultsDF: pd.DataFrame | None = None
         self.MoleculesDict: dict[str, Molecule] = {}
 
     # === Read in molecule information (mainly from directories) ===
@@ -245,7 +245,16 @@ class MoleculeSet:
             job_scheduler_used = job_scheduler_used.lower()
         os.makedirs(orca_file_directory, exist_ok=True)
         submit_jobs = ""
-        for molObj in self.MoleculesDict.values():
+        if self.ResultsDF is not None:
+            molObj_list = [self.MoleculesDict[identifier]
+                for identifier in self.ResultsDF[
+                    self.ResultsDF["Error Code"].isna() == False
+                ]["Identifier"]
+            ]
+        else:
+            molObj_list = self.MoleculesDict.values()
+        # Write jobs
+        for molObj in molObj_list:
             orca_inp, queue_sh = molObj.WriteORCAInput(
                 method=method,
                 basisset=basisset,
@@ -269,10 +278,13 @@ class MoleculeSet:
             f.write(submit_jobs)
             f.close()
 
+    @classmethod
     def ReadORCAOutput(
-        self,
+        cls,
         orca_file_directory: str,
-    ):
+        output_mol_file_directory: str,
+        template_moleculeset: "MoleculeSet | None"=None,
+    ) -> "MoleculeSet":
         dir_list = os.listdir(orca_file_directory)
         # Remove unnessicary files
         # Track files to .out files to read
@@ -297,13 +309,76 @@ class MoleculeSet:
                 out_files.append(file)
         for file in files_to_remove:
             os.remove(orca_file_directory / file)
-        for out_file in out_files:
+
+        # Read ORCA output files
+        instance = MoleculeSet()
+        for out_file in sorted(out_files):
+            Identifier = str(out_file).split(".")[0]
+            if template_moleculeset is None:
+                template_molObj = None
+            else:
+                template_molObj = template_moleculeset.MoleculesDict[Identifier]
             molObj = Molecule.ReadORCA6Output(
-                orca_file_directory / out_file
+                orca_file_directory / out_file,
+                template_molObj=template_molObj,
             )
-                
-            
-            
+            instance.MoleculesDict[molObj.Identifier] = molObj
+        # Construct Results DataFrame
+        instance.ResultsDF = pd.DataFrame(
+            {
+                "Identifier": [
+                    identifier for identifier in instance.MoleculesDict
+                ],
+                "Method": [
+                    molObj.calculation_method for molObj in instance.MoleculesDict.values()
+                ],
+                "Dispersion": [
+                    molObj.dispersion for molObj in instance.MoleculesDict.values()
+                ],
+                "Number of primitive basis functions": [
+                    molObj.num_prim_basis_functions for molObj in instance.MoleculesDict.values()
+                ],
+                "RAM used per CPU core (MB)": [
+                    molObj.RAM_used for molObj in instance.MoleculesDict.values()
+                ],
+                "Number of CPU cores used": [
+                    molObj.num_CPU_used for molObj in instance.MoleculesDict.values()
+                ],
+                "Error Code": [
+                    molObj.error_code for molObj in instance.MoleculesDict.values()
+                ],
+                "wallclock time taken (seconds)": [
+                    molObj.wallclock_time_sec for molObj in instance.MoleculesDict.values()
+                ],
+                "Electronic Energy (Eh)": [
+                    molObj.electronic_energy for molObj in instance.MoleculesDict.values()
+                ],
+                "Gibbs Free Energy (Eh)": [
+                    molObj.gibbs_free_energy for molObj in instance.MoleculesDict.values()
+                ],
+                "Enthalpy (Eh)": [
+                    molObj.enthalpy for molObj in instance.MoleculesDict.values()
+                ],
+                "Entropy (Eh)": [
+                    molObj.entropy for molObj in instance.MoleculesDict.values()
+                ],
+                "Spin Contaimination (<S**2>)": [
+                    molObj.spin_contamination for molObj in instance.MoleculesDict.values()
+                ],
+                "Vibrational Frequency 6 (cm-1)": [
+                    molObj.vibrational_frequencies[0][1] 
+                    if molObj.vibrational_frequencies is not None else None 
+                    for molObj in instance.MoleculesDict.values()
+                ],
+            }
+        )
+        instance.ResultsDF.to_csv(str(output_mol_file_directory) + ".csv")
+        # Save molObj files as V3000 .mol files
+        instance.WriteMolFileDirectory(
+            output_mol_file_directory
+        )
+        return instance
+
 
     # === Execute a workflow of some kind ===
 

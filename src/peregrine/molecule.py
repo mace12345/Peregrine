@@ -241,7 +241,7 @@ def _ORCAHelper_GetChargeAndMultiplicity(m_c_block: str, AtomsList: list[Atom]) 
     return AtomsList
 
 
-def _ORCAHelper_ConstructMolObj(ORCA_out_str: str, Identifier: str) -> "Molecule":
+def _ORCAHelper_ConstructMolObjFromScratch(ORCA_out_str: str, Identifier: str) -> "Molecule":
     # Get XYZ coordinates
     xyz_block = ORCA_out_str.split(
         "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
@@ -316,6 +316,330 @@ def _ORCAHelper_ConstructMolObj(ORCA_out_str: str, Identifier: str) -> "Molecule
             print("FIX THIS: multiplicity is too high and it needs to be reduced")
         molObj.GetMultiplicity()
     return molObj
+
+
+def _ORCAHelper_ConstructMolObjFromTemplate(
+    ORCA_out_str: str, template_molObj: "Molecule"
+) -> "Molecule":
+    molObj = deepcopy(template_molObj)
+    # Get coordinates only
+    xyz_block = ORCA_out_str.split(
+        "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
+    )[-1].split("\n\n")[0]
+    AtomsList, NumberOfAtoms = _ORCAHelper_XYZBlockToAtomsList(
+        xyz_block, template_molObj
+    )
+    molObj.AtomsList = AtomsList
+    molObj.AtomsDict = {atomObj.Label: [idx, atomObj] for idx, atomObj in enumerate(molObj.AtomsList)}
+    return molObj
+
+
+def _ORCAHelper_GetMethodBasissetDispersions(ORCA_out_str: str):
+    method = None
+    basisset = None
+    dispersion = None
+    if "|  1> !" not in ORCA_out_str:
+        return method, basisset, dispersion
+    else:
+        method_line = ORCA_out_str.split("|  1> !")[1].split("\n")[0].lower()
+        # Check for dispersions
+        for dis in ["d2", "d3", "d3bj", "d4", "-v"]:
+            if dis in method_line:
+                dispersion = dis
+        #  Get method and basisset
+        method_line = [i for i in method_line.split(" ") if i != ""]
+        method = method_line[0]
+        basisset = method_line[1]
+        return method, basisset, dispersion
+
+
+def _ORCAHelper_GetNumberOfPrimitiveBasisFunctions(ORCA_out_str: str) -> None | int:
+    if "Number of basis functions                   ..." in ORCA_out_str:
+        return int(
+            ORCA_out_str.split("Number of basis functions                   ...")[
+                1
+            ].split("\n")[0]
+        )
+    else:
+        return None
+
+
+def _ORCAHelper_GetRAM(ORCA_out_str) -> None | str:
+    if "Maximum memory used throughout" in ORCA_out_str:
+        return max(
+            [
+                int(float(i.split("MB")[0].split(":")[1])) + 1
+                for i in ORCA_out_str.split("Maximum memory used throughout")[1:]
+            ]
+        )
+    else:
+        return None
+
+
+def _ORCAHelper_GetCPU(ORCA_out_str) -> int:
+    if "parallel MPI-processes" in ORCA_out_str:
+        return int(
+            ORCA_out_str.split(" parallel MPI-processes")[0].split(
+                "Program running with "
+            )[1]
+        )
+    else:
+        return 1
+
+
+def _ORCAHelper_GetTimeTaken(ORCA_out_str) -> None | int:
+    if "TOTAL RUN TIME:" in ORCA_out_str:
+        time = ORCA_out_str.split("TOTAL RUN TIME:")[-1]
+        time = [i for i in time.split(" ") if i != ""]
+        time = (
+            (int(time[0]) * 24 * 60 * 60)
+            + (int(time[2]) * 60 * 60)
+            + (int(time[4]) * 60)
+            + (int(time[6]))
+            + (float(time[8]) / 1000)
+        )
+        return int(round(time, 0))
+    else:
+        return None
+
+
+def _ORCAHelper_GetErrorCode(ORCA_out_str) -> str:
+    if len(ORCA_out_str.split(": Error :")) == 2:
+        error_code = ORCA_out_str.split(": Error :")[-1]
+        error_code = [i for i in error_code.split(" ") if i != ""]
+        if error_code[0] == "multiplicity":
+            return "Wrong Multiplicity Assigned"
+        else:
+            print(error_code)
+    elif (
+        len(
+            ORCA_out_str.split(
+                "*                      ERROR                        *"
+            )
+        )
+        == 2
+    ):
+        error_code = ORCA_out_str.split(
+            "*                      ERROR                        *"
+        )[-1]
+        error_code = error_code.split(
+            "*****************************************************"
+        )[0]
+        error_code = error_code.replace("*", "")
+        error_code = error_code.replace("\n", "")
+        error_code = [i for i in error_code.split(" ") if i != ""]
+        new_error_code = ""
+        for string in error_code[:3]:
+            new_error_code += f" {string}"
+        error_code = new_error_code
+        return error_code
+    elif len(ORCA_out_str.split("ERROR (ORCA/SYM)")) == 2:
+        return "Symmetry Error"
+    elif len(ORCA_out_str.split(": ERROR ")) == 2:
+        if (
+            ORCA_out_str.split(": ERROR ")[-1]
+            == "in DFT dispersion correction!\n"
+        ):
+            return "Error in DFT dispersion correction"
+    elif (
+        len(
+            ORCA_out_str.split(
+                "ORCA finished by error termination in LEANSCF"
+            )
+        )
+        == 2
+    ):
+        return "Error termination in LEANSCF"
+    elif (
+        len(
+            ORCA_out_str.split(
+                "ORCA finished by error termination in SCF gradient"
+            )
+        )
+        == 2
+    ):
+        return "Error termination in SCF Gradient"
+    elif (
+        len(
+            ORCA_out_str.split(
+                "ORCA finished by error termination in Startup"
+            )
+        )
+        == 2
+    ):
+        return "Error termination in Startup"
+    elif (
+        len(
+            ORCA_out_str.split(
+                "ORCA finished by error termination in SCF RESPONSE"
+            )
+        )
+        == 2
+    ):
+        return "Error termination in SCF RESPONSE"
+    elif (
+        len(
+            ORCA_out_str.split(
+                "ORCA finished by error termination in PROPINT"
+            )
+        )
+        == 2
+    ):
+        return "Error termination in PROPINT (Low Memeory?)"
+    elif len(ORCA_out_str.split("Zero distance between atoms")) == 2:
+        return "Zero distance between atoms"
+    elif (
+        len(
+            ORCA_out_str.split(
+                "Please remove all non-ASCII characters from your input file"
+            )
+        )
+        == 2
+    ):
+        return "non-ASCII characters present in input file"
+    elif len(ORCA_out_str.split(": Error : multiplicity")) == 2:
+        return "Multiplicity not compatible with charge"
+    else:
+        return "Unknown Error, probably timeout"
+
+
+def _ORCAHelper_GetElecEnergy(ORCA_out_str):
+    elec_en = None
+    error_code = None
+    if "Electronic energy                ..." in ORCA_out_str:
+        energy = float(
+            [
+                i
+                for i in ORCA_out_str.split(
+                    "Electronic energy                ..."
+                )[1]
+                .split("\n")[0]
+                .split(" ")
+                if i != ""
+            ][0]
+        )
+        elec_en =  energy
+    elif "FINAL SINGLE POINT ENERGY" in ORCA_out_str:
+        energy = float(
+            [
+                i
+                for i in ORCA_out_str.split("FINAL SINGLE POINT ENERGY")[-1]
+                .split("\n")[0]
+                .split(" ")
+                if i != ""
+            ][0]
+        )
+        elec_en =  energy
+        if (
+            """ERROR !!!
+The optimization did not converge but reached the maximum 
+number of optimization cycles."""
+            in ORCA_out_str
+        ):
+            error_code = "Optimization Did Not Converge"
+    elif (
+        """ERROR !!!
+The optimization did not converge but reached the maximum 
+number of optimization cycles."""
+        in ORCA_out_str
+    ):
+        error_code = "Optimization Did Not Converge"
+    return elec_en, error_code
+
+
+def _ORCAHelper_GetEnthalpy(ORCA_out_str) -> None | float:
+    if "Total Enthalpy                    ..." in ORCA_out_str:
+        enthalpy = float(
+            [
+                i
+                for i in ORCA_out_str.split(
+                    "Total Enthalpy                    ..."
+                )[1]
+                .split("\n")[0]
+                .split(" ")
+                if i != ""
+            ][0]
+        )
+        return enthalpy
+    else:
+        return None
+
+
+def _ORCAHelper_GetEntropy(ORCA_out_str) -> None | float:
+    if "Final entropy term                ..." in ORCA_out_str:
+        entropy = float(
+            [
+                i
+                for i in ORCA_out_str.split(
+                    "Final entropy term                ..."
+                )[1]
+                .split("\n")[0]
+                .split(" ")
+                if i != ""
+            ][0]
+        )
+        return entropy
+    else:
+        return None
+
+
+def _ORCAHelper_GetGibbsFreeEnergy(ORCA_out_str) -> None | float:
+    if "Final Gibbs free energy         ..." in ORCA_out_str:
+        gibbs_free_energy = float(
+            [
+                i
+                for i in ORCA_out_str.split(
+                    "Final Gibbs free energy         ..."
+                )[1]
+                .split("\n")[0]
+                .split(" ")
+                if i != ""
+            ][0]
+        )
+        return gibbs_free_energy
+    else:
+        return None
+
+
+def _ORCAHelper_GetVibrations(ORCA_out_str) -> None | list[list[int, float]]:
+    if len(ORCA_out_str.split("VIBRATIONAL FREQUENCIES")) >= 2:
+        vib_freq_list = ORCA_out_str.split("VIBRATIONAL FREQUENCIES")[-1].split(
+            "\n\n------------\nNORMAL MODES\n------------"
+        )[0]
+        vib_freq_list = vib_freq_list.split(
+            "-----------------------\n\nScaling factor for frequencies =  1.000000000  (already applied!)\n\n"
+        )[-1]
+        vib_freq_list = vib_freq_list.split("\n")
+        vib_freq_list = [
+            [j for j in i.split(" ") if j != ""] for i in vib_freq_list
+        ]
+        vib_freq_list = [i for i in vib_freq_list if len(i) >= 2]
+        for idx, line in enumerate(vib_freq_list):
+            if line[0] == "0:":
+                vib_freq_list = vib_freq_list[idx:]
+                break
+        vib_freq_list = [
+            [int(i[0].split(":")[0]), float(i[1])] for i in vib_freq_list
+        ]
+        return vib_freq_list
+    else:
+        return None
+
+
+def _ORCAHelper_GetSpinContaimination(ORCA_out_str) -> None | float:
+    if "UHF SPIN CONTAMINATION" in ORCA_out_str:
+        spin_contaim_string = ORCA_out_str.split("UHF SPIN CONTAMINATION")[-1]
+        spin_contaim_string = spin_contaim_string.split(
+            "Deviation                       :"
+        )[-1].split("\n")[0]
+        spin_contaim = float(spin_contaim_string)
+        return spin_contaim
+    else:
+        return None
+
+
+def _ORCAHelper_GetChargeMultiplicity(ORCA_out_str) -> list[int]:
+    return [int(i) for i in ORCA_out_str.split("*xyz")[1].split("\n")[0].split(" ") if i != ""]
 
 
 def _PySCFHelper_DetermineMethodType(method: str) -> str:
@@ -799,12 +1123,19 @@ class Molecule:
 
         # Calculated Attributes
         self.calculation_method: str | None = None
-        self.num_basis_functions: int | None = None
+        self.basisset: str | None = None
+        self.dispersion: str | None = None
+        self.num_prim_basis_functions: int | None = None
+        self.RAM_used: int | None = None
+        self.num_CPU_used: int | None = None
+        self.wallclock_time_sec: int | None = None
+        self.error_code: str | None = None
         self.electronic_energy: float | None = None
         self.enthalpy: float | None = None
         self.entropy: float | None = None
         self.gibbs_free_energy: float | None = None
-        self.vibrational_frequencies: list[float] | None = None
+        self.vibrational_frequencies: list[list[int, float]] | None = None
+        self.spin_contamination: float | None = None
 
     def DeriveBasicAttributes(
         self,
@@ -1395,6 +1726,20 @@ class Molecule:
         # Add properties
         if self.calculation_method is not None:
             mol_str += f"> <Calculation Method>\n{self.calculation_method}\n"
+        if self.basisset is not None:
+            mol_str += f"> <Basis Set>\n{self.basisset}\n"
+        if self.dispersion is not None:
+            mol_str += f"> <Dispersion>\n{self.dispersion}\n"
+        if self.num_prim_basis_functions is not None:
+            mol_str += f"> <Number of primitive basis functions>\n{self.num_prim_basis_functions}\n"
+        if self.RAM_used is not None:
+            mol_str += f"> <RAM used per CPU core (MB)>\n{self.RAM_used}\n"
+        if self.num_CPU_used is not None:
+            mol_str += f"> <Number of CPU cores used>\n{self.num_CPU_used}\n"
+        if self.error_code is not None:
+            mol_str += f"> <Error code>\n{self.error_code}\n"
+        if self.wallclock_time_sec is not None:
+            mol_str += f"> <Wallclock time taken (seconds)>\n{self.wallclock_time_sec}\n"
         if self.electronic_energy is not None:
             mol_str += f"> <Electronic Energy (Eh)>\n{self.electronic_energy}\n"
         if self.gibbs_free_energy is not None:
@@ -1403,6 +1748,13 @@ class Molecule:
             mol_str += f"> <Enthalpy (Eh)>\n{self.enthalpy}\n"
         if self.entropy is not None:
             mol_str += f"> <Entropy (Eh)>\n{self.entropy}\n"
+        if self.spin_contamination is not None:
+            mol_str += f"> <Spin contaimination (S**2)>\n{self.spin_contamination}\n"
+        if self.vibrational_frequencies is not None:
+            for idx, vib in enumerate(self.vibrational_frequencies[5:]):
+                mol_str += f"> <Vibrational frequency {idx+6} (cm-1)>\n{vib[1]}\n"
+                if idx + 6 == 9:
+                    break
         return mol_str
 
     def WriteXYZBlock(self):
@@ -2252,12 +2604,40 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
             f.close()
         # Retreive Coordinates, Bonds, Multiplicity, Charge
         if template_molObj is None:
-            molObj = _ORCAHelper_ConstructMolObj(
+            molObj = _ORCAHelper_ConstructMolObjFromScratch(
                 ORCA_out_str=out_file,
                 Identifier=str(ORCA_output_filepath).split("/")[-1].split(".")[0],
             )
         else:
-            pass
+            molObj = _ORCAHelper_ConstructMolObjFromTemplate(
+                ORCA_out_str=out_file, template_molObj=template_molObj,
+            )
+        # Retreive calculation attributes: method, basisset, dispersions, 
+        (
+            molObj.calculation_method, molObj.basisset, molObj.dispersion
+        ) = _ORCAHelper_GetMethodBasissetDispersions(out_file)
+        molObj.num_prim_basis_functions = _ORCAHelper_GetNumberOfPrimitiveBasisFunctions(out_file)
+        molObj.RAM_used = _ORCAHelper_GetRAM(out_file)
+        molObj.num_CPU_used = _ORCAHelper_GetCPU(out_file)
+        molObj.wallclock_time_sec = _ORCAHelper_GetTimeTaken(out_file)
+        if molObj.wallclock_time_sec is None:
+            molObj.error_code = _ORCAHelper_GetErrorCode(out_file)
+        else:
+            molObj.electronic_energy, molObj.error_code = _ORCAHelper_GetElecEnergy(out_file)
+            molObj.enthalpy = _ORCAHelper_GetEnthalpy(out_file)
+            molObj.entropy = _ORCAHelper_GetEntropy(out_file)
+            molObj.gibbs_free_energy = _ORCAHelper_GetGibbsFreeEnergy(out_file)
+            molObj.vibrational_frequencies = _ORCAHelper_GetVibrations(out_file)
+            molObj.spin_contamination = _ORCAHelper_GetSpinContaimination(out_file)
+        # Check charge and multiplicity match up
+        charge_mult = _ORCAHelper_GetChargeMultiplicity(out_file)
+        if charge_mult[0] != molObj.FormalCharge and charge_mult[1] != molObj.Multiplicity:
+            molObj.error_code = "Formal charge  and multiplicity do not match"
+        elif charge_mult[0] != molObj.FormalCharge:
+            molObj.error_code = "Formal charge do not match"
+        elif charge_mult[1] != molObj.Multiplicity:
+            molObj.error_code = "Multiplicity do not match"
+        return molObj
 
     @classmethod
     def ReadORCA6OutputGradients(
