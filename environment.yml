@@ -35,3 +35,4 @@ dependencies:
   - pip:
     - xyzgraph
     - basis_set_exchange
+    - pyscf-dispersion

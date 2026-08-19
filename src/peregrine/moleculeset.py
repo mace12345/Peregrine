@@ -183,9 +183,6 @@ class MoleculeSet:
 
     # === Write molecule information into directories ===
 
-    def WriteORCA6Input(self):
-        pass
-
     def WriteMolFileDirectory(self, mol_file_directory: str):
         os.makedirs(mol_file_directory, exist_ok=True)
 
@@ -204,7 +201,7 @@ class MoleculeSet:
         pyscf_file_directory: str,
         method: str = "hf",
         basisset: dict | str = "def2-svp",
-        ecp: dict | None = None,
+        ecp: list[str] | None = None,
         restricted: bool = True,
         calculation_type: str = "single point",
         get_gradients: bool = True,
@@ -213,8 +210,12 @@ class MoleculeSet:
         grid_density: int = 5,
         prune_grids: None | bool = True,
         optimisation_convergence_settings: dict | None = None,
+        job_scheduler_used: None | str = "SLURM",
+        CPU_count: int = 4,
+        max_time: int = 2880,
     ):
         os.makedirs(pyscf_file_directory, exist_ok=True)
+        submit_jobs = ""
         for molObj in self.MoleculesDict.values():
             pyscf_str = molObj.WritePySCFInput(
                 method=method,
@@ -228,11 +229,31 @@ class MoleculeSet:
                 grid_density=grid_density,
                 prune_grids=prune_grids,
                 optimisation_convergence_settings=optimisation_convergence_settings,
+                CPU_count=CPU_count,
             )
             with open(
-                pyscf_file_directory / f"{molObj.Identifier}_PySCFInput.py", "w"
+                pyscf_file_directory / f"{molObj.Identifier}.py", "w"
             ) as f:
                 f.write(pyscf_str)
+                f.close()
+            if job_scheduler_used == "SLURM":
+                slurm_str = molObj.WriteSLURMStringForPySCF(
+                    job_name=molObj.Identifier,
+                    CPU_count=CPU_count,
+                    max_memory=max_memory,
+                    max_time=max_time,
+                )
+                with open(
+                    pyscf_file_directory / f"{molObj.Identifier}.sh", "w"
+                ) as f:
+                    f.write(slurm_str)
+                    f.close()
+                submit_jobs += f"sbatch {molObj.Identifier}.sh\n"
+        if submit_jobs != "":
+            with open(
+                pyscf_file_directory / f"submit_jobs.sh", "w"
+            ) as f:
+                f.write(submit_jobs)
                 f.close()
 
     def WriteORCAInput(
@@ -298,7 +319,7 @@ class MoleculeSet:
         # Track files to .out files to read
         files_to_remove = []
         out_files = []
-        remove_patterns = ["slurm", r"atom(\d+)\.out", r"\.sh"]
+        remove_patterns = [r"slurm\-", r"atom(\d+)\.out", r"\.sh"]
         out_pattern = r"\.out"
         for file in dir_list:
             # Look for files to remove
@@ -338,6 +359,10 @@ class MoleculeSet:
                 "Dispersion": [
                     molObj.dispersion for molObj in instance.MoleculesDict.values()
                 ],
+                "Basis set":
+                [
+                    molObj.basisset for molObj in instance.MoleculesDict.values()
+                ],
                 "Number of primitive basis functions": [
                     molObj.num_prim_basis_functions
                     for molObj in instance.MoleculesDict.values()
@@ -347,6 +372,12 @@ class MoleculeSet:
                 ],
                 "Number of CPU cores used": [
                     molObj.num_CPU_used for molObj in instance.MoleculesDict.values()
+                ],
+                "Charge": [
+                    molObj.FormalCharge for molObj in instance.MoleculesDict.values()
+                ],
+                "Multiplicity": [
+                    molObj.Multiplicity for molObj in instance.MoleculesDict.values()
                 ],
                 "Error Code": [
                     molObj.error_code for molObj in instance.MoleculesDict.values()
@@ -375,7 +406,7 @@ class MoleculeSet:
                 ],
                 "Vibrational Frequency 6 (cm-1)": [
                     (
-                        molObj.vibrational_frequencies[0][1]
+                        molObj.vibrational_frequencies[5][1]
                         if molObj.vibrational_frequencies is not None
                         else None
                     )

@@ -59,7 +59,7 @@ BONDTYPE_TO_RDKIT_TRANSLATION = {
 
 RDKIT_TO_BONDTYPE_TRANSLATION = {v: k for k, v in BONDTYPE_TO_RDKIT_TRANSLATION.items()}
 
-PYSCF_DFT_FUNCTIONS = {"wb97m_v", "m06_l", "r2scan"}
+PYSCF_DFT_FUNCTIONS = {"wb97m_v", "m06_l", "r2scan", "wb97m_d3bj"}
 
 PYSCF_CC_FUNCTIONS = {"ccsdt", "ccsd(t)"}
 
@@ -605,6 +605,8 @@ def _PySCFHelper_DetermineMethodType(method: str) -> str:
         method is not recognized.
     """
     method_type = None
+    print(method)
+    print(PYSCF_DFT_FUNCTIONS)
     if method in PYSCF_DFT_FUNCTIONS:
         method_type = "DFT"
     elif method == "hf":
@@ -699,7 +701,7 @@ def _PySCFHelper_DefineMolecule(
     restricted_str: str,
     method: str,
     CPU_count: int,
-    ecp: list[int] | None,
+    ecp: list[str] | None = None,
 ) -> str:
     """
     Build the PySCF molecule-definition block for a calculation script.
@@ -822,7 +824,6 @@ ccsdt_en = pyscfMolObj_calc.ccsd_t()
 metadata['CCSD Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
 metadata['CCSD(T) Electronic Energy (Eh)'] = metadata['CCSD Electronic Energy (Eh)'] + ccsdt_en
 """
-
     # Optimisation Calculations with Coupled Cluster
     elif calculation_type == "opt" and method_type == "CC":
         pyscf_str = f"""# Define gradient calculation function
@@ -863,6 +864,7 @@ metadata['CCSD Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
 metadata['CCSD(T) Electronic Energy (Eh)'] = metadata['CCSD Electronic Energy (Eh)'] + ccsdt_en
 
 """
+    # Optimisation calculations with DFT
     return pyscf_str
 
 
@@ -1222,6 +1224,7 @@ class Molecule:
         atomic_symbol_count_dict = {}
         self.MolecularMass = 0
         for atomObj in self.AtomsList:
+            atomObj.Update()
             if atomObj.AtomicSymbol not in atomic_symbol_count_dict:
                 atomic_symbol_count_dict[atomObj.AtomicSymbol] = 1
                 if UpdateAtomLabels == True:
@@ -2089,9 +2092,63 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         # Get maximum RAM usage
         pyscf_str += "metadata['Maximum RAM used (MB)'] = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)\n"
         # Write meta data .json file
-        pyscf_str += f"# Write metadata to .json file\nwith open('{self.Identifier}_PySCFOutput.meta.json', 'w') as f:\n   json.dump(metadata, f, indent=2)"
+        pyscf_str += f"# Write metadata to .json file\nwith open('{self.Identifier}_PySCFOutput.meta.json', 'w') as f:\n   json.dump(metadata, f, indent=2)\n"
 
         return pyscf_str
+
+    def WriteSLURMStringForPySCF(
+        self,
+        job_name: str,
+        file_types_to_save: list[str] = [".fock", ".log", ".json", ".log"],
+        CPU_count: int = 4,
+        max_memory: int = 1000,
+        max_time: None | int = 2880,
+    ):
+        time = _GeneralHelper_MinutesToHHMMSS(max_time)
+        slurm_str = f"""#!/bin/bash
+#SBATCH --job-name={job_name}
+#SBATCH --time={time}
+#SBATCH --mem={max_memory}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task={CPU_count}
+
+# Export SLURM allocated CPUs to OpenMP and BLAS libraries
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+# Load pyscf conda environment
+source activate chem-env
+
+INPUT_DIR=$(pwd)
+
+# Create a scratch directory and navigate to it
+SCRATCH_DIR=/scratch/$USER/$SLURM_JOB_ID
+mkdir -p $SCRATCH_DIR
+cd $SCRATCH_DIR
+
+# Copy input files to the scratch directory
+cp $INPUT_DIR/{job_name}.py $SCRATCH_DIR
+
+# Run pyscf script
+python {job_name}.py > {job_name}.log
+
+# Copy results back to permanent storage
+"""
+        for file_type in file_types_to_save:
+            file_type = file_type.replace(".", "")
+            slurm_str += f"cp *.{file_type} $INPUT_DIR/\n"
+        slurm_str += """
+# Clean up the scratch directory
+rm -rf $SCRATCH_DIR
+
+cd $INPUT_DIR
+# Remove slurm.out file
+rm slurm-$SLURM_JOB_ID.out
+
+"""
+        return slurm_str
 
     # === Convert Molecule Objects ===
 
@@ -2310,7 +2367,7 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         for idx, line in enumerate(lines):
             attr = property_map.get(line.strip())
             if attr is not None and idx + 1 < len(lines):
-                setattr(molObj, attr, float(lines[idx + 1].strip()))
+                setattr(molObj, attr, lines[idx + 1].strip())
 
         return molObj
 
