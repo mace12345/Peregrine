@@ -12,4 +12,4 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/Peregrine"]
+packages = ["src/peregrine"]
