@@ -2,17 +2,88 @@ import os
 import re
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
+import itertools
+
 
 from .atom import Atom
 from .molecule import Molecule
 
 import pandas as pd
 
+import numpy as np
+
+def _GeneralHelper_TooSmallBondAngle(molObj: Molecule, minimum_bond_angle: float) -> bool:
+    for atomObj in molObj.AtomsList:
+        n_atoms = molObj.GetAtomNeighbours(AtomObject=atomObj)
+        for atomObj1, atomObj2 in itertools.combinations(n_atoms, 2):
+            theta = np.rad2deg(
+                molObj.GetBondAngle(AtomObjects=[atomObj1, atomObj, atomObj2])
+            )
+            if theta <= minimum_bond_angle:
+                return True
+    return False
+
+def _GeneralHelper_TooLargeBondLength(molObj: Molecule, maximum_bond_length: float) -> bool:
+    for atomObj in molObj.AtomsList:
+        for n_atom in molObj.GetAtomNeighbours(AtomObject=atomObj):
+            length = np.linalg.norm(atomObj.Coordinates - n_atom.Coordinates)
+            if length > maximum_bond_length:
+                return True
+    return False
 
 class MoleculeSet:
     def __init__(self):
         self.ResultsDF: pd.DataFrame | None = None
         self.MoleculesDict: dict[str, Molecule] = {}
+
+    def AddMolecule(self, MoleculeObject: Molecule | list[Molecule]):
+        if type(MoleculeObject) == list:
+            for molObj in MoleculeObject:
+                self.MoleculesDict[molObj.Identifier] = molObj
+        else:
+            self.MoleculesDict[MoleculeObject.Identifier] = MoleculeObject
+
+    def RemoveMolecule(self, MoleculeObject: Molecule | list[Molecule]):
+        if type(MoleculeObject) == list:
+            for molObj in MoleculeObject:
+                del self.MoleculesDict[molObj.Identifier]
+        else:
+            del self.MoleculesDict[molObj.Identifier]
+
+    def RemoveDuplicateMolecules(self):
+        if self.ResultsDF is None:
+            self.ResultsDF = pd.DataFrame(
+                {
+                    "Identifier": [molObj.Identifier for molObj in self.MoleculesDict.values()],
+                    "Inchi strings": [molObj.WriteInchiString() for molObj in self.MoleculesDict.values()],
+                }
+            )
+        else:
+            print("Need to add fast functionality here")
+        self.ResultsDF = self.ResultsDF.drop_duplicates(subset="Inchi strings", keep="first").reset_index(drop=True)
+        identifiers = set(self.ResultsDF["Identifier"])
+        self.MoleculesDict = {
+            key: molObj
+            for key, molObj in self.MoleculesDict.items()
+            if molObj.Identifier in identifiers
+        }
+
+    def RemoveNonsensicalGeometries(
+        self,
+        minimum_bond_angle: float = 50,
+        maximum_bond_length: float = 4,
+    ):
+        identifiers_to_remove = []
+        for molObj in self.MoleculesDict.values():
+            if _GeneralHelper_TooSmallBondAngle(molObj, minimum_bond_angle):
+                identifiers_to_remove.append(molObj.Identifier)
+                continue
+            if _GeneralHelper_TooLargeBondLength(molObj, maximum_bond_length):
+                identifiers_to_remove.append(molObj.Identifier)
+                continue
+        for identifier in identifiers_to_remove:
+            del self.MoleculesDict[identifier]
+
 
     # === Read in molecule information (mainly from directories) ===
 

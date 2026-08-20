@@ -322,17 +322,20 @@ def _ORCAHelper_ConstructMolObjFromTemplate(
 ) -> "Molecule":
     molObj = deepcopy(template_molObj)
     # Get coordinates only
-    xyz_block = ORCA_out_str.split(
-        "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
-    )[-1].split("\n\n")[0]
-    AtomsList, NumberOfAtoms = _ORCAHelper_XYZBlockToAtomsList(
-        xyz_block, template_molObj
-    )
-    molObj.AtomsList = AtomsList
-    molObj.AtomsDict = {
-        atomObj.Label: [idx, atomObj] for idx, atomObj in enumerate(molObj.AtomsList)
-    }
-    return molObj
+    if "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n" in ORCA_out_str:
+        xyz_block = ORCA_out_str.split(
+            "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
+        )[-1].split("\n\n")[0]
+        AtomsList, NumberOfAtoms = _ORCAHelper_XYZBlockToAtomsList(
+            xyz_block, template_molObj
+        )
+        molObj.AtomsList = AtomsList
+        molObj.AtomsDict = {
+            atomObj.Label: [idx, atomObj] for idx, atomObj in enumerate(molObj.AtomsList)
+        }
+        return molObj
+    else:
+        return molObj
 
 
 def _ORCAHelper_GetMethodBasissetDispersions(ORCA_out_str: str):
@@ -586,11 +589,14 @@ def _ORCAHelper_GetSpinContaimination(ORCA_out_str) -> None | float:
 
 
 def _ORCAHelper_GetChargeMultiplicity(ORCA_out_str) -> list[int]:
-    return [
-        int(i)
-        for i in ORCA_out_str.split("*xyz")[1].split("\n")[0].split(" ")
-        if i != ""
-    ]
+    if "*xyz" in ORCA_out_str:
+        return [
+            int(i)
+            for i in ORCA_out_str.split("*xyz")[1].split("\n")[0].split(" ")
+            if i != ""
+        ]
+    else:
+        return None
 
 
 def _PySCFHelper_DetermineMethodType(method: str) -> str:
@@ -605,8 +611,6 @@ def _PySCFHelper_DetermineMethodType(method: str) -> str:
         method is not recognized.
     """
     method_type = None
-    print(method)
-    print(PYSCF_DFT_FUNCTIONS)
     if method in PYSCF_DFT_FUNCTIONS:
         method_type = "DFT"
     elif method == "hf":
@@ -1141,6 +1145,22 @@ class Molecule:
         self.GetMultiplicity()
         if UpdateSubstructureIndices == True:
             self.NormaliseSubstructureIndicies()
+
+    def DeleteCalculatedAttributes(self):
+        self.calculation_method = None
+        self.basisset = None
+        self.dispersion= None
+        self.num_prim_basis_functions = None
+        self.RAM_used = None
+        self.num_CPU_used = None
+        self.wallclock_time_sec = None
+        self.error_code = None
+        self.electronic_energy = None
+        self.enthalpy = None
+        self.entropy = None
+        self.gibbs_free_energy = None
+        self.vibrational_frequencies = None
+        self.spin_contamination = None
 
     def DeriveMoleculeSMILES(self):
         # Split substructuures into their own molecule objects
@@ -2161,7 +2181,10 @@ rm slurm-$SLURM_JOB_ID.out
         # Add atoms to the RDKit molecule
         for atomObj in self.AtomsList:
             rdkit_atom = Chem.Atom(atomObj.AtomicSymbol)
-            rdkit_atom.SetFormalCharge(atomObj.FormalCharge)
+            if type(atomObj.FormalCharge) is int:
+                rdkit_atom.SetFormalCharge(atomObj.FormalCharge)
+            else:
+                rdkit_atom.SetFormalCharge(int(round(atomObj.FormalCharge, 0)))
             atom_idx = rdkit_mol.AddAtom(rdkit_atom)
         # Add bonds based on the connectivity matrix
         if self.ConnectivityMatrix is not None:
@@ -2296,7 +2319,10 @@ rm slurm-$SLURM_JOB_ID.out
             Gradient = np.array([None, None, None])
             for i in range(6, len(parts)):
                 if parts[i].startswith("CHG="):
-                    formal_charge = int(parts[i].split("=")[1])
+                    try:
+                        formal_charge = int(parts[i].split("=")[1])
+                    except ValueError:
+                        formal_charge = float(parts[i].split("=")[1])
                 elif parts[i].startswith("RAD="):
                     multiplicity = int(parts[i].split("=")[1])
                 elif parts[i].startswith("XGD="):
@@ -2358,11 +2384,17 @@ rm slurm-$SLURM_JOB_ID.out
 
         # Parse for molecule properties
         property_map = {
-            "> <Calculation Method>": "calculation_method",
             "> <Electronic Energy (Eh)>": "electronic_energy",
             "> <Gibbs Free Energy (Eh)>": "gibbs_free_energy",
             "> <Enthalpy (Eh)>": "enthalpy",
             "> <Entropy (Eh)>": "entropy",
+        }
+        for idx, line in enumerate(lines):
+            attr = property_map.get(line.strip())
+            if attr is not None and idx + 1 < len(lines):
+                setattr(molObj, attr, float(lines[idx + 1].strip()))
+        property_map = {
+            "> <Calculation Method>": "calculation_method",
         }
         for idx, line in enumerate(lines):
             attr = property_map.get(line.strip())
@@ -2622,6 +2654,7 @@ rm slurm-$SLURM_JOB_ID.out
                 Identifier=str(ORCA_output_filepath).split("/")[-1].split(".")[0],
             )
         else:
+            template_molObj.DeleteCalculatedAttributes()
             molObj = _ORCAHelper_ConstructMolObjFromTemplate(
                 ORCA_out_str=out_file,
                 template_molObj=template_molObj,
@@ -2649,15 +2682,16 @@ rm slurm-$SLURM_JOB_ID.out
             molObj.spin_contamination = _ORCAHelper_GetSpinContaimination(out_file)
         # Check charge and multiplicity match up
         charge_mult = _ORCAHelper_GetChargeMultiplicity(out_file)
-        if (
-            charge_mult[0] != molObj.FormalCharge
-            and charge_mult[1] != molObj.Multiplicity
-        ):
-            molObj.error_code = "Formal charge  and multiplicity do not match"
-        elif charge_mult[0] != molObj.FormalCharge:
-            molObj.error_code = "Formal charge do not match"
-        elif charge_mult[1] != molObj.Multiplicity:
-            molObj.error_code = "Multiplicity do not match"
+        if charge_mult is not None:
+            if (
+                charge_mult[0] != molObj.FormalCharge
+                and charge_mult[1] != molObj.Multiplicity
+            ):
+                molObj.error_code = "Formal charge  and multiplicity do not match"
+            elif charge_mult[0] != molObj.FormalCharge:
+                molObj.error_code = "Formal charge do not match"
+            elif charge_mult[1] != molObj.Multiplicity:
+                molObj.error_code = "Multiplicity do not match"
         return molObj
 
     @classmethod
@@ -3191,7 +3225,7 @@ rm slurm-$SLURM_JOB_ID.out
         rings = [ring for ring in rings if len(ring) <= 8]
         # Determine aromatic atoms if there are rings
         if len(rings) > 0:
-            self.GetAromaticAtoms()
+            self.GetAromaticAtoms(SemiEmpiricaltblitePreOpt=False)
         # Adjust charges of heteroaromatic atoms
         for idx, atomObj in enumerate(self.AtomsList):
             bond_valence = self.BondOrderMatrix[idx].sum()
@@ -3253,7 +3287,7 @@ rm slurm-$SLURM_JOB_ID.out
                             for atomObj2 in n_atoms[idx + 1 :]:
                                 angles.append(
                                     np.rad2deg(
-                                        self.GetBondAngle(atomObj1, atomObj, atomObj2)
+                                        self.GetBondAngle(AtomObjects=[atomObj1, atomObj, atomObj2])
                                     )
                                 )
                         if sum(angles) > 350:
