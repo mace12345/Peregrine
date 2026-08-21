@@ -16,7 +16,7 @@ lib.num_threads(4)
 metadata = {}
 
 # Retrieve basis set from basis set exchange
-raw = bse.api.get_basis('def2-svp', elements=['C', 'H'])
+raw = bse.api.get_basis('def2-svp', elements=['H', 'C'])
 orbital_basis, _ = pbse._orbital_basis(raw)
         
 # Define Molecule
@@ -34,7 +34,7 @@ H 0.0223681766 2.9999166019 0.0002150786
 H 2.5869572201 -1.519095348 0.0012904675
 H 2.6091649351 1.480627435 0.0008603297
 ''',
-    basis={'C': orbital_basis['C'], 'H': orbital_basis['H'], },
+    basis={'H': orbital_basis['H'], 'C': orbital_basis['C'], },
     ecp={},
     unit = 'Ang',
     output = 'Benzene_PySCFOutput.log',

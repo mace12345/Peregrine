@@ -16,7 +16,7 @@ lib.num_threads(4)
 metadata = {}
 
 # Retrieve basis set from basis set exchange
-raw = bse.api.get_basis('def2svp', elements=['P', 'H', 'Co', 'C', 'Cl'])
+raw = bse.api.get_basis('def2svp', elements=['Cl', 'H', 'P', 'Co', 'C'])
 orbital_basis, _ = pbse._orbital_basis(raw)
         
 # Define Molecule
@@ -93,7 +93,7 @@ H -1.6277 -2.9123 -0.5788
 H -5.5845 -2.6152 7.3426
 H -7.0025 3.9105 1.6703
 ''',
-    basis={'P': orbital_basis['P'], 'H': orbital_basis['H'], 'Co': orbital_basis['Co'], 'C': orbital_basis['C'], 'Cl': orbital_basis['Cl'], },
+    basis={'Cl': orbital_basis['Cl'], 'H': orbital_basis['H'], 'P': orbital_basis['P'], 'Co': orbital_basis['Co'], 'C': orbital_basis['C'], },
     ecp={},
     unit = 'Ang',
     output = 'BIHGEE-S4_PySCFOutput.log',

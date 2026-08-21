@@ -467,11 +467,16 @@ def _ORCAHelper_GetErrorCode(ORCA_out_str) -> str:
         return "non-ASCII characters present in input file"
     elif len(ORCA_out_str.split(": Error : multiplicity")) == 2:
         return "Multiplicity not compatible with charge"
+    elif (
+        len(ORCA_out_str.split("ORCA finished by error termination in MDCI")) == 2
+        and len(ORCA_out_str.split("The Coupled-Cluster iterations have NOT converged")) == 2
+    ):
+        return "Coupled cluster interations have not converged"
     else:
         return "Unknown Error, probably timeout"
 
 
-def _ORCAHelper_GetElecEnergy(ORCA_out_str):
+def _ORCAHelper_GetElecEnergy(ORCA_out_str) -> None | float:
     elec_en = None
     error_code = None
     if "Electronic energy                ..." in ORCA_out_str:
@@ -2170,6 +2175,143 @@ rm slurm-$SLURM_JOB_ID.out
 """
         return slurm_str
 
+    def WritePsi4String(
+        self,
+        method: str = "wb97m-d3bj",
+        basisset: str = "def2-tzvppd",
+        max_memory: int = 1000,
+        CPU_count: int = 4,
+        get_gradients: bool = False,
+        optimise_geometry: bool = False,
+        restricted: bool = False,
+    ) -> str:
+        self.GetMultiplicity()
+        self.GetFormalCharge()
+        psi4_str = f"""import resource
+import json
+import psi4 
+
+psi4.set_output_file('{self.Identifier}.out', False)
+psi4.set_memory('{max_memory} MB')
+psi4.set_num_threads({CPU_count})
+
+psi4MolObj = psi4.geometry(
+    '''
+{self.FormalCharge} {self.Multiplicity}
+{self.WriteXYZBlock()}
+units angstrom
+''',
+)
+
+"""
+        # define wherever calculation is restricted or not
+        if restricted == True and self.Multiplicity > 1:
+            psi4_str += "psi4.set_options({'reference': 'rohf'})\n"
+        elif restricted == False:
+                psi4_str += "psi4.set_options({'reference': 'uhf'})\n"
+        elif restricted == True:
+            psi4_str += "psi4.set_options({'reference': 'rhf'})\n"
+
+        # determine calculation type
+        if get_gradients == True:
+            psi4_str += f"""props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
+psi4.gradient('{method}/{basisset}', properties=props)
+
+"""
+        elif optimise_geometry == True:
+            psi4_str += f"""props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
+psi4.optimize('{method}/{basisset}', properties=props)
+
+"""
+        else:
+            psi4_str += f"""psi4.energy('{method}/{basisset}')
+            
+"""
+        psi4_str += "print(int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024))\n"
+        return psi4_str
+
+    def WriteSLURMStringForPsi4(
+        self,
+        job_name: str,
+        CPU_count: int = 4,
+        max_memory: int = 1000,
+        max_time: None | int = 2880,
+        file_types_to_save: list[str] = [".out"],
+    ) -> str:
+        time = _GeneralHelper_MinutesToHHMMSS(max_time)
+        slurm_str = f"""#!/bin/bash
+#SBATCH --job-name={job_name}
+#SBATCH --time={time}
+#SBATCH --mem={max_memory}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task={CPU_count}
+
+# Load psi4 conda environment
+source activate psi4env
+
+INPUT_DIR=$(pwd)
+
+# Create a scratch directory and navigate to it
+SCRATCH_DIR=/scratch/$USER/$SLURM_JOB_ID
+mkdir -p $SCRATCH_DIR
+cd $SCRATCH_DIR
+
+# Copy input files to the scratch directory
+cp $INPUT_DIR/{job_name}.py $SCRATCH_DIR
+
+# Run pyscf script
+python {job_name}.py
+
+# Copy results back to permanent storage
+"""
+        for file_type in file_types_to_save:
+            file_type = file_type.replace(".", "")
+            slurm_str += f"cp *.{file_type} $INPUT_DIR/\n"
+        slurm_str += """
+# Clean up the scratch directory
+rm -rf $SCRATCH_DIR
+
+cd $INPUT_DIR
+# Remove slurm.out file
+rm slurm-$SLURM_JOB_ID.out
+
+"""
+        return slurm_str
+
+    def WritePsi4Input(
+        self,
+        method: str = "wb97m-d3bj",
+        basisset: str = "def2-tzvppd",
+        get_gradients: bool = False,
+        optimise_geometry: bool = False,
+        CPU_count: int = 4,
+        max_memory: int = 1000,  # MB
+        max_time: None | int = 2880,  # minuets
+        job_scheduler_used: None | str = "slurm",
+        file_types_to_save: list[str] = [".out"],
+    ) -> tuple[str, str]:
+        psi4_str = self.WritePsi4String(
+            method=method,
+            basisset=basisset,
+            max_memory=max_memory,
+            CPU_count=CPU_count,
+            get_gradients=get_gradients,
+            optimise_geometry=optimise_geometry,
+        )
+        if job_scheduler_used == "slurm":
+            sche_str = self.WriteSLURMStringForPsi4(
+                job_name=self.Identifier,
+                CPU_count=CPU_count,
+                max_memory=max_memory,
+                max_time=max_time,
+                file_types_to_save=file_types_to_save,
+            )
+        else:
+            sche_str = None
+        return (psi4_str, sche_str)
+
+    
     # === Convert Molecule Objects ===
 
     def MoleculeToRDKitMol(self, SuppressRDKitWarnings: bool = True) -> Chem.RWMol:

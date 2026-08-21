@@ -378,6 +378,59 @@ class MoleculeSet:
             f.write(submit_jobs)
             f.close()
 
+    def WritePsi4Input(
+        self,
+        psi4_file_directory: str,
+        method: str = "wb97m-d3bj",
+        basisset: str = "def2-tzvppd",
+        get_gradients: bool = False,
+        optimise_geometry: bool = False,
+        CPU_count: int = 4,
+        max_memory: int = 1000,
+        max_time: None | int = 2880,
+        job_scheduler_used: None | str = "slurm",
+        file_types_to_save: list[str] = [".out"]
+    ):
+        os.makedirs(psi4_file_directory, exist_ok=True)
+        if job_scheduler_used is not None:
+            job_scheduler_used = job_scheduler_used.lower()
+        submit_jobs = ""
+        if self.ResultsDF is not None:
+            molObj_list = [
+                self.MoleculesDict[identifier]
+                for identifier in self.ResultsDF[
+                    self.ResultsDF["Error Code"].isna() == False
+                ]["Identifier"]
+            ]
+        else:
+            molObj_list = self.MoleculesDict.values()
+        for molObj in molObj_list:
+            orca_inp, queue_sh = molObj.WritePsi4Input(
+                method=method,
+                basisset=basisset,
+                get_gradients=get_gradients,
+                optimise_geometry=optimise_geometry,
+                CPU_count=CPU_count,
+                max_memory=max_memory,
+                max_time=max_time,
+                job_scheduler_used=job_scheduler_used,
+                file_types_to_save=file_types_to_save,
+            )
+            with open(psi4_file_directory / f"{molObj.Identifier}.py", "w") as f:
+                f.write(orca_inp)
+                f.close()
+            with open(psi4_file_directory / f"{molObj.Identifier}.sh", "w") as f:
+                f.write(queue_sh)
+                f.close()
+            if job_scheduler_used == "slurm":
+                submit_jobs += f"sbatch {molObj.Identifier}.sh\n"
+        with open(psi4_file_directory / "submit_jobs.sh", "w") as f:
+            f.write(submit_jobs)
+            f.close()
+
+
+    # === Read comp chem output calculations ===
+
     @classmethod
     def ReadORCAOutput(
         cls,

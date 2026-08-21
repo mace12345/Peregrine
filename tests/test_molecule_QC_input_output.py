@@ -86,3 +86,20 @@ def test_write_PySCF_UKS_input():
     ) as f:
         f.write(BIHGEE_pyscf_str)
         f.close()
+
+
+def test_write_Psi4_RKS_input():
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/InitialTests/benzene.mol",
+        "r",
+    ) as f:
+        benzene_str = f.read()
+        f.close()
+    benzene = Molecule.ReadMolString(benzene_str)
+    benzene_pyscf_str = benzene.WritePsi4String(optimise_geometry=True)
+    with open(
+        f"{str(Path(__file__).parent.parent).replace("\\", "/")}/data/testing_data/Psi4Tests/benzene_calc.py",
+        "w",
+    ) as f:
+        f.write(benzene_pyscf_str)
+        f.close()
