@@ -448,11 +448,13 @@ class MoleculeSet:
             with open(psi4_file_directory / f"{molObj.Identifier}.py", "w") as f:
                 f.write(orca_inp)
                 f.close()
-            with open(psi4_file_directory / f"{molObj.Identifier}.sh", "w") as f:
-                f.write(queue_sh)
-                f.close()
             if job_scheduler_used == "slurm":
                 submit_jobs += f"sbatch {molObj.Identifier}.sh\n"
+                with open(psi4_file_directory / f"{molObj.Identifier}.sh", "w") as f:
+                    f.write(queue_sh)
+                    f.close()
+            elif job_scheduler_used is None:
+                submit_jobs += f"python {molObj.Identifier}.py\n"
         with open(psi4_file_directory / "submit_jobs.sh", "w") as f:
             f.write(submit_jobs)
             f.close()

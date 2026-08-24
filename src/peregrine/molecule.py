@@ -996,9 +996,11 @@ def _Psi4Helper_WriteBasissets(
 ) -> str:
     element_basisset_map = {}
     if local_basisset is None:
-        psi4_str = f"psi4.basis_helper('assign {basisset}')\n"
+        psi4_str = "element_basis_map = {\n"
         for atomic_symbol in atomic_symbols:
+            psi4_str += f"    '{atomic_symbol}': '{basisset}',\n"
             element_basisset_map[atomic_symbol] = basisset
+        psi4_str += "}\n"
     else:
         psi4_str = "element_basis_map = {\n"
         for atomic_symbol in atomic_symbols:
@@ -1009,7 +1011,7 @@ def _Psi4Helper_WriteBasissets(
                 psi4_str += f"    '{atomic_symbol}': '{basisset}',\n"
                 element_basisset_map[atomic_symbol] = basisset
         psi4_str += "}\n"
-        psi4_str += r"""combined_basis = '\n'.join(
+    psi4_str += r"""combined_basis = '\n'.join(
     bse.get_basis(basisname, elements=[symbol], fmt='psi4', header=False)
     for symbol, basisname in element_basis_map.items()
 )
@@ -2267,8 +2269,17 @@ rm slurm-$SLURM_JOB_ID.out
         get_frequency: bool = False,
         restricted: bool = False,
     ) -> str:
-        psi4_str = f"""import resource
-import json
+        psi4_str = f"""import time
+start = time.time()
+
+import platform
+import resource
+def get_max_rss_mb():
+    raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if platform.system() == 'Darwin':
+        return raw / (1024 * 1024)
+    return raw / 1024
+
 import psi4
 import basis_set_exchange as bse
 
@@ -2314,7 +2325,21 @@ psi4.optimize('{method}', properties=props)
             psi4_str += f"""psi4.energy('{method}')
             
 """
-        psi4_str += "print(int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024))\n"
+        psi4_str += f"""
+RAM = int(get_max_rss_mb())
+end = time.time()
+time_taken = int(round(end - start, 0))
+
+with open('{self.Identifier}.out', 'r') as f:
+    out_file = f.read()
+    f.close()
+"""
+        psi4_str += r"""out_file += f'Wallclock Time Taken: {time_taken} seconds\nRAM used: {RAM} MB\n'"""
+        psi4_str += f"""
+with open('{self.Identifier}.out', 'w') as f:
+    f.write(out_file)
+    f.close()
+"""
         return psi4_str
 
     def WriteSLURMStringForPsi4(
