@@ -1057,6 +1057,12 @@ psi4.set_options({
     return psi4_str
 
 
+def _Psi4Helper_ConstructMolObjFromScratch(
+    Identifier: str,
+    psi4_out_str: str,
+) -> "Molecule":
+    pass
+
 class Molecule:
     def __init__(
         self,
@@ -2951,6 +2957,47 @@ rm slurm-$SLURM_JOB_ID.out
                 molObj.error_code = "Formal charge do not match"
             elif charge_mult[1] != molObj.Multiplicity:
                 molObj.error_code = "Multiplicity do not match"
+        return molObj
+
+    @classmethod
+    def ReadPsi4Output(
+        cls, psi4_output_filepath: str, template_molObj: "Molecule | None" = None
+    ) -> "Molecule":
+        with open(psi4_output_filepath, "r") as f:
+            out_file = f.read()
+            f.close()
+        # Retreive Coordinates, Bonds, Multiplicity, Charge
+        if template_molObj is None:
+            molObj = _Psi4Helper_ConstructMolObjFromScratch(
+                psi4_out_str=out_file,
+                Identifier=str(psi4_output_filepath).split("/")[-1].split(".")[0],
+            )
+        else:
+            template_molObj.DeleteCalculatedAttributes()
+            molObj = _Psi4Helper_ConstructMolObjFromTemplate(
+                psi4_out_str=out_file,
+                template_molObj=template_molObj,
+            )
+        # Retreive calculation attributes: method, basisset, dispersions,
+        molObj.calculation_method, molObj.basisset, molObj.dispersion = (
+            _Psi4Helper_GetMethodBasissetDispersions(out_file)
+        )
+        molObj.num_prim_basis_functions = (
+            _Psi4Helper_GetNumberOfPrimitiveBasisFunctions(out_file)
+        )
+        molObj.RAM_used = _Psi4Helper_GetRAM(out_file)
+        molObj.num_CPU_used = _Psi4Helper_GetCPU(out_file)
+        molObj.wallclock_time_sec = _Psi4Helper_GetTimeTaken(out_file)
+        if molObj.wallclock_time_sec is None:
+            molObj.error_code = _Psi4Helper_GetErrorCode(out_file)
+        else:
+            (
+                molObj.electronic_energy,
+                molObj.enthalpy,
+                molObj.entropy,
+                molObj.gibbs_free_energy,
+                molObj.error_code,
+            ) = _Psi4Helper_GetEnergies(out_file)
         return molObj
 
     @classmethod

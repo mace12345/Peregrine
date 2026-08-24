@@ -574,6 +574,99 @@ class MoleculeSet:
         instance.WriteMolFileDirectory(output_mol_file_directory)
         return instance
 
+    @classmethod
+    def ReadPsi4Output(
+        cls,
+        psi4_file_directory: str,
+        output_mol_file_directory: str,
+        template_moleculeset: "MoleculeSet | None" = None,
+    ) -> "MoleculeSet":
+        dir_list = [i for i in os.listdir(psi4_file_directory) if i.split(".")[-1] == "out"]
+        # Read Psi4 output files
+        instance = MoleculeSet()
+        for psi4_file in sorted(dir_list):
+            Identifier = str(psi4_file).split(".")[0]
+            if template_moleculeset is None:
+                template_molObj = None
+            else:
+                template_molObj = template_moleculeset.MoleculesDict[Identifier]
+            molObj = Molecule.ReadPsi4Output(
+                psi4_file_directory / psi4_file,
+                template_molObj=template_molObj,
+            )
+            instance.MoleculesDict[molObj.Identifier] = molObj
+        # Construct Results DataFrame
+        instance.ResultsDF = pd.DataFrame(
+            {
+                "Identifier": [identifier for identifier in instance.MoleculesDict],
+                "Method": [
+                    molObj.calculation_method
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Dispersion": [
+                    molObj.dispersion for molObj in instance.MoleculesDict.values()
+                ],
+                "Basis set":
+                [
+                    molObj.basisset for molObj in instance.MoleculesDict.values()
+                ],
+                "Number of primitive basis functions": [
+                    molObj.num_prim_basis_functions
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "RAM used per CPU core (MB)": [
+                    molObj.RAM_used for molObj in instance.MoleculesDict.values()
+                ],
+                "Number of CPU cores used": [
+                    molObj.num_CPU_used for molObj in instance.MoleculesDict.values()
+                ],
+                "Charge": [
+                    molObj.FormalCharge for molObj in instance.MoleculesDict.values()
+                ],
+                "Multiplicity": [
+                    molObj.Multiplicity for molObj in instance.MoleculesDict.values()
+                ],
+                "Error Code": [
+                    molObj.error_code for molObj in instance.MoleculesDict.values()
+                ],
+                "wallclock time taken (seconds)": [
+                    molObj.wallclock_time_sec
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Electronic Energy (Eh)": [
+                    molObj.electronic_energy
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Gibbs Free Energy (Eh)": [
+                    molObj.gibbs_free_energy
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Enthalpy (Eh)": [
+                    molObj.enthalpy for molObj in instance.MoleculesDict.values()
+                ],
+                "Entropy (Eh)": [
+                    molObj.entropy for molObj in instance.MoleculesDict.values()
+                ],
+                "Spin Contaimination (<S**2>)": [
+                    molObj.spin_contamination
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Vibrational Frequency 6 (cm-1)": [
+                    (
+                        molObj.vibrational_frequencies[5][1]
+                        if molObj.vibrational_frequencies is not None
+                        else None
+                    )
+                    for molObj in instance.MoleculesDict.values()
+                ],
+            }
+        )
+        instance.ResultsDF.to_csv(str(output_mol_file_directory) + ".csv")
+        # Save molObj files as V3000 .mol files
+        instance.WriteMolFileDirectory(output_mol_file_directory)
+        return instance
+
+    
     # === Execute a workflow of some kind ===
 
     def CalculateAtomicSOAPDescriptors(
