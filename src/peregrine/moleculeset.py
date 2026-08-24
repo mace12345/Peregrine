@@ -383,8 +383,11 @@ class MoleculeSet:
         psi4_file_directory: str,
         method: str = "wb97m-d3bj",
         basisset: str = "def2-tzvppd",
+        local_basissets: dict | None = None,
+        ecp: dict | None = None,
         get_gradients: bool = False,
         optimise_geometry: bool = False,
+        get_frequency: bool = False,
         CPU_count: int = 4,
         max_memory: int = 1000,
         max_time: None | int = 2880,
@@ -395,6 +398,8 @@ class MoleculeSet:
         if job_scheduler_used is not None:
             job_scheduler_used = job_scheduler_used.lower()
         submit_jobs = ""
+
+        # Resubmit previous calculations only if unsuccessful
         if self.ResultsDF is not None:
             molObj_list = [
                 self.MoleculesDict[identifier]
@@ -404,12 +409,36 @@ class MoleculeSet:
             ]
         else:
             molObj_list = self.MoleculesDict.values()
+
+        # Sort local basissets
+        new_local_basissets = None
+        if local_basissets is not None:
+            new_local_basissets = {}
+            for atomic_symbols in local_basissets:
+                local_basisset = local_basissets[atomic_symbols]
+                atomic_symbols = [i for i in atomic_symbols.replace(" ", "").split(",") if i != ""]
+                for atomic_symbol in atomic_symbols:
+                    new_local_basissets[atomic_symbol] = local_basisset
+
         for molObj in molObj_list:
+
+            # Sort local basissets
+            if new_local_basissets is not None:
+                local_basissets = {
+                    atomic_symbol: new_local_basissets[atomic_symbol] 
+                    for atomic_symbol in molObj.GetAtomicSymbols()
+                }
+                if len(local_basissets) == 0:
+                    local_basissets = None
+                
             orca_inp, queue_sh = molObj.WritePsi4Input(
                 method=method,
                 basisset=basisset,
+                local_basisset=local_basissets,
+                ecp=ecp,
                 get_gradients=get_gradients,
                 optimise_geometry=optimise_geometry,
+                get_frequency=get_frequency,
                 CPU_count=CPU_count,
                 max_memory=max_memory,
                 max_time=max_time,

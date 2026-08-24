@@ -978,6 +978,83 @@ def _RDKitHelper_SanitizeMol(RDKitMolObj: Chem.RWMol) -> Chem.RWMol:
     return RDKitMolObj
 
 
+def _Psi4Helper_WriteGeometry(
+    FormalCharge: int, Multiplicity: int, xyz_block: str,
+) -> str:
+    psi4_str = f"""
+psi4MolObj = psi4.geometry('''
+{FormalCharge} {Multiplicity}
+{xyz_block}
+units angstrom
+"""
+    psi4_str += "''',\n)\n"
+    return psi4_str
+
+
+def _Psi4Helper_WriteBasissets(
+    atomic_symbols: list[str], basisset: str, local_basisset: dict | None = None,
+) -> str:
+    element_basisset_map = {}
+    if local_basisset is None:
+        psi4_str = f"psi4.basis_helper('assign {basisset}')\n"
+        for atomic_symbol in atomic_symbols:
+            element_basisset_map[atomic_symbol] = basisset
+    else:
+        psi4_str = "element_basis_map = {\n"
+        for atomic_symbol in atomic_symbols:
+            if atomic_symbol in local_basisset:
+                psi4_str += f"    '{atomic_symbol}': '{local_basisset[atomic_symbol]}',\n"
+                element_basisset_map[atomic_symbol] = local_basisset[atomic_symbol]
+            else:
+                psi4_str += f"    '{atomic_symbol}': '{basisset}',\n"
+                element_basisset_map[atomic_symbol] = basisset
+        psi4_str += "}\n"
+        psi4_str += r"""combined_basis = '\n'.join(
+    bse.get_basis(basisname, elements=[symbol], fmt='psi4', header=False)
+    for symbol, basisname in element_basis_map.items()
+)
+psi4.basis_helper(f'''
+assign mybasis
+[ mybasis ]
+spherical
+{combined_basis}
+''', name='mybasis', key='BASIS')
+
+
+"""
+    jkfit = False
+    if local_basisset is not None:
+        basissets = list(set([basisset]+[i for i in local_basisset.values()]))
+    else:
+        basissets = [basisset]
+    for bs in basissets:
+        if "def2" in bs:
+            jkfit = True
+            break
+    if jkfit == True:
+        psi4_str += "jkfit_basis_map = {\n"
+        for atomic_symbol in atomic_symbols:
+            if "def2" in element_basisset_map[atomic_symbol]:
+                psi4_str += f"    '{atomic_symbol}': 'def2-universal-jkfit',\n"
+        psi4_str += "}\n"
+        psi4_str += r"""combined_jkfit = '\n'.join(
+    bse.get_basis(basisname, elements=[symbol], fmt='psi4', header=False)
+    for symbol, basisname in jkfit_basis_map.items()
+)
+psi4.basis_helper(f'''
+assign myjkfit
+[ myjkfit ]
+spherical
+{combined_jkfit}
+''', name='myjkfit', key='DF_BASIS_SCF')
+psi4.set_options({
+    'guess': 'core',
+    'scf_type': 'df',
+})
+"""
+    return psi4_str
+
+
 class Molecule:
     def __init__(
         self,
@@ -1306,12 +1383,13 @@ class Molecule:
 
     # === Get Molecule properties ===
 
-    def GetFormalCharge(self):
+    def GetFormalCharge(self) -> int:
         self.FormalCharge = 0
         for atomObj in self.AtomsList:
             self.FormalCharge += atomObj.FormalCharge
+        return self.FormalCharge
 
-    def GetMultiplicity(self):
+    def GetMultiplicity(self) -> int:
         """
         Update multiplicity of molecule object
         """
@@ -1322,6 +1400,7 @@ class Molecule:
             else:
                 unpaired_electrons += (atomObj.Multiplicity - 1) / 2
         self.Multiplicity = int((2 * unpaired_electrons) + 1)
+        return self.Multiplicity
 
     def GetCentreOfMass(self) -> np.ndarray:
         centre = np.array([0.0, 0.0, 0.0])
@@ -2179,31 +2258,37 @@ rm slurm-$SLURM_JOB_ID.out
         self,
         method: str = "wb97m-d3bj",
         basisset: str = "def2-tzvppd",
+        local_basisset: dict | None = None,
+        ecp: dict | None = None,
         max_memory: int = 1000,
         CPU_count: int = 4,
         get_gradients: bool = False,
         optimise_geometry: bool = False,
+        get_frequency: bool = False,
         restricted: bool = False,
     ) -> str:
-        self.GetMultiplicity()
-        self.GetFormalCharge()
         psi4_str = f"""import resource
 import json
-import psi4 
+import psi4
+import basis_set_exchange as bse
 
 psi4.set_output_file('{self.Identifier}.out', False)
 psi4.set_memory('{max_memory} MB')
 psi4.set_num_threads({CPU_count})
-
-psi4MolObj = psi4.geometry(
-    '''
-{self.FormalCharge} {self.Multiplicity}
-{self.WriteXYZBlock()}
-units angstrom
-''',
-)
-
 """
+        
+        psi4_str += _Psi4Helper_WriteGeometry(
+            FormalCharge=self.GetFormalCharge(),
+            Multiplicity=self.GetMultiplicity(),
+            xyz_block=self.WriteXYZBlock(),
+        )
+
+        psi4_str += _Psi4Helper_WriteBasissets(
+            atomic_symbols=self.GetAtomicSymbols(),
+            basisset=basisset,
+            local_basisset=local_basisset,
+        )
+
         # define wherever calculation is restricted or not
         if restricted == True and self.Multiplicity > 1:
             psi4_str += "psi4.set_options({'reference': 'rohf'})\n"
@@ -2215,16 +2300,18 @@ units angstrom
         # determine calculation type
         if get_gradients == True:
             psi4_str += f"""props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
-psi4.gradient('{method}/{basisset}', properties=props)
+psi4.gradient('{method}', properties=props)
 
 """
         elif optimise_geometry == True:
             psi4_str += f"""props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
-psi4.optimize('{method}/{basisset}', properties=props)
+psi4.optimize('{method}', properties=props)
 
 """
+        if get_frequency == True:
+            psi4_str += f"\npsi4.frequencies('{method}')\n"
         else:
-            psi4_str += f"""psi4.energy('{method}/{basisset}')
+            psi4_str += f"""psi4.energy('{method}')
             
 """
         psi4_str += "print(int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024))\n"
@@ -2283,8 +2370,11 @@ rm slurm-$SLURM_JOB_ID.out
         self,
         method: str = "wb97m-d3bj",
         basisset: str = "def2-tzvppd",
+        local_basisset: dict | None=None,
+        ecp: dict | None=None,
         get_gradients: bool = False,
         optimise_geometry: bool = False,
+        get_frequency: bool = False,
         CPU_count: int = 4,
         max_memory: int = 1000,  # MB
         max_time: None | int = 2880,  # minuets
@@ -2294,10 +2384,13 @@ rm slurm-$SLURM_JOB_ID.out
         psi4_str = self.WritePsi4String(
             method=method,
             basisset=basisset,
+            ecp=ecp,
+            local_basisset=local_basisset,
             max_memory=max_memory,
             CPU_count=CPU_count,
             get_gradients=get_gradients,
             optimise_geometry=optimise_geometry,
+            get_frequency=get_frequency,
         )
         if job_scheduler_used == "slurm":
             sche_str = self.WriteSLURMStringForPsi4(
@@ -2311,7 +2404,6 @@ rm slurm-$SLURM_JOB_ID.out
             sche_str = None
         return (psi4_str, sche_str)
 
-    
     # === Convert Molecule Objects ===
 
     def MoleculeToRDKitMol(self, SuppressRDKitWarnings: bool = True) -> Chem.RWMol:
