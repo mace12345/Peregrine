@@ -41,6 +41,8 @@ from .atom import Atom
 
 eV_to_Eh = 27.211407953
 
+BohrRad_to_Angstrom = 0.529177
+
 # === Useful Dictionarys ==
 
 BONDTYPE_TO_RDKIT_TRANSLATION = {
@@ -1062,6 +1064,48 @@ def _Psi4Helper_ConstructMolObjFromScratch(
     psi4_out_str: str,
 ) -> "Molecule":
     pass
+
+
+def _Psi4Helper_ConstructMolObjFromTemplate(
+    psi4_out_str: str,
+    template_molObj: "Molecule",
+) -> "Molecule":
+    molObj = deepcopy(template_molObj)
+    # Get coordinates only
+    if "    Final optimized geometry and variables:" in psi4_out_str:
+        geom_str = psi4_out_str.split(
+            "    Final optimized geometry and variables:"
+        )[1].split(
+            f"Geometry (in Angstrom), charge = {molObj.FormalCharge}, multiplicity = {molObj.Multiplicity}:\n\n"
+        )[1].split("\n\n\n")[0]
+        geom_list = [[j for j in i.split(" ") if j != ""] for i in geom_str.split("\n") if i != ""]
+        # Check atom list lengths match
+        if len(molObj.AtomsList) != len(geom_list):
+            raise ValueError("Number of atoms between template Molecule and Psi4 output do not match up!")
+        for atomObj, geom_line in zip(molObj.AtomsList, geom_list):
+            atomic_symbol = geom_line[0][:1].upper() + geom_line[0][1:].lower()
+            if atomic_symbol != atomObj.AtomicSymbol:
+                raise ValueError("Atomic symbols between template Molecule and Psi4 output do not match up!")
+            x, y, z = float(geom_line[1]), float(geom_line[2]), float(geom_line[3])
+            atomObj.Coordinates = np.array([x, y, z])
+    elif f"    Geometry (in Angstrom), charge = {molObj.FormalCharge}, multiplicity = {molObj.Multiplicity}:" in psi4_out_str:
+        geom_str = psi4_out_str.split(
+            f"Geometry (in Angstrom), charge = {molObj.FormalCharge}, multiplicity = {molObj.Multiplicity}:\n\n"
+        )[1].split("\n\n")[0]
+        geom_list = [[j for j in i.split(" ") if j != ""] for i in geom_str.split("\n") if i != ""][2:]
+        # Check atom list lengths match
+        if len(molObj.AtomsList) != len(geom_list):
+            raise ValueError("Number of atoms between template Molecule and Psi4 output do not match up!")
+        for atomObj, geom_line in zip(molObj.AtomsList, geom_list):
+            atomic_symbol = geom_line[0][:1].upper() + geom_line[0][1:].lower()
+            if atomic_symbol != atomObj.AtomicSymbol:
+                raise ValueError("Atomic symbols between template Molecule and Psi4 output do not match up!")
+            x, y, z = float(geom_line[1]), float(geom_line[2]), float(geom_line[3])
+            atomObj.Coordinates = np.array([x, y, z])
+    else:
+        print(f"{molObj.Identifier} did not have its coordinates retrieved")
+    return molObj
+
 
 class Molecule:
     def __init__(
@@ -2978,7 +3022,7 @@ rm slurm-$SLURM_JOB_ID.out
                 psi4_out_str=out_file,
                 template_molObj=template_molObj,
             )
-        # Retreive calculation attributes: method, basisset, dispersions,
+        """# Retreive calculation attributes: method, basisset, dispersions,
         molObj.calculation_method, molObj.basisset, molObj.dispersion = (
             _Psi4Helper_GetMethodBasissetDispersions(out_file)
         )
@@ -2997,7 +3041,7 @@ rm slurm-$SLURM_JOB_ID.out
                 molObj.entropy,
                 molObj.gibbs_free_energy,
                 molObj.error_code,
-            ) = _Psi4Helper_GetEnergies(out_file)
+            ) = _Psi4Helper_GetEnergies(out_file)"""
         return molObj
 
     @classmethod
