@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import warnings
 import subprocess
+import json
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -984,10 +985,12 @@ def _Psi4Helper_WriteGeometry(
     FormalCharge: int, Multiplicity: int, xyz_block: str,
 ) -> str:
     psi4_str = f"""
+# Define psi4 molecule object
 psi4MolObj = psi4.geometry('''
 {FormalCharge} {Multiplicity}
 {xyz_block}
 units angstrom
+
 """
     psi4_str += "''',\n)\n"
     return psi4_str
@@ -996,15 +999,16 @@ units angstrom
 def _Psi4Helper_WriteBasissets(
     atomic_symbols: list[str], basisset: str, local_basisset: dict | None = None,
 ) -> str:
+    psi4_str = "\n# Define basis sets\n"
     element_basisset_map = {}
     if local_basisset is None:
-        psi4_str = "element_basis_map = {\n"
+        psi4_str += "element_basis_map = {\n"
         for atomic_symbol in atomic_symbols:
             psi4_str += f"    '{atomic_symbol}': '{basisset}',\n"
             element_basisset_map[atomic_symbol] = basisset
         psi4_str += "}\n"
     else:
-        psi4_str = "element_basis_map = {\n"
+        psi4_str += "element_basis_map = {\n"
         for atomic_symbol in atomic_symbols:
             if atomic_symbol in local_basisset:
                 psi4_str += f"    '{atomic_symbol}': '{local_basisset[atomic_symbol]}',\n"
@@ -1023,8 +1027,7 @@ assign mybasis
 spherical
 {combined_basis}
 ''', name='mybasis', key='BASIS')
-
-
+metadata['Basis Set'] = element_basis_map
 """
     jkfit = False
     if local_basisset is not None:
@@ -1059,6 +1062,229 @@ psi4.set_options({
     return psi4_str
 
 
+def _Psi4Helper_DetermineRestriction(
+    restricted: bool,
+    multiplicity: int,
+    method: str
+):
+    # define wherever calculation is restricted or not
+    psi4_str = "\n# Set the shell restriction\n"
+    if restricted == True and multiplicity > 1:
+        psi4_str += "psi4.set_options({'reference': 'rohf'})\nmetadata['Method'] = "+f"'rohf {method}'\n"
+    elif restricted == False:
+            psi4_str += "psi4.set_options({'reference': 'uhf'})\nmetadata['Method'] = "+f"'uhf {method}'\n"
+    elif restricted == True:
+        psi4_str += "psi4.set_options({'reference': 'rhf'})\nmetadata['Method'] = "+f"'rhf {method}'\n"
+    return psi4_str
+
+
+def _Psi4Helper_DetermineCalculation(
+    identifier: str,
+    optimise_geometry: bool,
+    get_frequency: bool,
+    method: str,
+    restricted: bool,
+    error_code: str,
+):
+    psi4_str = "\n# Set up and run calculation\n"
+    if error_code == "SCF failed to converge":
+        psi4_str += "# Previously hard to converg calculation\n# Use more careful settings\n"
+        psi4_str +="""psi4.set_options({
+    'soscf': False,                     # not supported for meta-GGA (wB97M) in UKS — remove entirely
+    'scf_initial_accelerator': 'none',  # or 'ediis'
+    'level_shift': 8.0,
+    'level_shift_cutoff': 5e-2,
+    'damping_percentage': 30,
+    'damping_convergence': 1e-3,
+    'diis_max_vecs': 20,
+    'maxiter': 300,
+    'mom_start': 15,                    # add once you see occupation-flip oscillation in the log
+})
+
+"""
+    if (
+        optimise_geometry == True
+        and get_frequency == True
+        and restricted == False
+    ):
+        psi4_str += f"""
+try:
+    props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
+    e_opt, wfn_opt = psi4.optimize(
+        '{method}',
+        properties=props,
+        molecule=psi4MolObj,
+        return_wfn=True,
+    )
+    e_freq, wfn = psi4.frequency(
+        '{method}',
+        molecule=wfn_opt.molecule(),
+        ref_gradient=wfn_opt.gradient(),
+        return_wfn=True,
+        properties=props,
+    )
+except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
+    metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
+    metadata['SCF error at failure'] = """+"""{
+        'iteration': exc.iteration,
+        'e_conv': exc.e_conv,
+        'd_conv': exc.d_conv,
+    }
+    failed_wfn = exc.wfn  # partial wavefunction at the point of failure
+    coords_bohr = np.array(failed_wfn.molecule().geometry())
+    metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+    with open("""+f"'{identifier}.meta.json'"+f""", 'w') as f:
+        json.dump(metadata, f, indent=2)
+    exit()
+
+grad = np.array(wfn.gradient())
+coords_bohr = np.array(wfn.molecule().geometry())
+freqs_cm1 = np.array(wfn.frequencies())
+basis = wfn.basisset()
+metadata['Electronic Energy (Eh)'] = psi4.variable('CURRENT ENERGY')
+metadata['Enthalpy (Eh)'] = psi4.variable('ENTHALPY')
+metadata['Gibbs Free Energy (Eh)'] = psi4.variable('GIBBS FREE ENERGY')
+metadata['Entropy (Eh)'] = metadata['Enthalpy (Eh)'] - metadata['Gibbs Free Energy (Eh)']
+metadata['One Electron Energy (Eh)'] = psi4.variable('ONE-ELECTRON ENERGY')
+metadata['Two Electron Energy (Eh)'] = psi4.variable('TWO-ELECTRON ENERGY')
+metadata['Nuclear Repulsion Energy (Eh)'] = psi4.variable('NUCLEAR REPULSION ENERGY')
+metadata['Vibrational Frequencies (cm^-1)'] = freqs_cm1.tolist()
+metadata['Gradient (Eh/Bohr)'] = grad.tolist()
+metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+metadata['Number of Primitive Basis Functions'] = basis.nprimitive() 
+# Save Fock matricies
+e_sp, wfn_sp = psi4.energy('{method}', molecule=wfn_opt.molecule(), return_wfn=True)
+Fa_ao = np.array(wfn_sp.Fa_subset('AO'))
+Fb_ao = np.array(wfn_sp.Fb_subset('AO'))
+metadata['Alpha Fock Matrix File Name'] = '{identifier}.alpha.fock'
+metadata['Beta Fock Matrix File Name'] = '{identifier}.beta.fock'
+np.savetxt('{identifier}.alpha.fock', Fa_ao, fmt='%.16e')
+np.savetxt('{identifier}.beta.fock', Fb_ao, fmt='%.16e')
+# Get spin contaimination
+mints = psi4.core.MintsHelper(wfn_sp.basisset())
+S_ao = np.array(mints.ao_overlap())                # AO-basis overlap, not symmetry-blocked
+Ca_occ = np.array(wfn_sp.Ca_subset("AO", "OCC"))   # occupied alpha MO coeffs (AO basis)
+Cb_occ = np.array(wfn_sp.Cb_subset("AO", "OCC"))   # occupied beta MO coeffs (AO basis)
+nalpha = wfn_sp.nalpha()
+nbeta  = wfn_sp.nbeta()
+mo_overlap = Ca_occ.T @ S_ao @ Cb_occ
+overlap_sq_sum = np.sum(mo_overlap**2)
+Sz = (nalpha - nbeta) / 2.0
+S2_exact = Sz * (Sz + 1.0)
+S2_observed = S2_exact + nbeta - overlap_sq_sum
+spin_deviation = S2_observed - S2_exact
+metadata['Spin Contaimination (<S**2>)'] = spin_deviation
+"""
+    elif (
+        optimise_geometry == False
+        and get_frequency == False
+        and restricted == False
+    ):
+        psi4_str += f"""
+try:
+    props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
+    e_sp, wfn = psi4.energy(
+        '{method}',
+        molecule=psi4MolObj,
+        return_wfn=True,
+        properties=props,
+    )
+except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
+    metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
+    metadata['SCF error at failure'] = """+"""{
+        'iteration': exc.iteration,
+        'e_conv': exc.e_conv,
+        'd_conv': exc.d_conv,
+    }
+    failed_wfn = exc.wfn  # partial wavefunction at the point of failure
+    coords_bohr = np.array(failed_wfn.molecule().geometry())
+    metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+    with open("""+f"""'{identifier}.meta.json', 'w') as f:
+        json.dump(metadata, f, indent=2)
+    exit()
+
+coords_bohr = np.array(wfn.molecule().geometry())
+basis = wfn.basisset()
+metadata['Electronic Energy (Eh)'] = psi4.variable('CURRENT ENERGY')
+metadata['One Electron Energy (Eh)'] = psi4.variable('ONE-ELECTRON ENERGY')
+metadata['Two Electron Energy (Eh)'] = psi4.variable('TWO-ELECTRON ENERGY')
+metadata['Nuclear Repulsion Energy (Eh)'] = psi4.variable('NUCLEAR REPULSION ENERGY')
+metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+metadata['Number of Primitive Basis Functions'] = basis.nprimitive() 
+# Save Fock matricies
+Fa_ao = np.array(wfn.Fa_subset('AO'))
+Fb_ao = np.array(wfn.Fb_subset('AO'))
+metadata['Alpha Fock Matrix File Name'] = '{identifier}.alpha.fock'
+metadata['Beta Fock Matrix File Name'] = '{identifier}.beta.fock'
+np.savetxt('{identifier}.alpha.fock', Fa_ao, fmt='%.16e')
+np.savetxt('{identifier}.beta.fock', Fb_ao, fmt='%.16e')
+# Get spin contaimination
+mints = psi4.core.MintsHelper(wfn.basisset())
+S_ao = np.array(mints.ao_overlap())                # AO-basis overlap, not symmetry-blocked
+Ca_occ = np.array(wfn.Ca_subset("AO", "OCC"))   # occupied alpha MO coeffs (AO basis)
+Cb_occ = np.array(wfn.Cb_subset("AO", "OCC"))   # occupied beta MO coeffs (AO basis)
+nalpha = wfn.nalpha()
+nbeta  = wfn.nbeta()
+mo_overlap = Ca_occ.T @ S_ao @ Cb_occ
+overlap_sq_sum = np.sum(mo_overlap**2)
+Sz = (nalpha - nbeta) / 2.0
+S2_exact = Sz * (Sz + 1.0)
+S2_observed = S2_exact + nbeta - overlap_sq_sum
+spin_deviation = S2_observed - S2_exact
+metadata['Spin Contaimination (<S**2>)'] = spin_deviation
+"""
+    return psi4_str
+
+
+def _Psi4Helper_SetUpCalculation(identifier: str, max_memory: int, CPU_count: int, charge: int, multiplicity: int):
+    psi4_str = f"""import time
+start = time.time()
+
+import json
+import platform
+import resource
+import psi4
+import basis_set_exchange as bse
+import numpy as np
+
+T = 298.15
+
+def get_max_rss_mb():
+    raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if platform.system() == 'Darwin':
+        return raw / (1024 * 1024)
+    return raw / 1024
+
+psi4.set_output_file('{identifier}.out', False)
+psi4.set_memory('{max_memory} MB')
+psi4.set_num_threads({CPU_count})
+
+"""
+    psi4_str += "metadata = {\n"
+    psi4_str += f"""'Identifier': '{identifier}',
+'Charge': {charge},
+'Multiplicity': {multiplicity},
+'CPU cores used': {CPU_count}"""
+    psi4_str += "\n}\n"
+    psi4_str += f"""with open('{identifier}.meta.json', 'w') as f:
+    json.dump(metadata, f, indent=2)
+"""
+    return psi4_str
+
+
+def _Psi4Helper_ConcludeCalculation(identifier: str):
+    psi4_str = f"""
+RAM = int(get_max_rss_mb())
+end = time.time()
+time_taken = int(round(end - start, 0))
+metadata['Time Taken (s)'] = time_taken
+metadata['Maximum RAM used (MB)'] = RAM
+with open('{identifier}.meta.json', 'w') as f:
+   json.dump(metadata, f, indent=2)
+"""
+    return psi4_str
+
+
 def _Psi4Helper_ConstructMolObjFromScratch(
     Identifier: str,
     psi4_out_str: str,
@@ -1068,43 +1294,60 @@ def _Psi4Helper_ConstructMolObjFromScratch(
 
 def _Psi4Helper_ConstructMolObjFromTemplate(
     psi4_out_str: str,
+    psi4_out_json: json,
     template_molObj: "Molecule",
 ) -> "Molecule":
     molObj = deepcopy(template_molObj)
-    # Get coordinates only
-    if "    Final optimized geometry and variables:" in psi4_out_str:
-        geom_str = psi4_out_str.split(
-            "    Final optimized geometry and variables:"
-        )[1].split(
-            f"Geometry (in Angstrom), charge = {molObj.FormalCharge}, multiplicity = {molObj.Multiplicity}:\n\n"
-        )[1].split("\n\n\n")[0]
-        geom_list = [[j for j in i.split(" ") if j != ""] for i in geom_str.split("\n") if i != ""]
-        # Check atom list lengths match
-        if len(molObj.AtomsList) != len(geom_list):
-            raise ValueError("Number of atoms between template Molecule and Psi4 output do not match up!")
-        for atomObj, geom_line in zip(molObj.AtomsList, geom_list):
-            atomic_symbol = geom_line[0][:1].upper() + geom_line[0][1:].lower()
-            if atomic_symbol != atomObj.AtomicSymbol:
-                raise ValueError("Atomic symbols between template Molecule and Psi4 output do not match up!")
-            x, y, z = float(geom_line[1]), float(geom_line[2]), float(geom_line[3])
-            atomObj.Coordinates = np.array([x, y, z])
-    elif f"    Geometry (in Angstrom), charge = {molObj.FormalCharge}, multiplicity = {molObj.Multiplicity}:" in psi4_out_str:
-        geom_str = psi4_out_str.split(
-            f"Geometry (in Angstrom), charge = {molObj.FormalCharge}, multiplicity = {molObj.Multiplicity}:\n\n"
-        )[1].split("\n\n")[0]
-        geom_list = [[j for j in i.split(" ") if j != ""] for i in geom_str.split("\n") if i != ""][2:]
-        # Check atom list lengths match
-        if len(molObj.AtomsList) != len(geom_list):
-            raise ValueError("Number of atoms between template Molecule and Psi4 output do not match up!")
-        for atomObj, geom_line in zip(molObj.AtomsList, geom_list):
-            atomic_symbol = geom_line[0][:1].upper() + geom_line[0][1:].lower()
-            if atomic_symbol != atomObj.AtomicSymbol:
-                raise ValueError("Atomic symbols between template Molecule and Psi4 output do not match up!")
-            x, y, z = float(geom_line[1]), float(geom_line[2]), float(geom_line[3])
-            atomObj.Coordinates = np.array([x, y, z])
+    molObj.DeleteCalculatedAttributes()
+    # Check FormalCharge, Multiplicity, and Identifier are the same
+    if (
+        molObj.Identifier != psi4_out_json["Identifier"]
+        and molObj.FormalCharge != psi4_out_json["Charge"]
+        and molObj.Multiplicity != psi4_out_json["Multiplicity"]
+    ):
+        raise ValueError("Inconsistancy between template Molecule and new Molecule")
     else:
-        print(f"{molObj.Identifier} did not have its coordinates retrieved")
+        molObj.Identifier = psi4_out_json["Identifier"]
+        molObj.FormalCharge = psi4_out_json["Charge"]
+        molObj.Multiplicity = psi4_out_json["Multiplicity"]
+    if "Electronic Energy (Eh)" in psi4_out_json.keys():
+        molObj.electronic_energy = psi4_out_json["Electronic Energy (Eh)"]
+    if "Gibbs Free Energy (Eh)" in psi4_out_json.keys():
+        molObj.gibbs_free_energy = psi4_out_json["Gibbs Free Energy (Eh)"]
+    if "Entropy (Eh)" in psi4_out_json.keys():
+        molObj.entropy = psi4_out_json["Entropy (Eh)"]
+    if "Enthalpy (Eh)" in psi4_out_json.keys():
+        molObj.enthalpy = psi4_out_json["Enthalpy (Eh)"]
+    if "Time Taken (s)" in psi4_out_json.keys():
+        molObj.wallclock_time_sec = psi4_out_json["Time Taken (s)"]
+    if "Vibrational Frequencies (cm^-1)" in psi4_out_json.keys():
+        molObj.vibrational_frequencies = psi4_out_json["Vibrational Frequencies (cm^-1)"]
+    if "Spin Contaimination (<S**2>)" in psi4_out_json.keys():
+        molObj.spin_contamination = psi4_out_json["Spin Contaimination (<S**2>)"]
+    if "Method" in psi4_out_json.keys():
+        molObj.calculation_method = psi4_out_json["Method"]
+    if "Basis Set" in psi4_out_json.keys():
+        molObj.basisset = str(psi4_out_json["Basis Set"])
+    if "Number of Primitive Basis Functions" in psi4_out_json.keys():
+        molObj.num_prim_basis_functions = psi4_out_json["Number of Primitive Basis Functions"]
+    if "Maximum RAM used (MB)" in psi4_out_json.keys():
+        molObj.RAM_used = psi4_out_json["Maximum RAM used (MB)"]
+    if "CPU cores used" in psi4_out_json.keys():
+        molObj.num_CPU_used = psi4_out_json["CPU cores used"]
+    if "Coordinates (Bohr)" in psi4_out_json.keys():
+        new_coordinates = np.array(psi4_out_json["Coordinates (Bohr)"])*BohrRad_to_Angstrom
+        for atomObj, new_coor in zip(molObj.AtomsList, new_coordinates):
+            atomObj.Coordinates = new_coor
     return molObj
+
+
+def _Psi4Helper_GetErrorCode(
+    psi4_out_str: str
+) -> str:
+    if "  Failed to converge." in psi4_out_str:
+        return "SCF failed to converge"
+    else:
+        return "Unknown error, probably timeout"
 
 
 class Molecule:
@@ -2314,33 +2557,23 @@ rm slurm-$SLURM_JOB_ID.out
         ecp: dict | None = None,
         max_memory: int = 1000,
         CPU_count: int = 4,
-        get_gradients: bool = False,
         optimise_geometry: bool = False,
         get_frequency: bool = False,
         restricted: bool = False,
     ) -> str:
-        psi4_str = f"""import time
-start = time.time()
 
-import platform
-import resource
-def get_max_rss_mb():
-    raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    if platform.system() == 'Darwin':
-        return raw / (1024 * 1024)
-    return raw / 1024
-
-import psi4
-import basis_set_exchange as bse
-
-psi4.set_output_file('{self.Identifier}.out', False)
-psi4.set_memory('{max_memory} MB')
-psi4.set_num_threads({CPU_count})
-"""
+        
+        psi4_str = _Psi4Helper_SetUpCalculation(
+            identifier=self.Identifier,
+            max_memory=max_memory,
+            CPU_count=CPU_count,
+            charge=self.GetFormalCharge(),
+            multiplicity=self.GetMultiplicity()
+        )
         
         psi4_str += _Psi4Helper_WriteGeometry(
-            FormalCharge=self.GetFormalCharge(),
-            Multiplicity=self.GetMultiplicity(),
+            FormalCharge=self.FormalCharge,
+            Multiplicity=self.Multiplicity,
             xyz_block=self.WriteXYZBlock(),
         )
 
@@ -2350,46 +2583,25 @@ psi4.set_num_threads({CPU_count})
             local_basisset=local_basisset,
         )
 
-        # define wherever calculation is restricted or not
-        if restricted == True and self.Multiplicity > 1:
-            psi4_str += "psi4.set_options({'reference': 'rohf'})\n"
-        elif restricted == False:
-                psi4_str += "psi4.set_options({'reference': 'uhf'})\n"
-        elif restricted == True:
-            psi4_str += "psi4.set_options({'reference': 'rhf'})\n"
+        psi4_str += _Psi4Helper_DetermineRestriction(
+            restricted=restricted,
+            multiplicity=self.Multiplicity,
+            method=method,
+        )
 
-        # determine calculation type
-        if get_gradients == True:
-            psi4_str += f"""props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
-psi4.gradient('{method}', properties=props)
+        psi4_str += _Psi4Helper_DetermineCalculation(
+            get_frequency=get_frequency,
+            optimise_geometry=optimise_geometry,
+            method=method,
+            restricted=restricted,
+            identifier=self.Identifier,
+            error_code=self.error_code,
+        )
 
-"""
-        elif optimise_geometry == True:
-            psi4_str += f"""props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
-psi4.optimize('{method}', properties=props)
+        psi4_str += _Psi4Helper_ConcludeCalculation(
+            identifier=self.Identifier,
+        )
 
-"""
-        if get_frequency == True:
-            psi4_str += f"\npsi4.frequencies('{method}')\n"
-        else:
-            psi4_str += f"""psi4.energy('{method}')
-            
-"""
-        psi4_str += f"""
-RAM = int(get_max_rss_mb())
-end = time.time()
-time_taken = int(round(end - start, 0))
-
-with open('{self.Identifier}.out', 'r') as f:
-    out_file = f.read()
-    f.close()
-"""
-        psi4_str += r"""out_file += f'Wallclock Time Taken: {time_taken} seconds\nRAM used: {RAM} MB\n'"""
-        psi4_str += f"""
-with open('{self.Identifier}.out', 'w') as f:
-    f.write(out_file)
-    f.close()
-"""
         return psi4_str
 
     def WriteSLURMStringForPsi4(
@@ -2447,7 +2659,6 @@ rm slurm-$SLURM_JOB_ID.out
         basisset: str = "def2-tzvppd",
         local_basisset: dict | None=None,
         ecp: dict | None=None,
-        get_gradients: bool = False,
         optimise_geometry: bool = False,
         get_frequency: bool = False,
         CPU_count: int = 4,
@@ -2463,7 +2674,6 @@ rm slurm-$SLURM_JOB_ID.out
             local_basisset=local_basisset,
             max_memory=max_memory,
             CPU_count=CPU_count,
-            get_gradients=get_gradients,
             optimise_geometry=optimise_geometry,
             get_frequency=get_frequency,
         )
@@ -3005,10 +3215,17 @@ rm slurm-$SLURM_JOB_ID.out
 
     @classmethod
     def ReadPsi4Output(
-        cls, psi4_output_filepath: str, template_molObj: "Molecule | None" = None
+        cls,
+        psi4_output_filepath: str,
+        out_file_name: str,
+        json_file_name: str,
+        template_molObj: "Molecule | None" = None,
     ) -> "Molecule":
-        with open(psi4_output_filepath, "r") as f:
+        with open(psi4_output_filepath / out_file_name, "r") as f:
             out_file = f.read()
+            f.close()
+        with open(psi4_output_filepath / json_file_name, "r") as f:
+            out_json = json.load(f)
             f.close()
         # Retreive Coordinates, Bonds, Multiplicity, Charge
         if template_molObj is None:
@@ -3017,31 +3234,14 @@ rm slurm-$SLURM_JOB_ID.out
                 Identifier=str(psi4_output_filepath).split("/")[-1].split(".")[0],
             )
         else:
-            template_molObj.DeleteCalculatedAttributes()
             molObj = _Psi4Helper_ConstructMolObjFromTemplate(
                 psi4_out_str=out_file,
+                psi4_out_json=out_json,
                 template_molObj=template_molObj,
             )
-        """# Retreive calculation attributes: method, basisset, dispersions,
-        molObj.calculation_method, molObj.basisset, molObj.dispersion = (
-            _Psi4Helper_GetMethodBasissetDispersions(out_file)
-        )
-        molObj.num_prim_basis_functions = (
-            _Psi4Helper_GetNumberOfPrimitiveBasisFunctions(out_file)
-        )
-        molObj.RAM_used = _Psi4Helper_GetRAM(out_file)
-        molObj.num_CPU_used = _Psi4Helper_GetCPU(out_file)
-        molObj.wallclock_time_sec = _Psi4Helper_GetTimeTaken(out_file)
         if molObj.wallclock_time_sec is None:
+            # Calculation failed, need to find out at what stage and why
             molObj.error_code = _Psi4Helper_GetErrorCode(out_file)
-        else:
-            (
-                molObj.electronic_energy,
-                molObj.enthalpy,
-                molObj.entropy,
-                molObj.gibbs_free_energy,
-                molObj.error_code,
-            ) = _Psi4Helper_GetEnergies(out_file)"""
         return molObj
 
     @classmethod

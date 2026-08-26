@@ -385,14 +385,14 @@ class MoleculeSet:
         basisset: str = "def2-tzvppd",
         local_basissets: dict | None = None,
         ecp: dict | None = None,
-        get_gradients: bool = False,
         optimise_geometry: bool = False,
         get_frequency: bool = False,
         CPU_count: int = 4,
         max_memory: int = 1000,
         max_time: None | int = 2880,
         job_scheduler_used: None | str = "slurm",
-        file_types_to_save: list[str] = [".out"]
+        file_types_to_save: list[str] = [".out"],
+        remove_negative_frequencies: bool = True,
     ):
         os.makedirs(psi4_file_directory, exist_ok=True)
         if job_scheduler_used is not None:
@@ -405,6 +405,12 @@ class MoleculeSet:
                 self.MoleculesDict[identifier]
                 for identifier in self.ResultsDF[
                     self.ResultsDF["Error Code"].isna() == False
+                ]["Identifier"]
+            ]
+            molObj_list += [
+                self.MoleculesDict[identifier]
+                for identifier in self.ResultsDF[
+                    self.ResultsDF["Vibrational Frequency 6 (cm-1)"] < 0
                 ]["Identifier"]
             ]
         else:
@@ -436,7 +442,6 @@ class MoleculeSet:
                 basisset=basisset,
                 local_basisset=local_basissets,
                 ecp=ecp,
-                get_gradients=get_gradients,
                 optimise_geometry=optimise_geometry,
                 get_frequency=get_frequency,
                 CPU_count=CPU_count,
@@ -458,7 +463,6 @@ class MoleculeSet:
         with open(psi4_file_directory / "submit_jobs.sh", "w") as f:
             f.write(submit_jobs)
             f.close()
-
 
     # === Read comp chem output calculations ===
 
@@ -581,17 +585,29 @@ class MoleculeSet:
         output_mol_file_directory: str,
         template_moleculeset: "MoleculeSet | None" = None,
     ) -> "MoleculeSet":
-        dir_list = [i for i in os.listdir(psi4_file_directory) if i.split(".")[-1] == "out"]
-        # Read Psi4 output files
+        dir_list = os.listdir(psi4_file_directory)
+        out_list = [i for i in dir_list if i.split(".")[-1] == "out"]
+        json_list = [i for i in dir_list if i.split(".")[-1] == "json"]
+        id_list = [i.split(".")[0] for i in dir_list if i.split(".")[-1] == "py"]
+        id_dict = {}
+        for identifier in id_list:
+            if f"{identifier}.out" in out_list and f"{identifier}.meta.json" in json_list:
+                id_dict[identifier] = [f"{identifier}.out", f"{identifier}.meta.json"]
+            elif f"{identifier}.out" in out_list and f"{identifier}.meta.json" not in json_list:
+                id_dict[identifier] = [f"{identifier}.out", None]
+        # Read Psi4 .out and .meta.json files
         instance = MoleculeSet()
-        for psi4_file in sorted(dir_list):
-            Identifier = str(psi4_file).split(".")[0]
+        for identifier in id_dict:
+            out_file_name = id_dict[identifier][0]
+            json_file_name = id_dict[identifier][1]
             if template_moleculeset is None:
                 template_molObj = None
             else:
-                template_molObj = template_moleculeset.MoleculesDict[Identifier]
+                template_molObj = template_moleculeset.MoleculesDict[identifier]
             molObj = Molecule.ReadPsi4Output(
-                psi4_file_directory / psi4_file,
+                psi4_file_directory,
+                out_file_name=out_file_name,
+                json_file_name=json_file_name,
                 template_molObj=template_molObj,
             )
             instance.MoleculesDict[molObj.Identifier] = molObj
@@ -614,7 +630,7 @@ class MoleculeSet:
                     molObj.num_prim_basis_functions
                     for molObj in instance.MoleculesDict.values()
                 ],
-                "RAM used per CPU core (MB)": [
+                "RAM used (MB)": [
                     molObj.RAM_used for molObj in instance.MoleculesDict.values()
                 ],
                 "Number of CPU cores used": [
@@ -653,7 +669,7 @@ class MoleculeSet:
                 ],
                 "Vibrational Frequency 6 (cm-1)": [
                     (
-                        molObj.vibrational_frequencies[5][1]
+                        molObj.vibrational_frequencies[0]
                         if molObj.vibrational_frequencies is not None
                         else None
                     )
