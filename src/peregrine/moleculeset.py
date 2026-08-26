@@ -12,7 +12,10 @@ import pandas as pd
 
 import numpy as np
 
-def _GeneralHelper_TooSmallBondAngle(molObj: Molecule, minimum_bond_angle: float) -> bool:
+
+def _GeneralHelper_TooSmallBondAngle(
+    molObj: Molecule, minimum_bond_angle: float
+) -> bool:
     for atomObj in molObj.AtomsList:
         n_atoms = molObj.GetAtomNeighbours(AtomObject=atomObj)
         for atomObj1, atomObj2 in itertools.combinations(n_atoms, 2):
@@ -23,13 +26,17 @@ def _GeneralHelper_TooSmallBondAngle(molObj: Molecule, minimum_bond_angle: float
                 return True
     return False
 
-def _GeneralHelper_TooLargeBondLength(molObj: Molecule, maximum_bond_length: float) -> bool:
+
+def _GeneralHelper_TooLargeBondLength(
+    molObj: Molecule, maximum_bond_length: float
+) -> bool:
     for atomObj in molObj.AtomsList:
         for n_atom in molObj.GetAtomNeighbours(AtomObject=atomObj):
             length = np.linalg.norm(atomObj.Coordinates - n_atom.Coordinates)
             if length > maximum_bond_length:
                 return True
     return False
+
 
 class MoleculeSet:
     def __init__(self):
@@ -54,13 +61,20 @@ class MoleculeSet:
         if self.ResultsDF is None:
             self.ResultsDF = pd.DataFrame(
                 {
-                    "Identifier": [molObj.Identifier for molObj in self.MoleculesDict.values()],
-                    "Inchi strings": [molObj.WriteInchiString() for molObj in self.MoleculesDict.values()],
+                    "Identifier": [
+                        molObj.Identifier for molObj in self.MoleculesDict.values()
+                    ],
+                    "Inchi strings": [
+                        molObj.WriteInchiString()
+                        for molObj in self.MoleculesDict.values()
+                    ],
                 }
             )
         else:
             print("Need to add fast functionality here")
-        self.ResultsDF = self.ResultsDF.drop_duplicates(subset="Inchi strings", keep="first").reset_index(drop=True)
+        self.ResultsDF = self.ResultsDF.drop_duplicates(
+            subset="Inchi strings", keep="first"
+        ).reset_index(drop=True)
         identifiers = set(self.ResultsDF["Identifier"])
         self.MoleculesDict = {
             key: molObj
@@ -83,7 +97,6 @@ class MoleculeSet:
                 continue
         for identifier in identifiers_to_remove:
             del self.MoleculesDict[identifier]
-
 
     # === Read in molecule information (mainly from directories) ===
 
@@ -302,9 +315,7 @@ class MoleculeSet:
                 optimisation_convergence_settings=optimisation_convergence_settings,
                 CPU_count=CPU_count,
             )
-            with open(
-                pyscf_file_directory / f"{molObj.Identifier}.py", "w"
-            ) as f:
+            with open(pyscf_file_directory / f"{molObj.Identifier}.py", "w") as f:
                 f.write(pyscf_str)
                 f.close()
             if job_scheduler_used == "SLURM":
@@ -314,16 +325,12 @@ class MoleculeSet:
                     max_memory=max_memory,
                     max_time=max_time,
                 )
-                with open(
-                    pyscf_file_directory / f"{molObj.Identifier}.sh", "w"
-                ) as f:
+                with open(pyscf_file_directory / f"{molObj.Identifier}.sh", "w") as f:
                     f.write(slurm_str)
                     f.close()
                 submit_jobs += f"sbatch {molObj.Identifier}.sh\n"
         if submit_jobs != "":
-            with open(
-                pyscf_file_directory / f"submit_jobs.sh", "w"
-            ) as f:
+            with open(pyscf_file_directory / f"submit_jobs.sh", "w") as f:
                 f.write(submit_jobs)
                 f.close()
 
@@ -422,7 +429,9 @@ class MoleculeSet:
             new_local_basissets = {}
             for atomic_symbols in local_basissets:
                 local_basisset = local_basissets[atomic_symbols]
-                atomic_symbols = [i for i in atomic_symbols.replace(" ", "").split(",") if i != ""]
+                atomic_symbols = [
+                    i for i in atomic_symbols.replace(" ", "").split(",") if i != ""
+                ]
                 for atomic_symbol in atomic_symbols:
                     new_local_basissets[atomic_symbol] = local_basisset
 
@@ -431,12 +440,12 @@ class MoleculeSet:
             # Sort local basissets
             if new_local_basissets is not None:
                 local_basissets = {
-                    atomic_symbol: new_local_basissets[atomic_symbol] 
+                    atomic_symbol: new_local_basissets[atomic_symbol]
                     for atomic_symbol in molObj.GetAtomicSymbols()
                 }
                 if len(local_basissets) == 0:
                     local_basissets = None
-                
+
             orca_inp, queue_sh = molObj.WritePsi4Input(
                 method=method,
                 basisset=basisset,
@@ -518,8 +527,7 @@ class MoleculeSet:
                 "Dispersion": [
                     molObj.dispersion for molObj in instance.MoleculesDict.values()
                 ],
-                "Basis set":
-                [
+                "Basis set": [
                     molObj.basisset for molObj in instance.MoleculesDict.values()
                 ],
                 "Number of primitive basis functions": [
@@ -591,9 +599,15 @@ class MoleculeSet:
         id_list = [i.split(".")[0] for i in dir_list if i.split(".")[-1] == "py"]
         id_dict = {}
         for identifier in id_list:
-            if f"{identifier}.out" in out_list and f"{identifier}.meta.json" in json_list:
+            if (
+                f"{identifier}.out" in out_list
+                and f"{identifier}.meta.json" in json_list
+            ):
                 id_dict[identifier] = [f"{identifier}.out", f"{identifier}.meta.json"]
-            elif f"{identifier}.out" in out_list and f"{identifier}.meta.json" not in json_list:
+            elif (
+                f"{identifier}.out" in out_list
+                and f"{identifier}.meta.json" not in json_list
+            ):
                 id_dict[identifier] = [f"{identifier}.out", None]
         # Read Psi4 .out and .meta.json files
         instance = MoleculeSet()
@@ -622,8 +636,7 @@ class MoleculeSet:
                 "Dispersion": [
                     molObj.dispersion for molObj in instance.MoleculesDict.values()
                 ],
-                "Basis set":
-                [
+                "Basis set": [
                     molObj.basisset for molObj in instance.MoleculesDict.values()
                 ],
                 "Number of primitive basis functions": [
@@ -682,7 +695,6 @@ class MoleculeSet:
         instance.WriteMolFileDirectory(output_mol_file_directory)
         return instance
 
-    
     # === Execute a workflow of some kind ===
 
     def CalculateAtomicSOAPDescriptors(

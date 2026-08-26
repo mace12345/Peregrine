@@ -41,8 +41,14 @@ from .atom import Atom
 # === Important Conversions ===
 
 eV_to_Eh = 27.211407953
-
 BohrRad_to_Angstrom = 0.529177
+J_to_cal = 0.2390057361
+Eh_to_kcal = 627.5096080310
+
+# === Important Physical Constants ===
+
+R = 8.31446261815324
+T = 298.15
 
 # === Useful Dictionarys ==
 
@@ -325,7 +331,10 @@ def _ORCAHelper_ConstructMolObjFromTemplate(
 ) -> "Molecule":
     molObj = deepcopy(template_molObj)
     # Get coordinates only
-    if "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n" in ORCA_out_str:
+    if (
+        "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
+        in ORCA_out_str
+    ):
         xyz_block = ORCA_out_str.split(
             "CARTESIAN COORDINATES (ANGSTROEM)\n---------------------------------\n"
         )[-1].split("\n\n")[0]
@@ -334,7 +343,8 @@ def _ORCAHelper_ConstructMolObjFromTemplate(
         )
         molObj.AtomsList = AtomsList
         molObj.AtomsDict = {
-            atomObj.Label: [idx, atomObj] for idx, atomObj in enumerate(molObj.AtomsList)
+            atomObj.Label: [idx, atomObj]
+            for idx, atomObj in enumerate(molObj.AtomsList)
         }
         return molObj
     else:
@@ -472,7 +482,8 @@ def _ORCAHelper_GetErrorCode(ORCA_out_str) -> str:
         return "Multiplicity not compatible with charge"
     elif (
         len(ORCA_out_str.split("ORCA finished by error termination in MDCI")) == 2
-        and len(ORCA_out_str.split("The Coupled-Cluster iterations have NOT converged")) == 2
+        and len(ORCA_out_str.split("The Coupled-Cluster iterations have NOT converged"))
+        == 2
     ):
         return "Coupled cluster interations have not converged"
     else:
@@ -982,7 +993,9 @@ def _RDKitHelper_SanitizeMol(RDKitMolObj: Chem.RWMol) -> Chem.RWMol:
 
 
 def _Psi4Helper_WriteGeometry(
-    FormalCharge: int, Multiplicity: int, xyz_block: str,
+    FormalCharge: int,
+    Multiplicity: int,
+    xyz_block: str,
 ) -> str:
     psi4_str = f"""
 # Define psi4 molecule object
@@ -997,7 +1010,9 @@ units angstrom
 
 
 def _Psi4Helper_WriteBasissets(
-    atomic_symbols: list[str], basisset: str, local_basisset: dict | None = None,
+    atomic_symbols: list[str],
+    basisset: str,
+    local_basisset: dict | None = None,
 ) -> str:
     psi4_str = "\n# Define basis sets\n"
     element_basisset_map = {}
@@ -1011,7 +1026,9 @@ def _Psi4Helper_WriteBasissets(
         psi4_str += "element_basis_map = {\n"
         for atomic_symbol in atomic_symbols:
             if atomic_symbol in local_basisset:
-                psi4_str += f"    '{atomic_symbol}': '{local_basisset[atomic_symbol]}',\n"
+                psi4_str += (
+                    f"    '{atomic_symbol}': '{local_basisset[atomic_symbol]}',\n"
+                )
                 element_basisset_map[atomic_symbol] = local_basisset[atomic_symbol]
             else:
                 psi4_str += f"    '{atomic_symbol}': '{basisset}',\n"
@@ -1031,7 +1048,7 @@ metadata['Basis Set'] = element_basis_map
 """
     jkfit = False
     if local_basisset is not None:
-        basissets = list(set([basisset]+[i for i in local_basisset.values()]))
+        basissets = list(set([basisset] + [i for i in local_basisset.values()]))
     else:
         basissets = [basisset]
     for bs in basissets:
@@ -1062,19 +1079,24 @@ psi4.set_options({
     return psi4_str
 
 
-def _Psi4Helper_DetermineRestriction(
-    restricted: bool,
-    multiplicity: int,
-    method: str
-):
+def _Psi4Helper_DetermineRestriction(restricted: bool, multiplicity: int, method: str):
     # define wherever calculation is restricted or not
     psi4_str = "\n# Set the shell restriction\n"
     if restricted == True and multiplicity > 1:
-        psi4_str += "psi4.set_options({'reference': 'rohf'})\nmetadata['Method'] = "+f"'rohf {method}'\n"
+        psi4_str += (
+            "psi4.set_options({'reference': 'rohf'})\nmetadata['Method'] = "
+            + f"'rohf {method}'\n"
+        )
     elif restricted == False:
-            psi4_str += "psi4.set_options({'reference': 'uhf'})\nmetadata['Method'] = "+f"'uhf {method}'\n"
+        psi4_str += (
+            "psi4.set_options({'reference': 'uhf'})\nmetadata['Method'] = "
+            + f"'uhf {method}'\n"
+        )
     elif restricted == True:
-        psi4_str += "psi4.set_options({'reference': 'rhf'})\nmetadata['Method'] = "+f"'rhf {method}'\n"
+        psi4_str += (
+            "psi4.set_options({'reference': 'rhf'})\nmetadata['Method'] = "
+            + f"'rhf {method}'\n"
+        )
     return psi4_str
 
 
@@ -1088,8 +1110,10 @@ def _Psi4Helper_DetermineCalculation(
 ):
     psi4_str = "\n# Set up and run calculation\n"
     if error_code == "SCF failed to converge":
-        psi4_str += "# Previously hard to converg calculation\n# Use more careful settings\n"
-        psi4_str +="""psi4.set_options({
+        psi4_str += (
+            "# Previously hard to converg calculation\n# Use more careful settings\n"
+        )
+        psi4_str += """psi4.set_options({
     'soscf': False,                     # not supported for meta-GGA (wB97M) in UKS — remove entirely
     'scf_initial_accelerator': 'none',  # or 'ediis'
     'level_shift': 8.0,
@@ -1102,12 +1126,9 @@ def _Psi4Helper_DetermineCalculation(
 })
 
 """
-    if (
-        optimise_geometry == True
-        and get_frequency == True
-        and restricted == False
-    ):
-        psi4_str += f"""
+    if optimise_geometry == True and get_frequency == True and restricted == False:
+        psi4_str += (
+            f"""
 try:
     props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
     e_opt, wfn_opt = psi4.optimize(
@@ -1125,7 +1146,8 @@ try:
     )
 except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
-    metadata['SCF error at failure'] = """+"""{
+    metadata['SCF error at failure'] = """
+            + """{
         'iteration': exc.iteration,
         'e_conv': exc.e_conv,
         'd_conv': exc.d_conv,
@@ -1133,7 +1155,9 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     failed_wfn = exc.wfn  # partial wavefunction at the point of failure
     coords_bohr = np.array(failed_wfn.molecule().geometry())
     metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
-    with open("""+f"'{identifier}.meta.json'"+f""", 'w') as f:
+    with open("""
+            + f"'{identifier}.meta.json'"
+            + f""", 'w') as f:
         json.dump(metadata, f, indent=2)
     exit()
 
@@ -1175,12 +1199,10 @@ S2_observed = S2_exact + nbeta - overlap_sq_sum
 spin_deviation = S2_observed - S2_exact
 metadata['Spin Contaimination (<S**2>)'] = spin_deviation
 """
-    elif (
-        optimise_geometry == False
-        and get_frequency == False
-        and restricted == False
-    ):
-        psi4_str += f"""
+        )
+    elif optimise_geometry == False and get_frequency == False and restricted == False:
+        psi4_str += (
+            f"""
 try:
     props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
     e_sp, wfn = psi4.energy(
@@ -1191,7 +1213,8 @@ try:
     )
 except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
-    metadata['SCF error at failure'] = """+"""{
+    metadata['SCF error at failure'] = """
+            + """{
         'iteration': exc.iteration,
         'e_conv': exc.e_conv,
         'd_conv': exc.d_conv,
@@ -1199,7 +1222,8 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     failed_wfn = exc.wfn  # partial wavefunction at the point of failure
     coords_bohr = np.array(failed_wfn.molecule().geometry())
     metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
-    with open("""+f"""'{identifier}.meta.json', 'w') as f:
+    with open("""
+            + f"""'{identifier}.meta.json', 'w') as f:
         json.dump(metadata, f, indent=2)
     exit()
 
@@ -1233,10 +1257,13 @@ S2_observed = S2_exact + nbeta - overlap_sq_sum
 spin_deviation = S2_observed - S2_exact
 metadata['Spin Contaimination (<S**2>)'] = spin_deviation
 """
+        )
     return psi4_str
 
 
-def _Psi4Helper_SetUpCalculation(identifier: str, max_memory: int, CPU_count: int, charge: int, multiplicity: int):
+def _Psi4Helper_SetUpCalculation(
+    identifier: str, max_memory: int, CPU_count: int, charge: int, multiplicity: int
+):
     psi4_str = f"""import time
 start = time.time()
 
@@ -1321,7 +1348,9 @@ def _Psi4Helper_ConstructMolObjFromTemplate(
     if "Time Taken (s)" in psi4_out_json.keys():
         molObj.wallclock_time_sec = psi4_out_json["Time Taken (s)"]
     if "Vibrational Frequencies (cm^-1)" in psi4_out_json.keys():
-        molObj.vibrational_frequencies = psi4_out_json["Vibrational Frequencies (cm^-1)"]
+        molObj.vibrational_frequencies = psi4_out_json[
+            "Vibrational Frequencies (cm^-1)"
+        ]
     if "Spin Contaimination (<S**2>)" in psi4_out_json.keys():
         molObj.spin_contamination = psi4_out_json["Spin Contaimination (<S**2>)"]
     if "Method" in psi4_out_json.keys():
@@ -1329,21 +1358,23 @@ def _Psi4Helper_ConstructMolObjFromTemplate(
     if "Basis Set" in psi4_out_json.keys():
         molObj.basisset = str(psi4_out_json["Basis Set"])
     if "Number of Primitive Basis Functions" in psi4_out_json.keys():
-        molObj.num_prim_basis_functions = psi4_out_json["Number of Primitive Basis Functions"]
+        molObj.num_prim_basis_functions = psi4_out_json[
+            "Number of Primitive Basis Functions"
+        ]
     if "Maximum RAM used (MB)" in psi4_out_json.keys():
         molObj.RAM_used = psi4_out_json["Maximum RAM used (MB)"]
     if "CPU cores used" in psi4_out_json.keys():
         molObj.num_CPU_used = psi4_out_json["CPU cores used"]
     if "Coordinates (Bohr)" in psi4_out_json.keys():
-        new_coordinates = np.array(psi4_out_json["Coordinates (Bohr)"])*BohrRad_to_Angstrom
+        new_coordinates = (
+            np.array(psi4_out_json["Coordinates (Bohr)"]) * BohrRad_to_Angstrom
+        )
         for atomObj, new_coor in zip(molObj.AtomsList, new_coordinates):
             atomObj.Coordinates = new_coor
     return molObj
 
 
-def _Psi4Helper_GetErrorCode(
-    psi4_out_str: str
-) -> str:
+def _Psi4Helper_GetErrorCode(psi4_out_str: str) -> str:
     if "  Failed to converge." in psi4_out_str:
         return "SCF failed to converge"
     else:
@@ -1526,7 +1557,7 @@ class Molecule:
     def DeleteCalculatedAttributes(self):
         self.calculation_method = None
         self.basisset = None
-        self.dispersion= None
+        self.dispersion = None
         self.num_prim_basis_functions = None
         self.RAM_used = None
         self.num_CPU_used = None
@@ -2562,15 +2593,14 @@ rm slurm-$SLURM_JOB_ID.out
         restricted: bool = False,
     ) -> str:
 
-        
         psi4_str = _Psi4Helper_SetUpCalculation(
             identifier=self.Identifier,
             max_memory=max_memory,
             CPU_count=CPU_count,
             charge=self.GetFormalCharge(),
-            multiplicity=self.GetMultiplicity()
+            multiplicity=self.GetMultiplicity(),
         )
-        
+
         psi4_str += _Psi4Helper_WriteGeometry(
             FormalCharge=self.FormalCharge,
             Multiplicity=self.Multiplicity,
@@ -2657,8 +2687,8 @@ rm slurm-$SLURM_JOB_ID.out
         self,
         method: str = "wb97m-d3bj",
         basisset: str = "def2-tzvppd",
-        local_basisset: dict | None=None,
-        ecp: dict | None=None,
+        local_basisset: dict | None = None,
+        ecp: dict | None = None,
         optimise_geometry: bool = False,
         get_frequency: bool = False,
         CPU_count: int = 4,
@@ -3837,7 +3867,9 @@ rm slurm-$SLURM_JOB_ID.out
                             for atomObj2 in n_atoms[idx + 1 :]:
                                 angles.append(
                                     np.rad2deg(
-                                        self.GetBondAngle(AtomObjects=[atomObj1, atomObj, atomObj2])
+                                        self.GetBondAngle(
+                                            AtomObjects=[atomObj1, atomObj, atomObj2]
+                                        )
                                     )
                                 )
                         if sum(angles) > 350:
