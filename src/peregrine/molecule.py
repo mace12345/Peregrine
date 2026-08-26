@@ -3409,19 +3409,21 @@ rm slurm-$SLURM_JOB_ID.out
         Multiplicity: int = 1,
         SubstructureIndex: int = 1,
         UpdateAtomLabels: bool = True,
-    ):
+    ) -> Atom:
+        NewAtomObj = Atom(
+            AtomicSymbol=AtomicSymbol,
+            Coordinates=Coordinates,
+            Label=Label,
+            FormalCharge=FormalCharge,
+            Multiplicity=Multiplicity,
+            SubstructureIndex=SubstructureIndex,
+        )
         self.AtomsList.append(
-            Atom(
-                AtomicSymbol=AtomicSymbol,
-                Coordinates=Coordinates,
-                Label=Label,
-                FormalCharge=FormalCharge,
-                Multiplicity=Multiplicity,
-                SubstructureIndex=SubstructureIndex,
-            )
+            NewAtomObj
         )
         self.BondOrderMatrix = np.pad(self.BondOrderMatrix, ((0, 1), (0, 1)))
-        self.DeriveBasicAttributes()
+        self.DeriveBasicAttributes(UpdateAtomLabels=UpdateAtomLabels)
+        return NewAtomObj
 
     def AddBond(
         self,
@@ -3453,6 +3455,49 @@ rm slurm-$SLURM_JOB_ID.out
         self.NumberOfBonds = int(self.ConnectivityMatrix.sum().sum() / 2)
         self.NormaliseSubstructureIndicies()
 
+    def AddAtomToAtom(
+        self,
+        NewAtomicSymbol: str,
+        BondOrder: int = 1,
+        Distance: float = 2,
+        NewFormalCharge: int = 0,
+        NewMultiplicity: int = 1,
+        NewLabel: str | None = None,
+        OGAtomLabel: str | None = None,
+        OGAtomIndex: int | None = None,
+        OGAtomObject: Atom | None = None,
+        UpdateAtomLabels: bool = True,
+    ) -> Atom:
+        if OGAtomIndex is not None:
+            OGAtomObject = self.AtomsList[OGAtomIndex]
+        elif OGAtomObject is not None:
+            pass
+        elif OGAtomLabel is not None:
+            OGAtomObject = self.AtomsDict[OGAtomLabel][1]
+        else:
+            raise ValueError("Requires OGAtomIndex, OGAtomObject, or OGAtomLabel")
+        n_atoms = self.GetAtomNeighbours(AtomObject=OGAtomObject)
+        if len(n_atoms) == 0:
+            new_bond_vector = np.array([0, 0, 1]) * Distance
+        else:
+            new_bond_vector = np.array([0.0, 0.0, 0.0])
+            for n_atom in n_atoms:
+                bond_vector = n_atom.Coordinates - OGAtomObject.Coordinates
+                normal_bond_vector = bond_vector / np.linalg.norm(bond_vector)
+                new_bond_vector += normal_bond_vector
+            new_bond_vector = (new_bond_vector / np.linalg.norm(new_bond_vector))*-1*Distance
+        NewAtomObj = self.AddAtom(
+            AtomicSymbol=NewAtomicSymbol,
+            Coordinates=OGAtomObject.Coordinates + new_bond_vector,
+            Label=NewLabel,
+            FormalCharge=NewFormalCharge,
+            Multiplicity=NewMultiplicity,
+            UpdateAtomLabels=UpdateAtomLabels,
+        )
+        if BondOrder > 0:
+            self.AddBond(AtomObjects=[NewAtomObj, OGAtomObject], BondOrder=BondOrder)
+        return NewAtomObj
+        
     def AddMolecule(
         self,
         MoleculeToAdd: Self,
@@ -3849,7 +3894,10 @@ rm slurm-$SLURM_JOB_ID.out
                 elif bond_valence == 4:
                     atomObj.FormalCharge = 1
             # Carbon - Exist as cation, anion, carbene or charged aromatic species
-            elif atomObj.AtomicSymbol == "C":
+            elif (
+                atomObj.AtomicSymbol == "C"
+                or atomObj.AtomicSymbol == "Si"
+            ):
                 if bond_valence == 1:
                     atomObj.FormalCharge = -3
                 if bond_valence == 2:
@@ -4178,15 +4226,18 @@ rm slurm-$SLURM_JOB_ID.out
         xtb_method: str = "gxtb",
         fixed_atoms: list[int] | None = None,
     ):
-        xyz_string = self.WriteXYZString()
-        cmd = [
-            f"{xtb_binary_path}xtb",
-            f"{Path(__file__).parent}/{self.Identifier}_temp.xyz",
-        ]
-        with open(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz", "w") as f:
-            f.write(xyz_string)
-            f.close()
+        # Define tempory work directory
+        workdir = Path(__file__).parent / f"{self.Identifier}_TempDir"
+        os.makedirs(workdir, exist_ok=True)
 
+        # Write input xyz string
+        xyz_string = self.WriteXYZString()
+        xyz_path = workdir / f"{self.Identifier}_temp.xyz"
+        with open(xyz_path, "w") as f:
+            f.write(xyz_string)
+        cmd = [f"{xtb_binary_path}xtb", str(xyz_path)]
+
+        # Define fixed atoms
         if fixed_atoms:
             atom_string = ""
             for atom_idx in fixed_atoms[:-1]:
@@ -4196,24 +4247,28 @@ rm slurm-$SLURM_JOB_ID.out
     atoms: {atom_string}
 $end
 """
-            with open(f"{Path(__file__).parent}/xtb.inp", "w") as f:
+            inp_path = workdir / "xtb.inp"
+            with open(inp_path, "w") as f:
                 f.write(input_string)
-                f.close()
-            cmd += [
-                "--input",
-                f"{Path(__file__).parent}/xtb.inp",
-            ]
+            cmd += ["--input", str(inp_path)]
 
+        # Command for xtb optimisation
         cmd += [
             f"--{xtb_method}",
             "--opt",
-            opt_tol,
+        ]
+        if opt_tol is not None:
+            cmd.append(opt_tol)
+
+        # Define formal charge and multiplicity of molecule
+        cmd += [
             "--charge",
             str(self.FormalCharge),
             "--uhf",
             str(self.Multiplicity - 1),
         ]
 
+        # Define solvent model
         if solvent_model is not None and solvent is not None:
             cmd += [
                 f"--{solvent_model}",
@@ -4226,46 +4281,36 @@ $end
             ]
         cmd += [
             "-v",
-            ">",
-            "xtb.out",
         ]
+
+        # Exercute commands
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             encoding="utf-8",
-            cwd=f"{Path(__file__).parent}",
+            cwd=str(workdir),
         )
-        if result.returncode != 0:
-            print(result.stderr)
-            return result.stdout
 
         # Read output xyz files and update coordinates
-        self.ReadXYZFileMapCoords(xyz_file=f"{Path(__file__).parent}/xtbopt.xyz")
+        if "xtbopt.xyz" in os.listdir(workdir):
+            self.ReadXYZFileMapCoords(xyz_file=str(workdir / "xtbopt.xyz"))
+        else:
+            self.error_code = "xtb did not optimise"
 
         # Remove all output files
         for stringObj in [
-            "charges",
-            "energy",
-            "gradient",
-            "wbo",
-            "xtbrestart",
-            "xtbtopo.mol",
-            "temp_input_xtb.engrad",
-            "temp_input_xtb.xyz",
-            "xtblast.xyz",
-            "xtbopt.log",
-            "xtbopt.xyz",
-            ".xtboptok",
-            "xtb.inp",
-            f"{self.Identifier}_temp.xyz",
+            "charges", "energy", "gradient", "wbo", "xtbrestart", "xtbtopo.mol",
+            "temp_input_xtb.engrad", "temp_input_xtb.xyz", "xtblast.xyz",
+            "xtbopt.log", "xtbopt.xyz", ".xtboptok", "xtb.inp",
+            f"{self.Identifier}_temp.xyz", "NOT_CONVERGED"
         ]:
             try:
-                os.remove(f"{Path(__file__).parent}/{stringObj}")
-            except FileNotFoundError:
+                os.remove(workdir / stringObj)
+            except (FileNotFoundError, PermissionError):
                 pass
-            except PermissionError:
-                pass
+        os.rmdir(workdir)
+        return self
 
     def OptimiseGeometry_tblite(
         self,

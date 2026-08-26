@@ -2,7 +2,9 @@ import os
 import re
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import itertools
+import traceback
 
 
 from .atom import Atom
@@ -36,6 +38,23 @@ def _GeneralHelper_TooLargeBondLength(
             if length > maximum_bond_length:
                 return True
     return False
+
+
+def _xTBBinHelper_OptimiseOne(args):
+    identifier, Molecule, xtb_bin_path, solvent_model, solvent, opt_tol, opt_cycles, xtb_method, fixed_atoms = args
+    try:
+        new_molecule = Molecule.OptimiseGeometry_xTB_bin(
+            xtb_binary_path=xtb_bin_path,
+            solvent_model=solvent_model,
+            solvent=solvent,
+            opt_tol=opt_tol,
+            opt_cycles=opt_cycles,
+            xtb_method=xtb_method,
+            fixed_atoms=fixed_atoms,
+        )
+    except Exception:
+        return identifier, None, traceback.format_exc()
+    return identifier, new_molecule, None
 
 
 class MoleculeSet:
@@ -742,3 +761,44 @@ class MoleculeSet:
         elif output_csv_file_directory is not None:
             print("Write code to create CSV file")
             pass
+
+    def OptimiseGeometry_xTB_bin(
+        self,
+        xtb_binary_path: str,
+        solvent_model: str | None = None,
+        solvent: str | None = None,
+        opt_tol: str | None = None,
+        opt_cycles: int | None = None,
+        xtb_method: str = "gxtb",
+        fixed_atoms: list[int] | None = None,
+    ):
+        os.environ.setdefault("OMP_NUM_THREADS", "1")
+        items = [
+            (
+                molObj.Identifier,
+                molObj,
+                xtb_binary_path,
+                solvent_model,
+                solvent,
+                opt_tol,
+                opt_cycles,
+                xtb_method,
+                fixed_atoms
+            ) for molObj in list(self.MoleculesDict.values())
+        ]
+        max_workers=max(1, int(os.cpu_count()-2))
+        results = {}
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    _xTBBinHelper_OptimiseOne, item
+                ): item[0] for item in items
+            }
+            for future in as_completed(futures):
+                Identifier = futures[future]
+                Identifier, updated_molObj, tb = future.result()
+                if tb:
+                    print(f"{Identifier} failed:\n{tb}")
+                else:
+                    results[Identifier] = updated_molObj
+        self.MoleculesDict.update(results)
