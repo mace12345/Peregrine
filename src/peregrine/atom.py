@@ -776,6 +776,9 @@ class Atom:
         self.AssociatedSMARTS = None
         self.IsAromatic = None
         self.IsInRing = None
+        self.MullikenCharge = None
+        self.LowdinCharge = None
+        self.LowdinSpin = None
         self.SOAPDescriptor = SOAPDescriptor
         if GetAtomAttributes == True:
             self.Update()

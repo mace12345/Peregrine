@@ -1084,7 +1084,7 @@ def _Psi4Helper_DetermineRestriction(restricted: bool, multiplicity: int, method
     psi4_str = "\n# Set the shell restriction\n"
     if restricted == True and multiplicity > 1:
         psi4_str += (
-            "psi4.set_options({'reference': 'rohf'})\nmetadata['Method'] = "
+            "psi4.set_options({'reference': 'uhf'})\nmetadata['Method'] = "
             + f"'rohf {method}'\n"
         )
     elif restricted == False:
@@ -1106,14 +1106,17 @@ def _Psi4Helper_DetermineCalculation(
     get_frequency: bool,
     method: str,
     restricted: bool,
+    get_gradient: bool,
     error_code: str,
 ):
-    psi4_str = "\n# Set up and run calculation\n"
+    psi4_str = "\n# Set up and run calculation"
     if error_code == "SCF failed to converge":
         psi4_str += (
-            "# Previously hard to converg calculation\n# Use more careful settings\n"
+            "# Previously hard to converg calculation\n# Use more careful settings"
         )
-        psi4_str += """psi4.set_options({
+        psi4_str += (
+            """
+psi4.set_options({
     'soscf': False,                     # not supported for meta-GGA (wB97M) in UKS — remove entirely
     'scf_initial_accelerator': 'none',  # or 'ediis'
     'level_shift': 8.0,
@@ -1123,10 +1126,14 @@ def _Psi4Helper_DetermineCalculation(
     'diis_max_vecs': 20,
     'maxiter': 300,
     'mom_start': 15,                    # add once you see occupation-flip oscillation in the log
-})
-
-"""
-    if optimise_geometry == True and get_frequency == True and restricted == False:
+})"""
+        )
+    if (
+        optimise_geometry == True
+        and get_frequency == True
+        and restricted == False
+        and get_gradient == False
+    ):
         psi4_str += (
             f"""
 try:
@@ -1214,7 +1221,12 @@ spin_deviation = S2_observed - S2_exact
 metadata['Spin Contaimination (<S**2>)'] = spin_deviation
 """
         )
-    elif optimise_geometry == False and get_frequency == False and restricted == False:
+    elif (
+        optimise_geometry == False
+        and get_frequency == False
+        and restricted == False
+        and get_gradient == False
+    ):
         psi4_str += (
             f"""
 try:
@@ -1286,6 +1298,161 @@ S2_exact = Sz * (Sz + 1.0)
 S2_observed = S2_exact + nbeta - overlap_sq_sum
 spin_deviation = S2_observed - S2_exact
 metadata['Spin Contaimination (<S**2>)'] = spin_deviation
+"""
+        )
+    elif (
+        optimise_geometry == False
+        and get_frequency == False
+        and restricted == False
+        and get_gradient == True
+    ):
+        psi4_str += (
+            f"""
+try:
+    e_sp, wfn = psi4.gradient(
+        '{method}',
+        molecule=psi4MolObj,
+        return_wfn=True,
+    )
+except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
+    metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
+    metadata['SCF error at failure'] = """
+            + """{
+        'iteration': exc.iteration,
+        'e_conv': exc.e_conv,
+        'd_conv': exc.d_conv,
+    }
+    failed_wfn = exc.wfn  # partial wavefunction at the point of failure
+    coords_bohr = np.array(failed_wfn.molecule().geometry())
+    metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+    with open("""
+            + f"""'{identifier}.meta.json', 'w') as f:
+        json.dump(metadata, f, indent=2)
+    exit()
+
+coords_bohr = np.array(wfn.molecule().geometry())
+grad = np.array(wfn.gradient())
+basis = wfn.basisset()
+metadata['Electronic Energy (Eh)'] = psi4.variable('CURRENT ENERGY')
+metadata['One Electron Energy (Eh)'] = psi4.variable('ONE-ELECTRON ENERGY')
+metadata['Two Electron Energy (Eh)'] = psi4.variable('TWO-ELECTRON ENERGY')
+metadata['Nuclear Repulsion Energy (Eh)'] = psi4.variable('NUCLEAR REPULSION ENERGY')
+metadata['Gradient (Eh/Bohr)'] = grad.tolist()
+metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+metadata['Number of Primitive Basis Functions'] = basis.nprimitive()
+# Calculate and save more properties
+psi4.oeprop(
+    wfn,
+    'DIPOLE',
+    'QUADRUPOLE',
+    'MULLIKEN_CHARGES',
+    'LOWDIN_CHARGES',
+    'WIBERG_LOWDIN_INDICES',
+    'MAYER_INDICES',
+    'LOWDIN_SPINS',
+)
+metadata['Dipole'] = np.array(wfn.variable('CURRENT DIPOLE')).tolist()
+metadata['Quadrupole'] = np.array(wfn.variable('QUADRUPOLE')).tolist()
+metadata['Mulliken Charges'] = np.array(wfn.variable('MULLIKEN CHARGES')).tolist()
+metadata['Lowdin Charges'] = np.array(wfn.variable('LOWDIN CHARGES')).tolist()
+metadata['Lowdin Spins'] = np.array(wfn.variable('LOWDIN SPINS')).tolist()
+metadata['Wiberg Bond Orders'] = np.array(wfn.array_variable('WIBERG LOWDIN INDICES')).tolist()
+metadata['Mayer Bond Orders']  = np.array(wfn.array_variable('MAYER INDICES')).tolist()
+# Save Fock matricies
+Fa_ao = np.array(wfn.Fa_subset('AO'))
+Fb_ao = np.array(wfn.Fb_subset('AO'))
+metadata['Alpha Fock Matrix File Name'] = '{identifier}.alpha.fock'
+metadata['Beta Fock Matrix File Name'] = '{identifier}.beta.fock'
+np.savetxt('{identifier}.alpha.fock', Fa_ao, fmt='%.16e')
+np.savetxt('{identifier}.beta.fock', Fb_ao, fmt='%.16e')
+# Get spin contaimination
+mints = psi4.core.MintsHelper(wfn.basisset())
+S_ao = np.array(mints.ao_overlap())                # AO-basis overlap, not symmetry-blocked
+Ca_occ = np.array(wfn.Ca_subset("AO", "OCC"))   # occupied alpha MO coeffs (AO basis)
+Cb_occ = np.array(wfn.Cb_subset("AO", "OCC"))   # occupied beta MO coeffs (AO basis)
+nalpha = wfn.nalpha()
+nbeta  = wfn.nbeta()
+mo_overlap = Ca_occ.T @ S_ao @ Cb_occ
+overlap_sq_sum = np.sum(mo_overlap**2)
+Sz = (nalpha - nbeta) / 2.0
+S2_exact = Sz * (Sz + 1.0)
+S2_observed = S2_exact + nbeta - overlap_sq_sum
+spin_deviation = S2_observed - S2_exact
+metadata['Spin Contaimination (<S**2>)'] = spin_deviation
+# Get HOMO and LUMO energies
+homo_idx = wfn.nalpha() - 1
+lumo_idx = wfn.nalpha()
+eps_a = wfn.epsilon_a_subset("AO", "ALL").np
+metadata['HOMO Energy (Eh)'] = float(eps_a[homo_idx])
+metadata['LUMO Energy (Eh)'] = float(eps_a[lumo_idx])
+"""
+        )
+    elif (
+        optimise_geometry == False
+        and get_frequency == False
+        and restricted == True
+        and get_gradient == True
+    ):
+        psi4_str += (
+            f"""
+try:
+    e_sp, wfn = psi4.gradient(
+        '{method}',
+        molecule=psi4MolObj,
+        return_wfn=True,
+    )
+except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
+    metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
+    metadata['SCF error at failure'] = """
+            + """{
+        'iteration': exc.iteration,
+        'e_conv': exc.e_conv,
+        'd_conv': exc.d_conv,
+    }
+    failed_wfn = exc.wfn  # partial wavefunction at the point of failure
+    coords_bohr = np.array(failed_wfn.molecule().geometry())
+    metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+    with open("""
+            + f"""'{identifier}.meta.json', 'w') as f:
+        json.dump(metadata, f, indent=2)
+    exit()
+# Save properties
+coords_bohr = np.array(wfn.molecule().geometry())
+grad = np.array(wfn.gradient())
+basis = wfn.basisset()
+metadata['Electronic Energy (Eh)'] = psi4.variable('CURRENT ENERGY')
+metadata['One Electron Energy (Eh)'] = psi4.variable('ONE-ELECTRON ENERGY')
+metadata['Two Electron Energy (Eh)'] = psi4.variable('TWO-ELECTRON ENERGY')
+metadata['Nuclear Repulsion Energy (Eh)'] = psi4.variable('NUCLEAR REPULSION ENERGY')
+metadata['Gradient (Eh/Bohr)'] = grad.tolist()
+metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+metadata['Number of Primitive Basis Functions'] = basis.nprimitive()
+# Calculate and save more properties
+psi4.oeprop(
+    wfn,
+    'DIPOLE',
+    'QUADRUPOLE',
+    'MULLIKEN_CHARGES',
+    'LOWDIN_CHARGES',
+    'WIBERG_LOWDIN_INDICES',
+    'MAYER_INDICES',
+)
+metadata['Dipole'] = np.array(wfn.variable('CURRENT DIPOLE')).tolist()
+metadata['Quadrupole'] = np.array(wfn.variable('QUADRUPOLE')).tolist()
+metadata['Mulliken Charges'] = np.array(wfn.variable('MULLIKEN CHARGES')).tolist()
+metadata['Lowdin Charges'] = np.array(wfn.variable('LOWDIN CHARGES')).tolist()
+metadata['Wiberg Bond Orders'] = np.array(wfn.array_variable('WIBERG LOWDIN INDICES')).tolist()
+metadata['Mayer Bond Orders']  = np.array(wfn.array_variable('MAYER INDICES')).tolist()
+# Save Fock matricies
+F_ao = np.array(wfn.Fa_subset('AO'))
+metadata['Fock Matrix File Name'] = '{identifier}.fock'
+np.savetxt('{identifier}.fock', F_ao, fmt='%.16e')
+# Get HOMO and LUMO energies
+homo_idx = wfn.nalpha() - 1
+lumo_idx = wfn.nalpha()
+eps_a = wfn.epsilon_a_subset("AO", "ALL").np
+metadata['HOMO Energy (Eh)'] = float(eps_a[homo_idx])
+metadata['LUMO Energy (Eh)'] = float(eps_a[lumo_idx])
 """
         )
     return psi4_str
@@ -1401,6 +1568,26 @@ def _Psi4Helper_ConstructMolObjFromTemplate(
         )
         for atomObj, new_coor in zip(molObj.AtomsList, new_coordinates):
             atomObj.Coordinates = new_coor
+    if "Gradient (Eh/Bohr)" in psi4_out_json.keys():
+        new_gradients = np.array(psi4_out_json["Gradient (Eh/Bohr)"])
+        for atomObj, new_grad in zip(molObj.AtomsList, new_gradients):
+            atomObj.Gradient = new_grad * (1/BohrRad_to_Angstrom)
+    if "Mulliken Charges" in psi4_out_json.keys():
+        MullikenCharges = np.array(psi4_out_json["Mulliken Charges"])
+        for MullikenCharge, atomObj in zip(MullikenCharges, molObj.AtomsList):
+            atomObj.MullikenCharge = MullikenCharge
+    if "Lowdin Charges" in psi4_out_json.keys():
+        LowdinCharges = np.array(psi4_out_json["Lowdin Charges"])
+        for LowdinCharge, atomObj in zip(LowdinCharges, molObj.AtomsList):
+            atomObj.LowdinCharge = LowdinCharge
+    if "Lowdin Spins" in psi4_out_json.keys():
+        LowdinSpins = np.array(psi4_out_json["Lowdin Spins"])
+        for LowdinSpin, atomObj in zip(LowdinSpins, molObj.AtomsList):
+            atomObj.LowdinSpin = LowdinSpin
+    if "HOMO Energy (Eh)" in psi4_out_json.keys():
+        molObj.HOMO_energy = psi4_out_json["HOMO Energy (Eh)"]
+    if "LUMO Energy (Eh)" in psi4_out_json.keys():
+        molObj.LUMO_energy = psi4_out_json["LUMO Energy (Eh)"]
     return molObj
 
 
@@ -1411,13 +1598,22 @@ def _Psi4Helper_GetErrorCode(psi4_out_str: str) -> str:
         return "Unknown error, probably timeout"
 
 
+def _Psi4Helper_SetOptions(set_options: dict | None) -> str:
+    if set_options is not None:
+        return f"\n# Set options\npsi4.set_options({set_options})\n"
+    else:
+        return ""
+
+
 def _xTBHelper_GetEnergies(xtb_out_str: str) -> float | None:
     # Get Electronic Energy
     if "| TOTAL ENERGY" in xtb_out_str:
         return float(
             xtb_out_str.split("""-------------------------------------------------
-          | TOTAL ENERGY""")[1].split("""Eh   |
-          | GRADIENT NORM""")[0]
+          | TOTAL ENERGY""")[1].split(
+                """Eh   |
+          | GRADIENT NORM"""
+            )[0]
         )
     else:
         return None
@@ -1537,6 +1733,8 @@ class Molecule:
         self.gibbs_free_energy: float | None = None
         self.vibrational_frequencies: list[list[int, float]] | None = None
         self.spin_contamination: float | None = None
+        self.HOMO_energy: float | None = None
+        self.LUMO_energy: float | None = None
 
     def DeriveBasicAttributes(
         self,
@@ -2122,6 +2320,12 @@ class Molecule:
                 mol_str += f" XGD={atomObj.Gradient[0]} YGD={atomObj.Gradient[1]} ZGD={atomObj.Gradient[2]}"
             if atomObj.SOAPDescriptor is not None:
                 mol_str += f" SPD={str(atomObj.SOAPDescriptor).replace(" ", "")}"
+            if atomObj.MullikenCharge is not None:
+                mol_str += f" MKC={atomObj.MullikenCharge}"
+            if atomObj.LowdinCharge is not None:
+                mol_str += f" LDC={atomObj.LowdinCharge}"
+            if atomObj.LowdinSpin is not None:
+                mol_str += f" LDS={atomObj.LowdinSpin}"
             mol_str += "\n"
         # End atom and begin bonds
         mol_str += "M V30 END ATOM\nM V30 BEGIN BOND\n"
@@ -2177,6 +2381,10 @@ class Molecule:
                 mol_str += f"> <Vibrational frequency {idx+6} (cm-1)>\n{vib[1]}\n"
                 if idx + 6 == 9:
                     break
+        if self.HOMO_energy is not None:
+            mol_str += f"> <HOMO Energy (Eh)>\n{self.HOMO_energy}\n"
+        if self.LUMO_energy is not None:
+            mol_str += f"> <LUMO Energy (Eh)>\n{self.LUMO_energy}\n"
         return mol_str
 
     def WriteXYZBlock(self):
@@ -2632,7 +2840,9 @@ rm slurm-$SLURM_JOB_ID.out
         CPU_count: int = 4,
         optimise_geometry: bool = False,
         get_frequency: bool = False,
+        get_gradient: bool = False,
         restricted: bool = False,
+        set_options: dict | None = None,
     ) -> str:
 
         psi4_str = _Psi4Helper_SetUpCalculation(
@@ -2661,9 +2871,12 @@ rm slurm-$SLURM_JOB_ID.out
             method=method,
         )
 
+        psi4_str += _Psi4Helper_SetOptions(set_options)
+
         psi4_str += _Psi4Helper_DetermineCalculation(
             get_frequency=get_frequency,
             optimise_geometry=optimise_geometry,
+            get_gradient=get_gradient,
             method=method,
             restricted=restricted,
             identifier=self.Identifier,
@@ -2733,9 +2946,12 @@ rm slurm-$SLURM_JOB_ID.out
         ecp: dict | None = None,
         optimise_geometry: bool = False,
         get_frequency: bool = False,
+        get_gradient: bool = False,
+        set_options: dict | None = None,
         CPU_count: int = 4,
         max_memory: int = 1000,  # MB
         max_time: None | int = 2880,  # minuets
+        restricted: bool = False,
         job_scheduler_used: None | str = "slurm",
         file_types_to_save: list[str] = [".out"],
     ) -> tuple[str, str]:
@@ -2748,6 +2964,9 @@ rm slurm-$SLURM_JOB_ID.out
             CPU_count=CPU_count,
             optimise_geometry=optimise_geometry,
             get_frequency=get_frequency,
+            get_gradient=get_gradient,
+            restricted=restricted,
+            set_options=set_options,
         )
         if job_scheduler_used == "slurm":
             sche_str = self.WriteSLURMStringForPsi4(
@@ -3460,9 +3679,7 @@ rm slurm-$SLURM_JOB_ID.out
             Multiplicity=Multiplicity,
             SubstructureIndex=SubstructureIndex,
         )
-        self.AtomsList.append(
-            NewAtomObj
-        )
+        self.AtomsList.append(NewAtomObj)
         self.BondOrderMatrix = np.pad(self.BondOrderMatrix, ((0, 1), (0, 1)))
         self.DeriveBasicAttributes(UpdateAtomLabels=UpdateAtomLabels)
         return NewAtomObj
@@ -3527,7 +3744,9 @@ rm slurm-$SLURM_JOB_ID.out
                 bond_vector = n_atom.Coordinates - OGAtomObject.Coordinates
                 normal_bond_vector = bond_vector / np.linalg.norm(bond_vector)
                 new_bond_vector += normal_bond_vector
-            new_bond_vector = (new_bond_vector / np.linalg.norm(new_bond_vector))*-1*Distance
+            new_bond_vector = (
+                (new_bond_vector / np.linalg.norm(new_bond_vector)) * -1 * Distance
+            )
         NewAtomObj = self.AddAtom(
             AtomicSymbol=NewAtomicSymbol,
             Coordinates=OGAtomObject.Coordinates + new_bond_vector,
@@ -3539,7 +3758,7 @@ rm slurm-$SLURM_JOB_ID.out
         if BondOrder > 0:
             self.AddBond(AtomObjects=[NewAtomObj, OGAtomObject], BondOrder=BondOrder)
         return NewAtomObj
-        
+
     def AddMolecule(
         self,
         MoleculeToAdd: Self,
@@ -3936,10 +4155,7 @@ rm slurm-$SLURM_JOB_ID.out
                 elif bond_valence == 4:
                     atomObj.FormalCharge = 1
             # Carbon - Exist as cation, anion, carbene or charged aromatic species
-            elif (
-                atomObj.AtomicSymbol == "C"
-                or atomObj.AtomicSymbol == "Si"
-            ):
+            elif atomObj.AtomicSymbol == "C" or atomObj.AtomicSymbol == "Si":
                 if bond_valence == 1:
                     atomObj.FormalCharge = -3
                 if bond_valence == 2:
@@ -4269,8 +4485,8 @@ rm slurm-$SLURM_JOB_ID.out
         fixed_atoms: list[int] | None = None,
         time_limit: float = 100,
     ):
-        self.calculation_method=xtb_method
-        
+        self.calculation_method = xtb_method
+
         # Define tempory work directory
         workdir = Path(__file__).parent / f"{self.Identifier}_TempDir"
         os.makedirs(workdir, exist_ok=True)
@@ -4354,16 +4570,26 @@ $end
             with open(workdir / "xtb.out", "r") as f:
                 xtb_out_str = f.read()
                 f.close()
-            self.electronic_energy = _xTBHelper_GetEnergies(
-                xtb_out_str
-            )
+            self.electronic_energy = _xTBHelper_GetEnergies(xtb_out_str)
 
         # Remove all output files
         for stringObj in [
-            "charges", "energy", "gradient", "wbo", "xtbrestart", "xtbtopo.mol",
-            "temp_input_xtb.engrad", "temp_input_xtb.xyz", "xtblast.xyz",
-            "xtbopt.log", "xtbopt.xyz", ".xtboptok", "xtb.inp",
-            f"{self.Identifier}_temp.xyz", "NOT_CONVERGED", "xtb.out"
+            "charges",
+            "energy",
+            "gradient",
+            "wbo",
+            "xtbrestart",
+            "xtbtopo.mol",
+            "temp_input_xtb.engrad",
+            "temp_input_xtb.xyz",
+            "xtblast.xyz",
+            "xtbopt.log",
+            "xtbopt.xyz",
+            ".xtboptok",
+            "xtb.inp",
+            f"{self.Identifier}_temp.xyz",
+            "NOT_CONVERGED",
+            "xtb.out",
         ]:
             try:
                 os.remove(workdir / stringObj)

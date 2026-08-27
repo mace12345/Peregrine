@@ -70,6 +70,8 @@ class MoleculeSet:
         else:
             self.MoleculesDict[MoleculeObject.Identifier] = MoleculeObject
 
+    # === Filter MoleculeSet ===
+
     def RemoveMolecule(self, MoleculeObject: Molecule | list[Molecule]):
         if type(MoleculeObject) == list:
             for molObj in MoleculeObject:
@@ -414,6 +416,9 @@ class MoleculeSet:
         ecp: dict | None = None,
         optimise_geometry: bool = False,
         get_frequency: bool = False,
+        get_gradient: bool = False,
+        restricted: bool = False,
+        set_options: dict | None = None,
         CPU_count: int = 4,
         max_memory: int = 1000,
         max_time: None | int = 2880,
@@ -460,7 +465,11 @@ class MoleculeSet:
             # Sort local basissets
             if new_local_basissets is not None:
                 local_basissets = {
-                    atomic_symbol: new_local_basissets[atomic_symbol]
+                    atomic_symbol: (
+                        new_local_basissets[atomic_symbol]
+                        if atomic_symbol in new_local_basissets
+                        else basisset
+                    )
                     for atomic_symbol in molObj.GetAtomicSymbols()
                 }
                 if len(local_basissets) == 0:
@@ -473,6 +482,9 @@ class MoleculeSet:
                 ecp=ecp,
                 optimise_geometry=optimise_geometry,
                 get_frequency=get_frequency,
+                get_gradient=get_gradient,
+                restricted=restricted,
+                set_options=set_options,
                 CPU_count=CPU_count,
                 max_memory=max_memory,
                 max_time=max_time,
@@ -805,3 +817,10 @@ class MoleculeSet:
                 else:
                     results[Identifier] = updated_molObj
         self.MoleculesDict.update(results)
+
+    def GetSmallestMolecule(self) -> Molecule:
+        return min(
+            [
+                [molObj.MolecularMass, molObj] for molObj in self.MoleculesDict.values()
+            ], key=lambda x: x[0]
+        )[1]
