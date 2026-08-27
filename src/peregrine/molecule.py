@@ -1130,10 +1130,8 @@ def _Psi4Helper_DetermineCalculation(
         psi4_str += (
             f"""
 try:
-    props = ['DIPOLE', 'QUADRUPOLE', 'WIBERG_LOWDIN_INDICES', 'MAYER_INDICES']
     e_opt, wfn_opt = psi4.optimize(
         '{method}',
-        properties=props,
         molecule=psi4MolObj,
         return_wfn=True,
     )
@@ -1142,7 +1140,6 @@ try:
         molecule=wfn_opt.molecule(),
         ref_gradient=wfn_opt.gradient(),
         return_wfn=True,
-        properties=props,
     )
 except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
@@ -1165,6 +1162,7 @@ grad = np.array(wfn.gradient())
 coords_bohr = np.array(wfn.molecule().geometry())
 freqs_cm1 = np.array(wfn.frequencies())
 basis = wfn.basisset()
+# Save calculated properties
 metadata['Electronic Energy (Eh)'] = psi4.variable('CURRENT ENERGY')
 metadata['Enthalpy (Eh)'] = psi4.variable('ENTHALPY')
 metadata['Gibbs Free Energy (Eh)'] = psi4.variable('GIBBS FREE ENERGY')
@@ -1175,7 +1173,23 @@ metadata['Nuclear Repulsion Energy (Eh)'] = psi4.variable('NUCLEAR REPULSION ENE
 metadata['Vibrational Frequencies (cm^-1)'] = freqs_cm1.tolist()
 metadata['Gradient (Eh/Bohr)'] = grad.tolist()
 metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
-metadata['Number of Primitive Basis Functions'] = basis.nprimitive() 
+metadata['Number of Primitive Basis Functions'] = basis.nprimitive()
+# Calculate and save more properties
+psi4.oeprop(
+    wfn_opt,
+    'DIPOLE',
+    'QUADRUPOLE',
+    'MULLIKEN_CHARGES',
+    'LOWDIN_CHARGES',
+    'WIBERG_LOWDIN_INDICES',
+    'MAYER_INDICES',
+)
+metadata['Dipole'] = np.array(wfn_opt.variable('CURRENT DIPOLE'))
+metadata['Quadrupole'] = np.array(wfn_opt.variable('CURRENT QUADRUPOLE')) 
+metadata['Mulliken Charges'] = np.array(wfn_opt.variable('MULLIKEN CHARGES'))
+metadata['Lowdin Charges'] = np.array(wfn_opt.variable('LOWDIN CHARGES'))
+metadata['Wiberg Bond Orders'] = np.array(wfn_opt.array_variable('WIBERG LOWDIN INDICES'))
+metadata['Mayer Bond Orders']  = np.array(wfn_opt.array_variable('MAYER INDICES'))
 # Save Fock matricies
 e_sp, wfn_sp = psi4.energy('{method}', molecule=wfn_opt.molecule(), return_wfn=True)
 Fa_ao = np.array(wfn_sp.Fa_subset('AO'))
@@ -1234,7 +1248,23 @@ metadata['One Electron Energy (Eh)'] = psi4.variable('ONE-ELECTRON ENERGY')
 metadata['Two Electron Energy (Eh)'] = psi4.variable('TWO-ELECTRON ENERGY')
 metadata['Nuclear Repulsion Energy (Eh)'] = psi4.variable('NUCLEAR REPULSION ENERGY')
 metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
-metadata['Number of Primitive Basis Functions'] = basis.nprimitive() 
+metadata['Number of Primitive Basis Functions'] = basis.nprimitive()
+# Calculate and save more properties
+psi4.oeprop(
+    wfn_opt,
+    'DIPOLE',
+    'QUADRUPOLE',
+    'MULLIKEN_CHARGES',
+    'LOWDIN_CHARGES',
+    'WIBERG_LOWDIN_INDICES',
+    'MAYER_INDICES',
+)
+metadata['Dipole'] = np.array(wfn_opt.variable('CURRENT DIPOLE'))
+metadata['Quadrupole'] = np.array(wfn_opt.variable('CURRENT QUADRUPOLE')) 
+metadata['Mulliken Charges'] = np.array(wfn_opt.variable('MULLIKEN CHARGES'))
+metadata['Lowdin Charges'] = np.array(wfn_opt.variable('LOWDIN CHARGES'))
+metadata['Wiberg Bond Orders'] = np.array(wfn_opt.array_variable('WIBERG LOWDIN INDICES'))
+metadata['Mayer Bond Orders']  = np.array(wfn_opt.array_variable('MAYER INDICES'))
 # Save Fock matricies
 Fa_ao = np.array(wfn.Fa_subset('AO'))
 Fb_ao = np.array(wfn.Fb_subset('AO'))
@@ -1379,6 +1409,18 @@ def _Psi4Helper_GetErrorCode(psi4_out_str: str) -> str:
         return "SCF failed to converge"
     else:
         return "Unknown error, probably timeout"
+
+
+def _xTBHelper_GetEnergies(xtb_out_str: str) -> float | None:
+    # Get Electronic Energy
+    if "| TOTAL ENERGY" in xtb_out_str:
+        return float(
+            xtb_out_str.split("""-------------------------------------------------
+          | TOTAL ENERGY""")[1].split("""Eh   |
+          | GRADIENT NORM""")[0]
+        )
+    else:
+        return None
 
 
 class Molecule:
@@ -4225,7 +4267,10 @@ rm slurm-$SLURM_JOB_ID.out
         opt_cycles: int | None = None,
         xtb_method: str = "gxtb",
         fixed_atoms: list[int] | None = None,
+        time_limit: float = 100,
     ):
+        self.calculation_method=xtb_method
+        
         # Define tempory work directory
         workdir = Path(__file__).parent / f"{self.Identifier}_TempDir"
         os.makedirs(workdir, exist_ok=True)
@@ -4284,13 +4329,19 @@ $end
         ]
 
         # Exercute commands
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            cwd=str(workdir),
-        )
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                cwd=str(workdir),
+                timeout=time_limit,
+            )
+            with open(workdir / "xtb.out", "w") as f:
+                f.write(result.stdout)
+        except subprocess.TimeoutExpired:
+            self.error_code = "Calculation timed out"
 
         # Read output xyz files and update coordinates
         if "xtbopt.xyz" in os.listdir(workdir):
@@ -4298,12 +4349,21 @@ $end
         else:
             self.error_code = "xtb did not optimise"
 
+        # Get calculated properties
+        if "xtb.out" in os.listdir(workdir):
+            with open(workdir / "xtb.out", "r") as f:
+                xtb_out_str = f.read()
+                f.close()
+            self.electronic_energy = _xTBHelper_GetEnergies(
+                xtb_out_str
+            )
+
         # Remove all output files
         for stringObj in [
             "charges", "energy", "gradient", "wbo", "xtbrestart", "xtbtopo.mol",
             "temp_input_xtb.engrad", "temp_input_xtb.xyz", "xtblast.xyz",
             "xtbopt.log", "xtbopt.xyz", ".xtboptok", "xtb.inp",
-            f"{self.Identifier}_temp.xyz", "NOT_CONVERGED"
+            f"{self.Identifier}_temp.xyz", "NOT_CONVERGED", "xtb.out"
         ]:
             try:
                 os.remove(workdir / stringObj)

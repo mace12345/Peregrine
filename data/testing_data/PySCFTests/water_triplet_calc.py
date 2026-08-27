@@ -16,7 +16,7 @@ lib.num_threads(4)
 metadata = {}
 
 # Retrieve basis set from basis set exchange
-raw = bse.api.get_basis('def2svp', elements=['H', 'O'])
+raw = bse.api.get_basis('def2svp', elements=['O', 'H'])
 orbital_basis, _ = pbse._orbital_basis(raw)
         
 # Define Molecule
@@ -25,7 +25,7 @@ pyscfMolObj = gto.Mole(
 O 0.0 0.0 0.0
 H 0.0 1.0 0.0
 ''',
-    basis={'H': orbital_basis['H'], 'O': orbital_basis['O'], },
+    basis={'O': orbital_basis['O'], 'H': orbital_basis['H'], },
     ecp={},
     unit = 'Ang',
     output = 'WaterTriplet_PySCFOutput.log',

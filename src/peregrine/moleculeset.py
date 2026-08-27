@@ -41,7 +41,7 @@ def _GeneralHelper_TooLargeBondLength(
 
 
 def _xTBBinHelper_OptimiseOne(args):
-    identifier, Molecule, xtb_bin_path, solvent_model, solvent, opt_tol, opt_cycles, xtb_method, fixed_atoms = args
+    identifier, Molecule, xtb_bin_path, solvent_model, solvent, opt_tol, opt_cycles, xtb_method, fixed_atoms, time_limit = args
     try:
         new_molecule = Molecule.OptimiseGeometry_xTB_bin(
             xtb_binary_path=xtb_bin_path,
@@ -51,6 +51,7 @@ def _xTBBinHelper_OptimiseOne(args):
             opt_cycles=opt_cycles,
             xtb_method=xtb_method,
             fixed_atoms=fixed_atoms,
+            time_limit=time_limit,
         )
     except Exception:
         return identifier, None, traceback.format_exc()
@@ -771,6 +772,7 @@ class MoleculeSet:
         opt_cycles: int | None = None,
         xtb_method: str = "gxtb",
         fixed_atoms: list[int] | None = None,
+        time_limit: float = 100,
     ):
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         items = [
@@ -783,7 +785,8 @@ class MoleculeSet:
                 opt_tol,
                 opt_cycles,
                 xtb_method,
-                fixed_atoms
+                fixed_atoms,
+                time_limit,
             ) for molObj in list(self.MoleculesDict.values())
         ]
         max_workers=max(1, int(os.cpu_count()-2))

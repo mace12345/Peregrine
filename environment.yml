@@ -11,14 +11,14 @@ dependencies:
   - pandas
   - python=3.12
   - scipy
-  - rdkit==2025.09.6
+  - rdkit
   - ase
   - qcelemental
   - numba
   - pyvista
   - pyvistaqt
   - conda-forge::pyqt
-  - scikit-learn==1.9.0
+  - scikit-learn
   - openbabel
   - tblite
   - pytest
@@ -33,3 +33,4 @@ dependencies:
   - geometric
   - pip:
     - xyzgraph
+    - black
