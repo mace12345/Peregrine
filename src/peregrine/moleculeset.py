@@ -431,10 +431,12 @@ class MoleculeSet:
         restricted: bool = False,
         set_options: dict | None = None,
         CPU_count: int = 4,
-        max_memory: int = 1000,
+        max_memory: int = 20000,
         max_time: None | int = 2880,
         job_scheduler_used: None | str = "slurm",
-        file_types_to_save: list[str] = [".out"],
+        file_types_to_save: list[str] = [".out", ".json"],
+        psi4_command: str | None = None,
+        scratch_dir: str | None = None,
         remove_negative_frequencies: bool = True,
     ):
         os.makedirs(psi4_file_directory, exist_ok=True)
@@ -501,6 +503,8 @@ class MoleculeSet:
                 max_time=max_time,
                 job_scheduler_used=job_scheduler_used,
                 file_types_to_save=file_types_to_save,
+                psi4_command=psi4_command,
+                scratch_dir=scratch_dir,
             )
             with open(psi4_file_directory / f"{molObj.Identifier}.py", "w") as f:
                 f.write(orca_inp)

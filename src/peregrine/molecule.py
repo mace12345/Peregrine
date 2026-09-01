@@ -2883,10 +2883,12 @@ rm slurm-$SLURM_JOB_ID.out
     def WriteSLURMStringForPsi4(
         self,
         job_name: str,
+        psi4_command: str,
+        scratch_dir: str,
         CPU_count: int = 4,
         max_memory: int = 1000,
         max_time: None | int = 2880,
-        file_types_to_save: list[str] = [".out"],
+        file_types_to_save: list[str] = [".out", ".json", ".fock"],
     ) -> str:
         time = _GeneralHelper_MinutesToHHMMSS(max_time)
         slurm_str = f"""#!/bin/bash
@@ -2897,21 +2899,15 @@ rm slurm-$SLURM_JOB_ID.out
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task={CPU_count}
 
-# Load psi4 conda environment
-source activate psi4env
-
 INPUT_DIR=$(pwd)
+SCRATCH_DIR={scratch_dir}/$SLURM_JOB_ID
 
-# Create a scratch directory and navigate to it
-SCRATCH_DIR=/scratch/$USER/$SLURM_JOB_ID
 mkdir -p $SCRATCH_DIR
 cd $SCRATCH_DIR
 
-# Copy input files to the scratch directory
 cp $INPUT_DIR/{job_name}.py $SCRATCH_DIR
 
-# Run pyscf script
-python {job_name}.py
+{psi4_command}
 
 # Copy results back to permanent storage
 """
@@ -2940,11 +2936,13 @@ rm slurm-$SLURM_JOB_ID.out
         get_gradient: bool = False,
         set_options: dict | None = None,
         CPU_count: int = 4,
-        max_memory: int = 1000,  # MB
+        max_memory: int = 20000,  # MB
         max_time: None | int = 2880,  # minuets
         restricted: bool = False,
         job_scheduler_used: None | str = "slurm",
-        file_types_to_save: list[str] = [".out"],
+        file_types_to_save: list[str] = [".out", ".json"],
+        psi4_command: str | None = None,
+        scratch_dir: str | None = None,
     ) -> tuple[str, str]:
         psi4_str = self.WritePsi4String(
             method=method,
@@ -2960,8 +2958,13 @@ rm slurm-$SLURM_JOB_ID.out
             set_options=set_options,
         )
         if job_scheduler_used == "slurm":
+            psi4_command = f"""{psi4_command}
+
+python {self.Identifier}.py"""
             sche_str = self.WriteSLURMStringForPsi4(
                 job_name=self.Identifier,
+                psi4_command=psi4_command,
+                scratch_dir=scratch_dir,
                 CPU_count=CPU_count,
                 max_memory=max_memory,
                 max_time=max_time,
@@ -3019,6 +3022,11 @@ cp $INPUT_DIR/{self.Identifier}.xyz $SCRATCH_DIR
 
 cp *.xyz $INPUT_DIR
 cp *.out $INPUT_DIR
+
+rm -rf $SCRATCH_DIR
+cd $INPUT_DIR
+rm slurm-$SLURM_JOB_ID.out
+
 """
 
     def WriteCRESTInput(
