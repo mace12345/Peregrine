@@ -41,7 +41,18 @@ def _GeneralHelper_TooLargeBondLength(
 
 
 def _xTBBinHelper_OptimiseOne(args):
-    identifier, Molecule, xtb_bin_path, solvent_model, solvent, opt_tol, opt_cycles, xtb_method, fixed_atoms, time_limit = args
+    (
+        identifier,
+        Molecule,
+        xtb_bin_path,
+        solvent_model,
+        solvent,
+        opt_tol,
+        opt_cycles,
+        xtb_method,
+        fixed_atoms,
+        time_limit,
+    ) = args
     try:
         new_molecule = Molecule.OptimiseGeometry_xTB_bin(
             xtb_binary_path=xtb_bin_path,
@@ -505,6 +516,39 @@ class MoleculeSet:
             f.write(submit_jobs)
             f.close()
 
+    def WriteCRESTInput(
+        self,
+        crest_file_directory: str,
+        activate_CREST: str,
+        CPU_count: int = 4,
+        max_memory: int = 1000,
+        method: str = "gfn2",
+        runtype: str = "imtd-gc",
+        job_scheduler_used: None | str = "slurm",
+        scratch_dir: str | None = None,
+        max_time: int = 2880,
+    ):
+        os.makedirs(crest_file_directory, exist_ok=True)
+        submit_jobs = ""
+        for molObj in self.MoleculesDict.values():
+            molObj.WriteCRESTInput(
+                crest_file_directory=crest_file_directory,
+                activate_CREST=activate_CREST,
+                CPU_count=CPU_count,
+                max_memory=max_memory,
+                method=method,
+                runtype=runtype,
+                job_scheduler_used=job_scheduler_used,
+                scratch_dir=scratch_dir,
+            )
+            if job_scheduler_used == "slurm":
+                submit_jobs += (
+                    f"cd {molObj.Identifier}\nsbatch {molObj.Identifier}.sh\ncd ../\n"
+                )
+        with open(crest_file_directory / "submit_jobs.sh", "w") as f:
+            f.write(submit_jobs)
+            f.close()
+
     # === Read comp chem output calculations ===
 
     @classmethod
@@ -656,7 +700,10 @@ class MoleculeSet:
                 json_file_name=json_file_name,
                 template_molObj=template_molObj,
             )
-            instance.MoleculesDict[molObj.Identifier] = molObj
+            if type(molObj) is dict:
+                instance.MoleculesDict = instance.MoleculesDict | molObj
+            else:
+                instance.MoleculesDict[molObj.Identifier] = molObj
         # Construct Results DataFrame
         instance.ResultsDF = pd.DataFrame(
             {
@@ -725,6 +772,67 @@ class MoleculeSet:
         instance.ResultsDF.to_csv(str(output_mol_file_directory) + ".csv")
         # Save molObj files as V3000 .mol files
         instance.WriteMolFileDirectory(output_mol_file_directory)
+        return instance
+
+    @classmethod
+    def ReadCRESTOutput(
+        cls,
+        crest_file_directory: str,
+        output_mol_file_directory: str,
+        template_moleculeset: "MoleculeSet | None" = None,
+    ):
+        instance = MoleculeSet()
+        instance.ResultsDF = pd.DataFrame()
+        dir_list = [
+            i for i in os.listdir(crest_file_directory) if len(i.split(".")) == 1
+        ]
+        for identifier in dir_list:
+            file_list = os.listdir(crest_file_directory / identifier)
+            if (
+                "crest_conformers.xyz" in file_list
+                and os.path.getsize(
+                    f"{crest_file_directory}/{identifier}/crest_conformers.xyz"
+                )
+                != 0
+            ):
+                for molObj in Molecule.ReadCRESTOutput(
+                    xyz_file=f"{crest_file_directory}/{identifier}/crest_conformers.xyz",
+                    template_molObj=template_moleculeset.MoleculesDict[identifier],
+                ):
+                    instance.MoleculesDict[molObj.Identifier] = molObj
+                # Read CREST.out file to check how long calculation took
+                with open(
+                    f"{crest_file_directory}/{identifier}/{identifier}.out", "r"
+                ) as f:
+                    out_file = f.read()
+                    f.close()
+                if " CREST terminated normally." in out_file:
+                    time = (
+                        out_file.split(" * wall-time:")[1].split("sec\n")[0].split(",")
+                    )
+                    instance.ResultsDF.loc[
+                        identifier, "wallclock time taken (seconds)"
+                    ] = (
+                        (float(time[0].replace("d", "")) * 24 * 60 * 60)
+                        + (float(time[1].replace("h", "")) * 60 * 60)
+                        + (float(time[2].replace("min", "")) * 60)
+                        + (float(time[3]))
+                    )
+            else:
+                # Read CREST.out file to find cause of failure
+                with open(
+                    f"{crest_file_directory}/{identifier}/{identifier}.out", "r"
+                ) as f:
+                    out_file = f.read()
+                    f.close()
+                if "Automatic MD restart failed" in out_file:
+                    instance.ResultsDF.loc[identifier, "Error Code"] = (
+                        "MTD could not converge"
+                    )
+                else:
+                    instance.ResultsDF.loc[identifier, "Error Code"] = "Unknown error"
+        instance.WriteMolFileDirectory(output_mol_file_directory)
+        instance.ResultsDF.to_csv(f"{output_mol_file_directory}.csv")
         return instance
 
     # === Execute a workflow of some kind ===
@@ -799,15 +907,15 @@ class MoleculeSet:
                 xtb_method,
                 fixed_atoms,
                 time_limit,
-            ) for molObj in list(self.MoleculesDict.values())
+            )
+            for molObj in list(self.MoleculesDict.values())
         ]
-        max_workers=max(1, int(os.cpu_count()-2))
+        max_workers = max(1, int(os.cpu_count() - 2))
         results = {}
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             futures = {
-                executor.submit(
-                    _xTBBinHelper_OptimiseOne, item
-                ): item[0] for item in items
+                executor.submit(_xTBBinHelper_OptimiseOne, item): item[0]
+                for item in items
             }
             for future in as_completed(futures):
                 Identifier = futures[future]
@@ -820,7 +928,15 @@ class MoleculeSet:
 
     def GetSmallestMolecule(self) -> Molecule:
         return min(
-            [
-                [molObj.MolecularMass, molObj] for molObj in self.MoleculesDict.values()
-            ], key=lambda x: x[0]
+            [[molObj.MolecularMass, molObj] for molObj in self.MoleculesDict.values()],
+            key=lambda x: x[0],
         )[1]
+
+    def GetSmallestXMolecules(self, X: int) -> "MoleculeSet":
+        small_molObjs = sorted(
+            [[molObj.MolecularMass, molObj] for molObj in self.MoleculesDict.values()],
+            key=lambda x: x[0],
+        )[:X]
+        instance = MoleculeSet()
+        instance.MoleculesDict = {item[1].Identifier: item[1] for item in small_molObjs}
+        return instance

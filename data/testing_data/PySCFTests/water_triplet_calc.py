@@ -1,7 +1,14 @@
 import time
+
 start = time.time()
 
-conv_params = {'convergence_energy': 1e-06, 'convergence_grms': 3e-05, 'convergence_gmax': 4.5e-05, 'convergence_drms': 0.00012, 'convergence_dmax': 0.00018}
+conv_params = {
+    "convergence_energy": 1e-06,
+    "convergence_grms": 3e-05,
+    "convergence_gmax": 4.5e-05,
+    "convergence_drms": 0.00012,
+    "convergence_dmax": 0.00018,
+}
 
 import json
 import resource
@@ -12,66 +19,75 @@ from pyscf import lib
 from pyscf import grad
 from pyscf import dft
 import numpy as np
+
 lib.num_threads(4)
 metadata = {}
 
 # Retrieve basis set from basis set exchange
-raw = bse.api.get_basis('def2svp', elements=['O', 'H'])
+raw = bse.api.get_basis("def2svp", elements=["O", "H"])
 orbital_basis, _ = pbse._orbital_basis(raw)
-        
+
 # Define Molecule
 pyscfMolObj = gto.Mole(
-    atom='''H -1.0 0.0 0.0
+    atom="""H -1.0 0.0 0.0
 O 0.0 0.0 0.0
 H 0.0 1.0 0.0
-''',
-    basis={'O': orbital_basis['O'], 'H': orbital_basis['H'], },
+""",
+    basis={
+        "O": orbital_basis["O"],
+        "H": orbital_basis["H"],
+    },
     ecp={},
-    unit = 'Ang',
-    output = 'WaterTriplet_PySCFOutput.log',
-    verbose = 4,
-    max_memory = 1000,
-    charge = 1,
-    spin = 1
+    unit="Ang",
+    output="WaterTriplet_PySCFOutput.log",
+    verbose=4,
+    max_memory=1000,
+    charge=1,
+    spin=1,
 )
 pyscfMolObj.build()
-metadata['Identifier'] = 'WaterTriplet'
-metadata['CPU Count'] = 4
-metadata['Method Type'] = 'DFT'
-metadata['Method'] = 'roks m06_l'
-metadata['Basis Set'] = 'def2svp'
-metadata['Charge'] = 1
-metadata['Multiplicity'] = 2
-metadata['Number of Electrons'] = pyscfMolObj.nelectron
-metadata['Number of Primitive Basis Functions'] = pyscfMolObj.npgto_nr() 
-metadata['AO Labels'] = pyscfMolObj.ao_labels()
+metadata["Identifier"] = "WaterTriplet"
+metadata["CPU Count"] = 4
+metadata["Method Type"] = "DFT"
+metadata["Method"] = "roks m06_l"
+metadata["Basis Set"] = "def2svp"
+metadata["Charge"] = 1
+metadata["Multiplicity"] = 2
+metadata["Number of Electrons"] = pyscfMolObj.nelectron
+metadata["Number of Primitive Basis Functions"] = pyscfMolObj.npgto_nr()
+metadata["AO Labels"] = pyscfMolObj.ao_labels()
 
 pyscfMolObj_calc = dft.ROKS(pyscfMolObj)
-pyscfMolObj_calc.xc = 'm06_l'
+pyscfMolObj_calc.xc = "m06_l"
 pyscfMolObj_calc.grids.level = 5
 pyscfMolObj_calc.grids.prune = True
 pyscfMolObj_calc.kernel()
-metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
-metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
-metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
-metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
+metadata["Electronic Energy (Eh)"] = pyscfMolObj_calc.e_tot
+metadata["Two Electron Energy (Eh)"] = pyscfMolObj_calc.energy_elec()[1]
+metadata["One Electron Energy (Eh)"] = (
+    pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
+)
+metadata["Nuclear Repulsion Energy (Eh)"] = pyscfMolObj_calc.energy_nuc()
 
 # Get Gradients
 g = pyscfMolObj_calc.Gradients()
 grad = g.kernel()
-metadata['Gradients (Eh/Bohr)'] = grad.tolist()
+metadata["Gradients (Eh/Bohr)"] = grad.tolist()
 
 
 # Write Fock Matrix
 import numpy as np
+
 F = pyscfMolObj_calc.get_fock()
-metadata['Fock Matrix File Name'] = 'WaterTriplet_PySCFOutput.fock'
-np.savetxt('WaterTriplet_PySCFOutput.fock', F, fmt='%.16e')
+metadata["Fock Matrix File Name"] = "WaterTriplet_PySCFOutput.fock"
+np.savetxt("WaterTriplet_PySCFOutput.fock", F, fmt="%.16e")
 
 end = time.time()
 time_taken = round(end - start, 2)
-metadata['Time Taken (s)'] = time_taken
-metadata['Maximum RAM used (MB)'] = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)
+metadata["Time Taken (s)"] = time_taken
+metadata["Maximum RAM used (MB)"] = int(
+    resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+)
 # Write metadata to .json file
-with open('WaterTriplet_PySCFOutput.meta.json', 'w') as f:
-   json.dump(metadata, f, indent=2)
+with open("WaterTriplet_PySCFOutput.meta.json", "w") as f:
+    json.dump(metadata, f, indent=2)

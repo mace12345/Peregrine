@@ -1,7 +1,14 @@
 import time
+
 start = time.time()
 
-conv_params = {'convergence_energy': 1e-06, 'convergence_grms': 3e-05, 'convergence_gmax': 4.5e-05, 'convergence_drms': 0.00012, 'convergence_dmax': 0.00018}
+conv_params = {
+    "convergence_energy": 1e-06,
+    "convergence_grms": 3e-05,
+    "convergence_gmax": 4.5e-05,
+    "convergence_drms": 0.00012,
+    "convergence_dmax": 0.00018,
+}
 
 import json
 import resource
@@ -12,16 +19,17 @@ from pyscf import lib
 from pyscf import grad
 from pyscf import dft
 import numpy as np
+
 lib.num_threads(4)
 metadata = {}
 
 # Retrieve basis set from basis set exchange
-raw = bse.api.get_basis('def2svp', elements=['H', 'C', 'P', 'Co', 'Cl'])
+raw = bse.api.get_basis("def2svp", elements=["H", "C", "P", "Co", "Cl"])
 orbital_basis, _ = pbse._orbital_basis(raw)
-        
+
 # Define Molecule
 pyscfMolObj = gto.Mole(
-    atom='''Co -1.2302 1.6411 4.1344
+    atom="""Co -1.2302 1.6411 4.1344
 Cl -0.6376 2.7926 2.3405
 P 0.67 0.3754 4.821
 C 0.331 -0.8027 6.1701
@@ -92,55 +100,65 @@ H -6.8266 1.8645 0.4465
 H -1.6277 -2.9123 -0.5788
 H -5.5845 -2.6152 7.3426
 H -7.0025 3.9105 1.6703
-''',
-    basis={'H': orbital_basis['H'], 'C': orbital_basis['C'], 'P': orbital_basis['P'], 'Co': orbital_basis['Co'], 'Cl': orbital_basis['Cl'], },
+""",
+    basis={
+        "H": orbital_basis["H"],
+        "C": orbital_basis["C"],
+        "P": orbital_basis["P"],
+        "Co": orbital_basis["Co"],
+        "Cl": orbital_basis["Cl"],
+    },
     ecp={},
-    unit = 'Ang',
-    output = 'BIHGEE-S4_PySCFOutput.log',
-    verbose = 4,
-    max_memory = 1000,
-    charge = 0,
-    spin = 1
+    unit="Ang",
+    output="BIHGEE-S4_PySCFOutput.log",
+    verbose=4,
+    max_memory=1000,
+    charge=0,
+    spin=1,
 )
 pyscfMolObj.build()
-metadata['Identifier'] = 'BIHGEE-S4'
-metadata['CPU Count'] = 4
-metadata['Method Type'] = 'DFT'
-metadata['Method'] = 'uks r2scan'
-metadata['Basis Set'] = 'def2svp'
-metadata['Charge'] = 0
-metadata['Multiplicity'] = 2
-metadata['Number of Electrons'] = pyscfMolObj.nelectron
-metadata['Number of Primitive Basis Functions'] = pyscfMolObj.npgto_nr() 
-metadata['AO Labels'] = pyscfMolObj.ao_labels()
+metadata["Identifier"] = "BIHGEE-S4"
+metadata["CPU Count"] = 4
+metadata["Method Type"] = "DFT"
+metadata["Method"] = "uks r2scan"
+metadata["Basis Set"] = "def2svp"
+metadata["Charge"] = 0
+metadata["Multiplicity"] = 2
+metadata["Number of Electrons"] = pyscfMolObj.nelectron
+metadata["Number of Primitive Basis Functions"] = pyscfMolObj.npgto_nr()
+metadata["AO Labels"] = pyscfMolObj.ao_labels()
 
 pyscfMolObj_calc = dft.UKS(pyscfMolObj)
-pyscfMolObj_calc.xc = 'r2scan'
+pyscfMolObj_calc.xc = "r2scan"
 pyscfMolObj_calc.grids.level = 3
 pyscfMolObj_calc.grids.prune = True
 pyscfMolObj_calc.kernel()
-metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
-metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
-metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
-metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
+metadata["Electronic Energy (Eh)"] = pyscfMolObj_calc.e_tot
+metadata["Two Electron Energy (Eh)"] = pyscfMolObj_calc.energy_elec()[1]
+metadata["One Electron Energy (Eh)"] = (
+    pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
+)
+metadata["Nuclear Repulsion Energy (Eh)"] = pyscfMolObj_calc.energy_nuc()
 
 # Get Gradients
 g = pyscfMolObj_calc.Gradients()
 grad = g.kernel()
-metadata['Gradients (Eh/Bohr)'] = grad.tolist()
+metadata["Gradients (Eh/Bohr)"] = grad.tolist()
 
 
 # Write Fock Matrix
 F = pyscfMolObj_calc.get_fock()
-metadata['Alpha Fock Matrix File Name'] = 'BIHGEE-S4_PySCFOutput.alpha.fock'
-metadata['Beta Fock Matrix File Name'] = 'BIHGEE-S4_PySCFOutput.beta.fock'
-np.savetxt('BIHGEE-S4_PySCFOutput.alpha.fock', F[0], fmt='%.16e')
-np.savetxt('BIHGEE-S4_PySCFOutput.beta.fock', F[1], fmt='%.16e')
+metadata["Alpha Fock Matrix File Name"] = "BIHGEE-S4_PySCFOutput.alpha.fock"
+metadata["Beta Fock Matrix File Name"] = "BIHGEE-S4_PySCFOutput.beta.fock"
+np.savetxt("BIHGEE-S4_PySCFOutput.alpha.fock", F[0], fmt="%.16e")
+np.savetxt("BIHGEE-S4_PySCFOutput.beta.fock", F[1], fmt="%.16e")
 
 end = time.time()
 time_taken = round(end - start, 2)
-metadata['Time Taken (s)'] = time_taken
-metadata['Maximum RAM used (MB)'] = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)
+metadata["Time Taken (s)"] = time_taken
+metadata["Maximum RAM used (MB)"] = int(
+    resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+)
 # Write metadata to .json file
-with open('BIHGEE-S4_PySCFOutput.meta.json', 'w') as f:
-   json.dump(metadata, f, indent=2)
+with open("BIHGEE-S4_PySCFOutput.meta.json", "w") as f:
+    json.dump(metadata, f, indent=2)
