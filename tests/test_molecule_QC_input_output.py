@@ -104,6 +104,7 @@ def test_write_Psi4_RKS_input():
         f.write(benzene_pyscf_str)
         f.close()
 
+
 # TODO: Test Psi4 input and output
 # TODO: Test CREST input and output
 # TODO: Test xTB input and output

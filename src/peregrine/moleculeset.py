@@ -15,6 +15,34 @@ import pandas as pd
 import numpy as np
 
 
+def _GeneralHelper_CalculateRAM(
+    package: str, method: str, number_of_primitives: int, restricted: bool
+) -> int:
+    """
+    RAM (MB) = A * (primitives ^ x) + c
+    """
+    coeff_dict = {
+        "restricted": {
+            "Psi4": {
+                "wb97m-d3bj": {
+                    "A": 5.437e-02,
+                    "x": 2.23,
+                    "c": 10000,
+                },
+            }
+        }
+    }
+    if restricted == True:
+        A = coeff_dict["restricted"][package][method]["A"]
+        x = coeff_dict["restricted"][package][method]["x"]
+        c = coeff_dict["restricted"][package][method]["c"]
+    else:
+        A = coeff_dict["unrestricted"][package][method]["A"]
+        x = coeff_dict["unrestricted"][package][method]["x"]
+        c = coeff_dict["unrestricted"][package][method]["c"]
+    return int(A * (number_of_primitives**x) + c)
+
+
 def _GeneralHelper_TooSmallBondAngle(
     molObj: Molecule, minimum_bond_angle: float
 ) -> bool:
@@ -140,10 +168,16 @@ class MoleculeSet:
         pass
 
     @classmethod
-    def ReadMolFileDirectory(cls, mol_file_directory: str) -> "MoleculeSet":
+    def ReadMolFileDirectory(
+        cls, mol_file_directory: str, do_not_read_opt_traj_files: bool = False
+    ) -> "MoleculeSet":
         mol_file_list = [
             i for i in os.listdir(mol_file_directory) if i.endswith(".mol")
         ]
+        if do_not_read_opt_traj_files == True:
+            mol_file_list = [
+                i for i in mol_file_list if "_TRAJ" not in i
+            ]
 
         def load(mol_file):
             with open(f"{mol_file_directory}/{mol_file}") as f:
@@ -431,7 +465,7 @@ class MoleculeSet:
         restricted: bool = False,
         set_options: dict | None = None,
         CPU_count: int = 4,
-        max_memory: int = 20000,
+        max_memory: int | None = None,
         max_time: None | int = 2880,
         job_scheduler_used: None | str = "slurm",
         file_types_to_save: list[str] = [".out", ".json"],
@@ -463,6 +497,7 @@ class MoleculeSet:
 
         # Sort local basissets
         new_local_basissets = None
+        num_basisset_funcs = None
         if local_basissets is not None:
             new_local_basissets = {}
             for atomic_symbols in local_basissets:
@@ -483,10 +518,19 @@ class MoleculeSet:
                         if atomic_symbol in new_local_basissets
                         else basisset
                     )
-                    for atomic_symbol in molObj.GetAtomicSymbols()
+                    for atomic_symbol in molObj.GetAtomicSymbolsList()
                 }
                 if len(local_basissets) == 0:
                     local_basissets = None
+
+            # Esitmate RAM required by calculating the number of primitives
+            if max_memory is None:
+                if local_basissets is None:
+                    num_basisset_funcs = molObj.GetNumberOfBasisSetFunctions(basisset)
+                else:
+                    num_basisset_funcs = molObj.GetNumberOfBasisSetFunctions(
+                        local_basissets
+                    )
 
             orca_inp, queue_sh = molObj.WritePsi4Input(
                 method=method,
@@ -499,7 +543,16 @@ class MoleculeSet:
                 restricted=restricted,
                 set_options=set_options,
                 CPU_count=CPU_count,
-                max_memory=max_memory,
+                max_memory=(
+                    _GeneralHelper_CalculateRAM(
+                        package="Psi4",
+                        method=method,
+                        number_of_primitives=num_basisset_funcs,
+                        restricted=restricted,
+                    )
+                    if max_memory is None
+                    else max_memory
+                ),
                 max_time=max_time,
                 job_scheduler_used=job_scheduler_used,
                 file_types_to_save=file_types_to_save,
@@ -743,6 +796,10 @@ class MoleculeSet:
                 ],
                 "wallclock time taken (seconds)": [
                     molObj.wallclock_time_sec
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Number of Optimisation Steps": [
+                    molObj.number_of_optimisation_steps
                     for molObj in instance.MoleculesDict.values()
                 ],
                 "Electronic Energy (Eh)": [

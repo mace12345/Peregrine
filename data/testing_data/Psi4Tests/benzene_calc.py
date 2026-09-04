@@ -56,8 +56,8 @@ units angstrom
 
 # Define basis sets
 element_basis_map = {
-    "H": "def2-tzvppd",
     "C": "def2-tzvppd",
+    "H": "def2-tzvppd",
 }
 combined_basis = "\n".join(
     bse.get_basis(basisname, elements=[symbol], fmt="psi4", header=False)
@@ -75,8 +75,8 @@ spherical
 )
 metadata["Basis Set"] = element_basis_map
 jkfit_basis_map = {
-    "H": "def2-universal-jkfit",
     "C": "def2-universal-jkfit",
+    "H": "def2-universal-jkfit",
 }
 combined_jkfit = "\n".join(
     bse.get_basis(basisname, elements=[symbol], fmt="psi4", header=False)
@@ -104,6 +104,85 @@ psi4.set_options({"reference": "uhf"})
 metadata["Method"] = "uhf wb97m-d3bj"
 
 # Set up and run calculation
+try:
+    e_opt, wfn, history = psi4.optimize(
+        "wb97m-d3bj",
+        molecule=psi4MolObj,
+        return_wfn=True,
+        return_history=True,
+    )
+    metadata["Optimisation Trajectory Electronic Energies (Eh)"] = np.array(
+        history["energy"]
+    ).tolist()
+    metadata["Optimisation Trajectory Coordinates (Bohr)"] = np.array(
+        history["coordinates"]
+    ).tolist()
+    metadata["Optimisation Trajectory Gradient (Eh/Bohr)"] = np.array(
+        history["gradient"]
+    ).tolist()
+except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
+    metadata["Maximum RAM used (MB)"] = int(get_max_rss_mb())
+    metadata["SCF error at failure"] = {
+        "iteration": exc.iteration,
+        "e_conv": exc.e_conv,
+        "d_conv": exc.d_conv,
+    }
+    failed_wfn = exc.wfn  # partial wavefunction at the point of failure
+    coords_bohr = np.array(failed_wfn.molecule().geometry())
+    metadata["Coordinates (Bohr)"] = coords_bohr.tolist()
+    with open("Benzene.meta.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+    exit()
+# Save properties
+coords_bohr = np.array(wfn.molecule().geometry())
+grad = np.array(wfn.gradient())
+basis = wfn.basisset()
+metadata["Electronic Energy (Eh)"] = psi4.variable("CURRENT ENERGY")
+metadata["One Electron Energy (Eh)"] = psi4.variable("ONE-ELECTRON ENERGY")
+metadata["Two Electron Energy (Eh)"] = psi4.variable("TWO-ELECTRON ENERGY")
+metadata["Nuclear Repulsion Energy (Eh)"] = psi4.variable("NUCLEAR REPULSION ENERGY")
+metadata["Gradient (Eh/Bohr)"] = grad.tolist()
+metadata["Coordinates (Bohr)"] = coords_bohr.tolist()
+metadata["Number of Primitive Basis Functions"] = basis.nprimitive()
+# Calculate and save more properties
+psi4.oeprop(
+    wfn,
+    "DIPOLE",
+    "QUADRUPOLE",
+    "MULLIKEN_CHARGES",
+    "LOWDIN_CHARGES",
+    "WIBERG_LOWDIN_INDICES",
+    "MAYER_INDICES",
+)
+metadata["Dipole"] = np.array(wfn.variable("CURRENT DIPOLE")).tolist()
+metadata["Quadrupole"] = np.array(wfn.variable("QUADRUPOLE")).tolist()
+metadata["Mulliken Charges"] = np.array(wfn.variable("MULLIKEN CHARGES")).tolist()
+metadata["Lowdin Charges"] = np.array(wfn.variable("LOWDIN CHARGES")).tolist()
+metadata["Wiberg Bond Orders"] = np.array(
+    wfn.array_variable("WIBERG LOWDIN INDICES")
+).tolist()
+metadata["Mayer Bond Orders"] = np.array(wfn.array_variable("MAYER INDICES")).tolist()
+# Save Fock matricies
+Fa_ao = np.array(wfn.Fa_subset("AO"))
+Fb_ao = np.array(wfn.Fb_subset("AO"))
+metadata["Alpha Fock Matrix File Name"] = "Benzene.alpha.fock"
+metadata["Beta Fock Matrix File Name"] = "Benzene.beta.fock"
+np.savetxt("Benzene.alpha.fock", Fa_ao, fmt="%.16e")
+np.savetxt("Benzene.beta.fock", Fb_ao, fmt="%.16e")
+# Get spin contaimination
+mints = psi4.core.MintsHelper(wfn.basisset())
+S_ao = np.array(mints.ao_overlap())  # AO-basis overlap, not symmetry-blocked
+Ca_occ = np.array(wfn.Ca_subset("AO", "OCC"))  # occupied alpha MO coeffs (AO basis)
+Cb_occ = np.array(wfn.Cb_subset("AO", "OCC"))  # occupied beta MO coeffs (AO basis)
+nalpha = wfn.nalpha()
+nbeta = wfn.nbeta()
+mo_overlap = Ca_occ.T @ S_ao @ Cb_occ
+overlap_sq_sum = np.sum(mo_overlap**2)
+Sz = (nalpha - nbeta) / 2.0
+S2_exact = Sz * (Sz + 1.0)
+S2_observed = S2_exact + nbeta - overlap_sq_sum
+spin_deviation = S2_observed - S2_exact
+metadata["Spin Contaimination (<S**2>)"] = spin_deviation
 
 RAM = int(get_max_rss_mb())
 end = time.time()

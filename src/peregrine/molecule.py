@@ -37,6 +37,7 @@ from xyzgraph import build_graph
 import networkx as nx
 
 from .atom import Atom
+from .atom import ATOMIC_NUMBER_OF_PRIMITIVES
 
 # === Important Conversions ===
 
@@ -742,7 +743,7 @@ def _PySCFHelper_DefineMolecule(
         assignments for the calculation.
     """
     # Retreive relevent basis sets
-    AtomicSymbols = molObj.GetAtomicSymbols()
+    AtomicSymbols = molObj.GetAtomicSymbolsList()
     processed_basis = "{"
     for AtomicSymbol in AtomicSymbols:
         processed_basis += f"'{AtomicSymbol}': orbital_basis['{AtomicSymbol}'], "
@@ -1178,7 +1179,7 @@ metadata['Spin Contaimination (<S**2>)'] = spin_deviation"""
 except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
     metadata['SCF error at failure'] = """
-    + """{
+        + """{
         'iteration': exc.iteration,
         'e_conv': exc.e_conv,
         'd_conv': exc.d_conv,
@@ -1187,7 +1188,7 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     coords_bohr = np.array(failed_wfn.molecule().geometry())
     metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
     with open("""
-    + f"""'{identifier}.meta.json', 'w') as f:
+        + f"""'{identifier}.meta.json', 'w') as f:
         json.dump(metadata, f, indent=2)
     exit()"""
     )
@@ -1201,7 +1202,7 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
 except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
     metadata['SCF error at failure'] = """
-            + """{
+        + """{
         'iteration': exc.iteration,
         'e_conv': exc.e_conv,
         'd_conv': exc.d_conv,
@@ -1210,7 +1211,7 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     coords_bohr = np.array(failed_wfn.molecule().geometry())
     metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
     with open("""
-            + f"""'{identifier}.meta.json', 'w') as f:
+        + f"""'{identifier}.meta.json', 'w') as f:
         json.dump(metadata, f, indent=2)
     exit()"""
     )
@@ -1230,7 +1231,7 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
 except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
     metadata['SCF error at failure'] = """
-            + """{
+        + """{
         'iteration': exc.iteration,
         'e_conv': exc.e_conv,
         'd_conv': exc.d_conv,
@@ -1239,8 +1240,8 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     coords_bohr = np.array(failed_wfn.molecule().geometry())
     metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
     with open("""
-            + f"'{identifier}.meta.json'"
-            + f""", 'w') as f:
+        + f"'{identifier}.meta.json'"
+        + f""", 'w') as f:
         json.dump(metadata, f, indent=2)
     exit()"""
     )
@@ -1258,7 +1259,7 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
 except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())
     metadata['SCF error at failure'] = """
-            + """{
+        + """{
         'iteration': exc.iteration,
         'e_conv': exc.e_conv,
         'd_conv': exc.d_conv,
@@ -1267,8 +1268,8 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
     coords_bohr = np.array(failed_wfn.molecule().geometry())
     metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
     with open("""
-            + f"'{identifier}.meta.json'"
-            + f""", 'w') as f:
+        + f"'{identifier}.meta.json'"
+        + f""", 'w') as f:
         json.dump(metadata, f, indent=2)
     exit()"""
     )
@@ -1295,97 +1296,83 @@ psi4.set_options({
         and restricted == False
         and get_gradient == False
     ):
-        psi4_str += (
-            f"""
+        psi4_str += f"""
 {optimise_and_calculate_frequency}
 {save_properties_general}
 {save_fock_matrix_uhf}
 {calculate_spin_contaim_uhf}
 """
-        )
     elif (
         optimise_geometry == True
         and get_frequency == False
         and restricted == False
         and get_gradient == False
     ):
-        psi4_str += (
-            f"""
+        psi4_str += f"""
 {optimise_only}
 {save_properties_general}
 {save_fock_matrix_uhf}
 {calculate_spin_contaim_uhf}
 """
-        )
     elif (
         optimise_geometry == True
         and get_frequency == True
         and restricted == True
         and get_gradient == False
     ):
-        psi4_str += (
-            f"""
+        psi4_str += f"""
 {optimise_and_calculate_frequency}
 {save_properties_general}
 {save_fock_matrix_rhf}
 """
-        )
     elif (
         optimise_geometry == True
         and get_frequency == False
         and restricted == True
         and get_gradient == False
     ):
-        psi4_str += (
-            f"""
+        psi4_str += f"""
 {optimise_only}
 {save_properties_general}
 {save_fock_matrix_rhf}
 """
-        )
     elif (
         optimise_geometry == False
         and get_frequency == False
         and restricted == False
         and get_gradient == False
     ):
-        psi4_str += (
-            f"""
+        psi4_str += f"""
 {calculate_elec_energy_general}
 {save_properties_general}
 {save_fock_matrix_uhf}
 {calculate_spin_contaim_uhf}
 """
-        )
     elif (
         optimise_geometry == False
         and get_frequency == False
         and restricted == False
         and get_gradient == True
     ):
-        psi4_str += (
-            f"""
+        psi4_str += f"""
 {calculate_gradient_general}
 {save_properties_general}
 {save_fock_matrix_uhf}
 {calculate_spin_contaim_uhf}
 {save_HOMO_LUMO_general}
 """
-        )
     elif (
         optimise_geometry == False
         and get_frequency == False
         and restricted == True
         and get_gradient == True
     ):
-        psi4_str += (
-            f"""
+        psi4_str += f"""
 {calculate_gradient_general}
 {save_properties_general}
 {save_fock_matrix_rhf}
 {save_HOMO_LUMO_general}
 """
-        )
     return psi4_str
 
 
@@ -1557,6 +1544,8 @@ def _Psi4Helper_ConstructMolObjFromTemplate(
 def _Psi4Helper_GetErrorCode(psi4_out_str: str) -> str:
     if "  Failed to converge." in psi4_out_str:
         return "SCF failed to converge"
+    elif "Could not converge geometry optimization" in psi4_out_str:
+        return "Geometry optimisation failed to converge"
     else:
         return "Unknown error, probably timeout"
 
@@ -1726,6 +1715,7 @@ class Molecule:
         self.spin_contamination: float | None = None
         self.HOMO_energy: float | None = None
         self.LUMO_energy: float | None = None
+        self.number_of_optimisation_steps: int | None = None
 
     def DeriveBasicAttributes(
         self,
@@ -1800,6 +1790,7 @@ class Molecule:
         self.gibbs_free_energy = None
         self.vibrational_frequencies = None
         self.spin_contamination = None
+        self.number_of_optimisation_steps = None
 
     def DeriveMoleculeSMILES(self):
         # Split substructuures into their own molecule objects
@@ -2143,8 +2134,36 @@ class Molecule:
                 atomlist.append(atomObj)
         return atomlist
 
-    def GetAtomicSymbols(self) -> list[str]:
+    def GetAtomicSymbolsList(self) -> list[str]:
         return list(set([atomObj.AtomicSymbol for atomObj in self.AtomsList]))
+
+    def GetAtomicSymbolCountDict(self) -> dict[str:int]:
+        atomic_symbol_count_dict = {}
+        for atomObj in self.AtomsList:
+            if atomObj.AtomicSymbol in atomic_symbol_count_dict:
+                atomic_symbol_count_dict[atomObj.AtomicSymbol] += 1
+            else:
+                atomic_symbol_count_dict[atomObj.AtomicSymbol] = 1
+        return atomic_symbol_count_dict
+
+    def GetNumberOfBasisSetFunctions(self, basis_set_dict: str | dict[str]) -> int:
+        """
+        Calculate number of primitives
+        """
+        # TODO: Make sure to expand funtionality to basis_set_dict when it is a string
+        atomic_symbol_count_dict = self.GetAtomicSymbolCountDict()
+        basis_func_total = 0
+        for atomic_symbol in atomic_symbol_count_dict:
+            number_of_atomic_symbols = atomic_symbol_count_dict[atomic_symbol]
+            if type(basis_set_dict) is dict:
+                basis_set = basis_set_dict[atomic_symbol]
+            else:
+                basis_set = basis_set_dict
+            number_of_basis_functions = ATOMIC_NUMBER_OF_PRIMITIVES[atomic_symbol][
+                basis_set
+            ]
+            basis_func_total += number_of_basis_functions * number_of_atomic_symbols
+        return basis_func_total
 
     def MetalAtomCount(self) -> int:
         metal_atom_count = 0
@@ -2851,7 +2870,7 @@ rm slurm-$SLURM_JOB_ID.out
         )
 
         psi4_str += _Psi4Helper_WriteBasissets(
-            atomic_symbols=self.GetAtomicSymbols(),
+            atomic_symbols=self.GetAtomicSymbolsList(),
             basisset=basisset,
             local_basisset=local_basisset,
         )
@@ -3647,6 +3666,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             if type(molObj) == dict:
                 molObj_dict = molObj
                 molObj = molObj_dict[template_molObj.Identifier]
+                molObj.number_of_optimisation_steps = len(molObj_dict)
         if molObj.wallclock_time_sec is None:
             # Calculation failed, need to find out at what stage and why
             molObj.error_code = _Psi4Helper_GetErrorCode(out_file)

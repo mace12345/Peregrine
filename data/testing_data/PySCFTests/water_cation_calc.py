@@ -24,7 +24,7 @@ lib.num_threads(4)
 metadata = {}
 
 # Retrieve basis set from basis set exchange
-raw = bse.api.get_basis("def2svp", elements=["O", "H"])
+raw = bse.api.get_basis("def2svp", elements=["H", "O"])
 orbital_basis, _ = pbse._orbital_basis(raw)
 
 # Define Molecule
@@ -35,8 +35,8 @@ H 0.08 1.00064 0.076
 H 0.0062 0.078 1.088
 """,
     basis={
-        "O": orbital_basis["O"],
         "H": orbital_basis["H"],
+        "O": orbital_basis["O"],
     },
     ecp={},
     unit="Ang",
