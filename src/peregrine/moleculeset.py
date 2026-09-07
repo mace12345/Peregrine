@@ -3,6 +3,7 @@ import re
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from functools import partial
 import itertools
 import traceback
 
@@ -15,32 +16,31 @@ import pandas as pd
 import numpy as np
 
 
-def _GeneralHelper_CalculateRAM(
+def _Psi4Helper_CalculateRAM(
     package: str, method: str, number_of_primitives: int, restricted: bool
 ) -> int:
     """
     RAM (MB) = A * (primitives ^ x) + c
     """
     coeff_dict = {
-        "restricted": {
-            "Psi4": {
-                "wb97m-d3bj": {
-                    "A": 5.437e-02,
-                    "x": 2.23,
-                    "c": 10000,
-                },
-            }
+        "Psi4": {
+            "wb97m-d3bj": {
+                "A": 5.437e-02,
+                "x": 2.23,
+                "c": 10000,
+            },
         }
     }
     if restricted == True:
-        A = coeff_dict["restricted"][package][method]["A"]
-        x = coeff_dict["restricted"][package][method]["x"]
-        c = coeff_dict["restricted"][package][method]["c"]
+        A = coeff_dict[package][method]["A"]
+        x = coeff_dict[package][method]["x"]
+        c = coeff_dict[package][method]["c"]
+        return int((A * (number_of_primitives**x)) + c)
     else:
-        A = coeff_dict["unrestricted"][package][method]["A"]
-        x = coeff_dict["unrestricted"][package][method]["x"]
-        c = coeff_dict["unrestricted"][package][method]["c"]
-    return int(A * (number_of_primitives**x) + c)
+        A = coeff_dict[package][method]["A"]
+        x = coeff_dict[package][method]["x"]
+        c = coeff_dict[package][method]["c"]
+        return int((2 * A * (number_of_primitives**x)) + c)
 
 
 def _GeneralHelper_TooSmallBondAngle(
@@ -95,6 +95,16 @@ def _xTBBinHelper_OptimiseOne(args):
     except Exception:
         return identifier, None, traceback.format_exc()
     return identifier, new_molecule, None
+
+
+def _GeneralHelper_ReadSMILESStrings(args):
+    SMILES, Identifier, AddHydrogens = args
+    return Molecule.ReadSMILESString(SMILES, Identifier, AddHydrogens=AddHydrogens)
+
+
+def _GeneralHelper_LoadMolFile(mol_file_directory: str, mol_file: str) -> "Molecule":
+    with open(f"{mol_file_directory}/{mol_file}") as f:
+        return Molecule.ReadMolString(f.read())
 
 
 class MoleculeSet:
@@ -175,17 +185,14 @@ class MoleculeSet:
             i for i in os.listdir(mol_file_directory) if i.endswith(".mol")
         ]
         if do_not_read_opt_traj_files == True:
-            mol_file_list = [
-                i for i in mol_file_list if "_TRAJ" not in i
-            ]
+            mol_file_list = [i for i in mol_file_list if "_TRAJ" not in i]
 
-        def load(mol_file):
-            with open(f"{mol_file_directory}/{mol_file}") as f:
-                return Molecule.ReadMolString(f.read())
-
+        max_workers = max(1, os.cpu_count() - 2)
         self = cls()
-        with ThreadPoolExecutor(max_workers=int(os.cpu_count() / 2)) as executor:
-            for molObj in executor.map(load, mol_file_list):
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            for molObj in executor.map(
+                partial(_GeneralHelper_LoadMolFile, mol_file_directory), mol_file_list
+            ):
                 self.MoleculesDict[molObj.Identifier] = molObj
         return self
 
@@ -232,14 +239,30 @@ class MoleculeSet:
 
     @classmethod
     def ReadSMILESList(
-        cls, SMILES_list: list, Identifier_List: list, AddHydrogens: bool = True
+        cls,
+        SMILES_list: list,
+        Identifier_List: list,
+        AddHydrogens: bool = True,
+        chunksize: int | None = None,
     ) -> "MoleculeSet":
         instance = cls()
-        for SMILES, Identifier in zip(SMILES_list, Identifier_List):
-            molObj = Molecule.ReadSMILESString(
-                SMILES, Identifier, AddHydrogens=AddHydrogens
-            )
-            instance.MoleculesDict[molObj.Identifier] = molObj
+
+        # Respect Slurm/cgroup CPU allocation rather than the whole node's core count
+        try:
+            max_workers = len(os.sched_getaffinity(0))
+        except AttributeError:  # not available on macOS
+            max_workers = max(1, os.cpu_count() - 2)
+
+        args = [
+            (SMILES, Identifier, AddHydrogens)
+            for SMILES, Identifier in zip(SMILES_list, Identifier_List)
+        ]
+        chunksize = chunksize or max(1, len(args) // (max_workers))
+
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            for molObj in executor.map(_GeneralHelper_ReadSMILESStrings, args, chunksize=chunksize):
+                instance.MoleculesDict[molObj.Identifier] = molObj
+
         return instance
 
     def ReadORCA6OutputDirectory(
@@ -544,7 +567,7 @@ class MoleculeSet:
                 set_options=set_options,
                 CPU_count=CPU_count,
                 max_memory=(
-                    _GeneralHelper_CalculateRAM(
+                    _Psi4Helper_CalculateRAM(
                         package="Psi4",
                         method=method,
                         number_of_primitives=num_basisset_funcs,

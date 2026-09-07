@@ -1128,7 +1128,7 @@ metadata['Alpha Fock Matrix File Name'] = '{identifier}.alpha.fock'
 metadata['Beta Fock Matrix File Name'] = '{identifier}.beta.fock'
 np.savetxt('{identifier}.alpha.fock', Fa_ao, fmt='%.16e')
 np.savetxt('{identifier}.beta.fock', Fb_ao, fmt='%.16e')"""
-    save_properties_general = """# Save properties
+    save_properties_rhf = """# Save properties
 coords_bohr = np.array(wfn.molecule().geometry())
 grad = np.array(wfn.gradient())
 basis = wfn.basisset()
@@ -1153,6 +1153,35 @@ metadata['Dipole'] = np.array(wfn.variable('CURRENT DIPOLE')).tolist()
 metadata['Quadrupole'] = np.array(wfn.variable('QUADRUPOLE')).tolist()
 metadata['Mulliken Charges'] = np.array(wfn.variable('MULLIKEN CHARGES')).tolist()
 metadata['Lowdin Charges'] = np.array(wfn.variable('LOWDIN CHARGES')).tolist()
+metadata['Wiberg Bond Orders'] = np.array(wfn.array_variable('WIBERG LOWDIN INDICES')).tolist()
+metadata['Mayer Bond Orders']  = np.array(wfn.array_variable('MAYER INDICES')).tolist()"""
+    save_properties_uhf = """# Save properties
+coords_bohr = np.array(wfn.molecule().geometry())
+grad = np.array(wfn.gradient())
+basis = wfn.basisset()
+metadata['Electronic Energy (Eh)'] = psi4.variable('CURRENT ENERGY')
+metadata['One Electron Energy (Eh)'] = psi4.variable('ONE-ELECTRON ENERGY')
+metadata['Two Electron Energy (Eh)'] = psi4.variable('TWO-ELECTRON ENERGY')
+metadata['Nuclear Repulsion Energy (Eh)'] = psi4.variable('NUCLEAR REPULSION ENERGY')
+metadata['Gradient (Eh/Bohr)'] = grad.tolist()
+metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+metadata['Number of Primitive Basis Functions'] = basis.nprimitive()
+# Calculate and save more properties
+psi4.oeprop(
+    wfn,
+    'DIPOLE',
+    'QUADRUPOLE',
+    'MULLIKEN_CHARGES',
+    'LOWDIN_CHARGES',
+    'LOWDIN_SPINS',
+    'WIBERG_LOWDIN_INDICES',
+    'MAYER_INDICES',
+)
+metadata['Dipole'] = np.array(wfn.variable('CURRENT DIPOLE')).tolist()
+metadata['Quadrupole'] = np.array(wfn.variable('QUADRUPOLE')).tolist()
+metadata['Mulliken Charges'] = np.array(wfn.variable('MULLIKEN CHARGES')).tolist()
+metadata['Lowdin Charges'] = np.array(wfn.variable('LOWDIN CHARGES')).tolist()
+metadata['Lowdin Spin Populations'] = np.array(wfn.variable('LOWDIN SPINS')).tolist()
 metadata['Wiberg Bond Orders'] = np.array(wfn.array_variable('WIBERG LOWDIN INDICES')).tolist()
 metadata['Mayer Bond Orders']  = np.array(wfn.array_variable('MAYER INDICES')).tolist()"""
     calculate_spin_contaim_uhf = """# Get spin contaimination
@@ -1271,7 +1300,17 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
         + f"'{identifier}.meta.json'"
         + f""", 'w') as f:
         json.dump(metadata, f, indent=2)
-    exit()"""
+    exit()
+except psi4.OptimizationConvergenceError as exc:
+    failed_wfn = exc.wfn  # partial wavefunction at the point of failure
+    coords_bohr = np.array(failed_wfn.molecule().geometry())
+    metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+    with open("""
+        + f"'{identifier}.meta.json'"
+        + f""", 'w') as f:
+        json.dump(metadata, f, indent=2)
+    exit()
+    """
     )
     psi4_str = "\n# Set up and run calculation"
     if error_code == "SCF failed to converge":
@@ -1298,7 +1337,7 @@ psi4.set_options({
     ):
         psi4_str += f"""
 {optimise_and_calculate_frequency}
-{save_properties_general}
+{save_properties_rhf}
 {save_fock_matrix_uhf}
 {calculate_spin_contaim_uhf}
 """
@@ -1310,7 +1349,7 @@ psi4.set_options({
     ):
         psi4_str += f"""
 {optimise_only}
-{save_properties_general}
+{save_properties_uhf}
 {save_fock_matrix_uhf}
 {calculate_spin_contaim_uhf}
 """
@@ -1322,7 +1361,7 @@ psi4.set_options({
     ):
         psi4_str += f"""
 {optimise_and_calculate_frequency}
-{save_properties_general}
+{save_properties_rhf}
 {save_fock_matrix_rhf}
 """
     elif (
@@ -1333,7 +1372,7 @@ psi4.set_options({
     ):
         psi4_str += f"""
 {optimise_only}
-{save_properties_general}
+{save_properties_rhf}
 {save_fock_matrix_rhf}
 """
     elif (
@@ -1344,7 +1383,7 @@ psi4.set_options({
     ):
         psi4_str += f"""
 {calculate_elec_energy_general}
-{save_properties_general}
+{save_properties_rhf}
 {save_fock_matrix_uhf}
 {calculate_spin_contaim_uhf}
 """
@@ -1356,7 +1395,7 @@ psi4.set_options({
     ):
         psi4_str += f"""
 {calculate_gradient_general}
-{save_properties_general}
+{save_properties_rhf}
 {save_fock_matrix_uhf}
 {calculate_spin_contaim_uhf}
 {save_HOMO_LUMO_general}
@@ -1369,7 +1408,7 @@ psi4.set_options({
     ):
         psi4_str += f"""
 {calculate_gradient_general}
-{save_properties_general}
+{save_properties_rhf}
 {save_fock_matrix_rhf}
 {save_HOMO_LUMO_general}
 """
@@ -3560,6 +3599,8 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                     useRandomCoords=True,
                     randomSeed=np.random.randint(0, 1001),
                 )
+                if embed_result == 0:
+                    break
             if embed_result != 0:
                 raise ValueError(f"3D embedding failed for SMILES: {SMILES}")
         molObj = cls.RDKitMolToMolecule(
@@ -3766,6 +3807,12 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             for line in xyz_file.split("\n")[2:]
         ]
 
+    def XYZStringToCoords(self, xyz_string: str) -> list[list[str]]:
+        return [
+            [coor for coor in line.split(" ") if coor != ""]
+            for line in xyz_string.split("\n")[2:]
+        ]
+
     def XYZFileToAtomsList(self, xyz_file: str) -> list[Atom]:
         with open(xyz_file, "r") as f:
             xyz_file = f.read()
@@ -3791,6 +3838,19 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
     def ReadXYZFileMapCoords(self, xyz_file: str):
         xyz_file_list = self.XYZFileToCoords(xyz_file=xyz_file)
         for line, atomObj in zip(xyz_file_list, self.AtomsList):
+            atomObj.Coordinates = np.array(
+                [
+                    float(line[1]),
+                    float(line[2]),
+                    float(line[3]),
+                ]
+            )
+
+    def ReadXYZStringMapCoords(self, xyz_string: str):
+        xyz_file_list = self.XYZStringToCoords(xyz_string=xyz_string)
+        for line, atomObj in zip(xyz_file_list, self.AtomsList):
+            if line[1] == "=====================":
+                break
             atomObj.Coordinates = np.array(
                 [
                     float(line[1]),
@@ -4658,6 +4718,7 @@ $end
             f"--{xtb_method}",
             "--opt",
         ]
+        self.calculation_method = xtb_method
         if opt_tol is not None:
             cmd.append(opt_tol)
 
@@ -4702,8 +4763,15 @@ $end
         # Read output xyz files and update coordinates
         if "xtbopt.xyz" in os.listdir(workdir):
             self.ReadXYZFileMapCoords(xyz_file=str(workdir / "xtbopt.xyz"))
-        else:
+        elif "xtbopt.log" in os.listdir(workdir):
+            with open(workdir / "xtb.out", "r") as f:
+                xtb_log_str = f.read()
+                f.close()
+            xtb_log_str = f"{self.NumberOfAtoms}\n{xtb_log_str.split(" energy:")[-1]}"
             self.error_code = "xtb did not optimise"
+            self.ReadXYZStringMapCoords(xtb_log_str)
+        else:
+            self.error_code = "Optimisation did not begin"
 
         # Get calculated properties
         if "xtb.out" in os.listdir(workdir):
@@ -4711,6 +4779,13 @@ $end
                 xtb_out_str = f.read()
                 f.close()
             self.electronic_energy = _xTBHelper_GetEnergies(xtb_out_str)
+        elif "xtbopt.log" in os.listdir(workdir):
+            with open(workdir / "xtb.out", "r") as f:
+                xtb_log_str = f.read()
+                f.close()
+            xtb_log_str = xtb_log_str.split(" energy:")[-1]
+            self.electronic_energy = float(xtb_log_str.split("gnorm:")[0])
+            
 
         # Remove all output files
         for stringObj in [
@@ -4730,6 +4805,9 @@ $end
             f"{self.Identifier}_temp.xyz",
             "NOT_CONVERGED",
             "xtb.out",
+            "gfnff_charges",
+            "gfnff_topo",
+            ".sccnotconverged"
         ]:
             try:
                 os.remove(workdir / stringObj)
