@@ -507,13 +507,13 @@ class MoleculeSet:
                 self.MoleculesDict[identifier]
                 for identifier in self.ResultsDF[
                     self.ResultsDF["Error Code"].isna() == False
-                ]["Identifier"]
+                ].index
             ]
             molObj_list += [
                 self.MoleculesDict[identifier]
                 for identifier in self.ResultsDF[
                     self.ResultsDF["Vibrational Frequency 6 (cm-1)"] < 0
-                ]["Identifier"]
+                ].index
             ]
         else:
             molObj_list = self.MoleculesDict.values()
@@ -582,6 +582,7 @@ class MoleculeSet:
                 psi4_command=psi4_command,
                 scratch_dir=scratch_dir,
             )
+
             with open(psi4_file_directory / f"{molObj.Identifier}.py", "w") as f:
                 f.write(orca_inp)
                 f.close()
@@ -853,6 +854,7 @@ class MoleculeSet:
                 ],
             }
         )
+        instance.ResultsDF.set_index("Identifier", inplace=True)
         instance.ResultsDF.to_csv(str(output_mol_file_directory) + ".csv")
         # Save molObj files as V3000 .mol files
         instance.WriteMolFileDirectory(output_mol_file_directory)

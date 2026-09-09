@@ -83,6 +83,33 @@ def _GeneralHelper_MinutesToHHMMSS(minutes):
     return f"{hours:02d}:{mins:02d}:{secs:02d}"
 
 
+def _GeneralHelper_TranslateSMARTSAndMolObjCoorsToCentre(
+    SMARTS_Coordinates: dict,
+    SMARTS_idx_to_atomIdx: dict,
+    molObj: "Molecule",
+) -> tuple[np.ndarray, np.ndarray]:
+    ## Translate both molObj coors and SMARTS coors to centre of geometry
+    SMARTS_coor_centre = np.array([0.0, 0.0, 0.0])
+    SMARTS_coors_list = []
+    molObj_coor_centre = np.array([0.0, 0.0, 0.0])
+    molObj_coors_list = []
+    atom_count = 0
+    for SMARTS_idx in SMARTS_Coordinates:
+        if SMARTS_Coordinates[SMARTS_idx] is not None:
+            SMARTS_coor_centre += SMARTS_Coordinates[SMARTS_idx]
+            SMARTS_coors_list.append(SMARTS_Coordinates[SMARTS_idx])
+            molObj_coor_centre += molObj.AtomsList[SMARTS_idx_to_atomIdx[SMARTS_idx]].Coordinates
+            molObj_coors_list.append(molObj.AtomsList[SMARTS_idx_to_atomIdx[SMARTS_idx]].Coordinates)
+            atom_count += 1
+    SMARTS_coor_centre = SMARTS_coor_centre / atom_count
+    molObj_coor_centre = molObj_coor_centre / atom_count
+    SMARTS_coors_list = np.array(SMARTS_coors_list)
+    molObj_coors_list = np.array(molObj_coors_list)
+    centred_SMARTS_coors_list = SMARTS_coors_list - SMARTS_coor_centre
+    centred_molObj_coors_list = molObj_coors_list - molObj_coor_centre
+    return (centred_SMARTS_coors_list, centred_molObj_coors_list)
+
+
 def _ORCAHelper_XYZBlockToAtomsList(
     xyz_block: str, template_molObj: "Molecule | None" = None
 ) -> tuple[list[Atom], int]:
@@ -1294,17 +1321,25 @@ except psi4.driver.p4util.exceptions.SCFConvergenceError as exc:
         'd_conv': exc.d_conv,
     }
     failed_wfn = exc.wfn  # partial wavefunction at the point of failure
+    basis = failed_wfn.basisset()
     coords_bohr = np.array(failed_wfn.molecule().geometry())
+    RAM = int(get_max_rss_mb())
     metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+    metadata['Number of Primitive Basis Functions'] = basis.nprimitive()
+    metadata['Maximum RAM used (MB)'] = RAM
     with open("""
         + f"'{identifier}.meta.json'"
         + f""", 'w') as f:
         json.dump(metadata, f, indent=2)
     exit()
 except psi4.OptimizationConvergenceError as exc:
-    failed_wfn = exc.wfn  # partial wavefunction at the point of failure
+    failed_wfn = exc.wfn
+    basis = failed_wfn.basisset()
     coords_bohr = np.array(failed_wfn.molecule().geometry())
+    RAM = int(get_max_rss_mb())
     metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+    metadata['Number of Primitive Basis Functions'] = basis.nprimitive()
+    metadata['Maximum RAM used (MB)'] = RAM
     with open("""
         + f"'{identifier}.meta.json'"
         + f""", 'w') as f:
@@ -1538,10 +1573,10 @@ def _Psi4Helper_ConstructMolObjFromTemplate(
         LowdinCharges = np.array(psi4_out_json["Lowdin Charges"])
         for LowdinCharge, atomObj in zip(LowdinCharges, molObj.AtomsList):
             atomObj.LowdinCharge = LowdinCharge
-    if "Lowdin Spins" in psi4_out_json.keys():
-        LowdinSpins = np.array(psi4_out_json["Lowdin Spins"])
-        for LowdinSpin, atomObj in zip(LowdinSpins, molObj.AtomsList):
-            atomObj.LowdinSpin = LowdinSpin
+    if "Lowdin Spin Populations" in psi4_out_json.keys():
+        LowdinSpins = np.array(psi4_out_json["Lowdin Spin Populations"])
+        for lowdin_spin, atomObj in zip(LowdinSpins, molObj.AtomsList):
+            atomObj.LowdinSpin = lowdin_spin
     if "HOMO Energy (Eh)" in psi4_out_json.keys():
         molObj.HOMO_energy = psi4_out_json["HOMO Energy (Eh)"]
     if "LUMO Energy (Eh)" in psi4_out_json.keys():
@@ -2317,6 +2352,28 @@ class Molecule:
             return False
         matches = SMILES_rdkitObj.GetSubstructMatches(SMARTS_rdkitObj)
         return matches
+
+    def MatchSMARTSPatternToAtomIndices(self, SMARTS_str: str) -> tuple[tuple[dict, dict]]:
+        SMARTS_pattern = Chem.MolFromSmarts(SMARTS_str)
+        rdkitMolObj = self.MoleculeToRDKitMol()
+        matches = rdkitMolObj.GetSubstructMatches(SMARTS_pattern)
+        if len(matches) == 1:
+            matches = matches[0]
+            SMARTS_idx = [int(i.split("]")[0]) for i in SMARTS_str.split(":")[1:]]
+            atomIdx_to_SMARTSIdx = {
+                i: j for i, j in zip(
+                    matches, SMARTS_idx
+                )
+            }
+            SMARTS_idx_to_atomIdx = {
+                i: j for i, j in zip(
+                    SMARTS_idx, matches
+                )
+            }
+            return ((atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx))
+        else:
+            print("Sort this code, need to account for multiple smarts matching")
+            return None
 
     # === Write files & SMILES/SMARTS ===
 
@@ -3582,6 +3639,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         Identifier: str,
         AddHydrogens: bool = True,
         SuppressRDKitWarnings: bool = True,
+        OptimiseGeometry: bool = False,
     ) -> "Molecule":
         if SuppressRDKitWarnings == True:
             RDLogger.DisableLog("rdApp.warning")
@@ -3607,7 +3665,8 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             RDKitMolObj,
             Identifier,
         )
-        molObj.OptimiseGeometry_UFF()
+        if OptimiseGeometry == True:
+            molObj.OptimiseGeometry_UFF()
         return molObj
 
     @classmethod
@@ -4413,6 +4472,33 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                         r_atom.FormalCharge = -0.2
                     else:
                         r_atom.FormalCharge += -0.2
+
+    def FitMoleculeToSMARTSTemplate(
+        self,
+        SMARTS_String: str,
+        SMARTS_Coordinates: dict,
+    ):
+        print(SMARTS_String)
+        atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = self.MatchSMARTSPatternToAtomIndices(SMARTS_String)
+        print(atomIdx_to_SMARTSIdx)
+        print(SMARTS_idx_to_atomIdx)
+        # Minimise RMSD between SMARTS_Coordinates and Molecule Coordinates
+        ## Translate both molObj coors and SMARTS coors to centre of geometry
+        (
+            centred_SMARTS_coors_list,
+            centred_molObj_coors_list,
+        ) = _GeneralHelper_TranslateSMARTSAndMolObjCoorsToCentre(
+            SMARTS_Coordinates=SMARTS_Coordinates,
+            SMARTS_idx_to_atomIdx=SMARTS_idx_to_atomIdx,
+            molObj=self,
+        )
+        ## Rotate molObj coors to match SMARTS coors and minimise RMSD
+
+
+
+
+
+        # Fold molecule coordinates to match SMARTS coordinates
 
     # === Translate and Rotate Molecule, and Geometry Functions ===
 
