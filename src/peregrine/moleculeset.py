@@ -260,7 +260,9 @@ class MoleculeSet:
         chunksize = chunksize or max(1, len(args) // (max_workers))
 
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            for molObj in executor.map(_GeneralHelper_ReadSMILESStrings, args, chunksize=chunksize):
+            for molObj in executor.map(
+                _GeneralHelper_ReadSMILESStrings, args, chunksize=chunksize
+            ):
                 instance.MoleculesDict[molObj.Identifier] = molObj
 
         return instance

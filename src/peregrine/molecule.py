@@ -87,7 +87,7 @@ def _GeneralHelper_TranslateSMARTSAndMolObjCoorsToCentre(
     SMARTS_Coordinates: dict,
     SMARTS_idx_to_atomIdx: dict,
     molObj: "Molecule",
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray]:
     ## Translate both molObj coors and SMARTS coors to centre of geometry
     SMARTS_coor_centre = np.array([0.0, 0.0, 0.0])
     SMARTS_coors_list = []
@@ -98,8 +98,12 @@ def _GeneralHelper_TranslateSMARTSAndMolObjCoorsToCentre(
         if SMARTS_Coordinates[SMARTS_idx] is not None:
             SMARTS_coor_centre += SMARTS_Coordinates[SMARTS_idx]
             SMARTS_coors_list.append(SMARTS_Coordinates[SMARTS_idx])
-            molObj_coor_centre += molObj.AtomsList[SMARTS_idx_to_atomIdx[SMARTS_idx]].Coordinates
-            molObj_coors_list.append(molObj.AtomsList[SMARTS_idx_to_atomIdx[SMARTS_idx]].Coordinates)
+            molObj_coor_centre += molObj.AtomsList[
+                SMARTS_idx_to_atomIdx[SMARTS_idx]
+            ].Coordinates
+            molObj_coors_list.append(
+                molObj.AtomsList[SMARTS_idx_to_atomIdx[SMARTS_idx]].Coordinates
+            )
             atom_count += 1
     SMARTS_coor_centre = SMARTS_coor_centre / atom_count
     molObj_coor_centre = molObj_coor_centre / atom_count
@@ -107,7 +111,62 @@ def _GeneralHelper_TranslateSMARTSAndMolObjCoorsToCentre(
     molObj_coors_list = np.array(molObj_coors_list)
     centred_SMARTS_coors_list = SMARTS_coors_list - SMARTS_coor_centre
     centred_molObj_coors_list = molObj_coors_list - molObj_coor_centre
-    return (centred_SMARTS_coors_list, centred_molObj_coors_list)
+    return (
+        centred_SMARTS_coors_list,
+        centred_molObj_coors_list,
+        SMARTS_coor_centre,
+        molObj_coor_centre,
+    )
+
+
+def _GeneralHelper_KabschRotation(
+    Mobile: np.ndarray, Template: np.ndarray
+) -> np.ndarray:
+    """
+    P, Q: (N, 3) arrays of ALREADY-CENTERED, paired points.
+    Returns R such that (R @ P.T).T best aligns P onto Q.
+    """
+    H = Mobile.T @ Template
+    U, S, Vt = np.linalg.svd(H)
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    D = np.diag([1, 1, d])
+    RotationMatrix = Vt.T @ D @ U.T
+    return RotationMatrix
+
+
+def _GeneralHelper_BuildTrajectoryDict(
+    atomIdx_to_SMARTSIdx: dict,
+    SMARTS_Coordinates: dict,
+    traj_step_size: int,
+    molObj: "Molecule",
+) -> tuple[dict[int, list[np.ndarray]], int]:
+    traj_dict = {}
+    max_items = 0
+    for atomIdx in atomIdx_to_SMARTSIdx:
+        if SMARTS_Coordinates[atomIdx_to_SMARTSIdx[atomIdx]] is not None:
+            start_pos = molObj.AtomsList[atomIdx].Coordinates
+            end_pos = SMARTS_Coordinates[atomIdx_to_SMARTSIdx[atomIdx]]
+            distance = np.linalg.norm(start_pos - end_pos)
+            unit_vec = (start_pos - end_pos) / distance
+            num_of_steps = int(distance / traj_step_size) + 1
+            step_size = distance / num_of_steps
+            trajectory = [
+                start_pos - (unit_vec * step_size * step_num)
+                for step_num in range(0, num_of_steps + 1)
+            ]
+            if len(trajectory) > max_items:
+                max_items = len(trajectory)
+            traj_dict[atomIdx] = trajectory
+    new_traj_dict = {}
+    for atomIdx in traj_dict:
+        trajectory = traj_dict[atomIdx]
+        num_remaining_pos = max_items - len(trajectory)
+        if num_remaining_pos > 0:
+            trajectory = trajectory + ([trajectory[-1]] * num_remaining_pos)
+            new_traj_dict[atomIdx] = trajectory
+        else:
+            new_traj_dict[atomIdx] = trajectory
+    return (new_traj_dict, max_items)
 
 
 def _ORCAHelper_XYZBlockToAtomsList(
@@ -2353,24 +2412,18 @@ class Molecule:
         matches = SMILES_rdkitObj.GetSubstructMatches(SMARTS_rdkitObj)
         return matches
 
-    def MatchSMARTSPatternToAtomIndices(self, SMARTS_str: str) -> tuple[tuple[dict, dict]]:
+    def MatchSMARTSPatternToAtomIndices(
+        self, SMARTS_str: str
+    ) -> tuple[tuple[dict, dict]]:
         SMARTS_pattern = Chem.MolFromSmarts(SMARTS_str)
         rdkitMolObj = self.MoleculeToRDKitMol()
         matches = rdkitMolObj.GetSubstructMatches(SMARTS_pattern)
         if len(matches) == 1:
             matches = matches[0]
             SMARTS_idx = [int(i.split("]")[0]) for i in SMARTS_str.split(":")[1:]]
-            atomIdx_to_SMARTSIdx = {
-                i: j for i, j in zip(
-                    matches, SMARTS_idx
-                )
-            }
-            SMARTS_idx_to_atomIdx = {
-                i: j for i, j in zip(
-                    SMARTS_idx, matches
-                )
-            }
-            return ((atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx))
+            atomIdx_to_SMARTSIdx = {i: j for i, j in zip(matches, SMARTS_idx)}
+            SMARTS_idx_to_atomIdx = {i: j for i, j in zip(SMARTS_idx, matches)}
+            return (atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx)
         else:
             print("Sort this code, need to account for multiple smarts matching")
             return None
@@ -4477,28 +4530,66 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         self,
         SMARTS_String: str,
         SMARTS_Coordinates: dict,
+        xtb_binary_path: str,
+        xtb_method: str = "gfnff",
+        traj_step_size: int = 0.1,
     ):
-        print(SMARTS_String)
-        atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = self.MatchSMARTSPatternToAtomIndices(SMARTS_String)
-        print(atomIdx_to_SMARTSIdx)
-        print(SMARTS_idx_to_atomIdx)
+        atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = (
+            self.MatchSMARTSPatternToAtomIndices(SMARTS_String)
+        )
         # Minimise RMSD between SMARTS_Coordinates and Molecule Coordinates
-        ## Translate both molObj coors and SMARTS coors to centre of geometry
+        ## Get SMARTS and molObj coor centres
         (
             centred_SMARTS_coors_list,
             centred_molObj_coors_list,
+            SMARTS_coor_centre,
+            molObj_coor_centre,
         ) = _GeneralHelper_TranslateSMARTSAndMolObjCoorsToCentre(
             SMARTS_Coordinates=SMARTS_Coordinates,
             SMARTS_idx_to_atomIdx=SMARTS_idx_to_atomIdx,
             molObj=self,
         )
-        ## Rotate molObj coors to match SMARTS coors and minimise RMSD
+        ## Get Rotation matrix
+        RotationMatrix = _GeneralHelper_KabschRotation(
+            Mobile=centred_molObj_coors_list,
+            Template=centred_SMARTS_coors_list,
+        )
+        ## (1) Translate molecule to orgin centre
+        ## (2) Rotate molecule to fit SMARTS
+        ## (3) Translate molecule to SMARTS centre
+        for atomObj in self.AtomsList:
+            atomObj.Coordinates = (
+                RotationMatrix @ (atomObj.Coordinates - molObj_coor_centre)
+            ) + SMARTS_coor_centre
+        # Translate molObj atom positions onto SMARTS positions
+        ## Build trajectory dictionary
+        traj_dict, num_of_steps = _GeneralHelper_BuildTrajectoryDict(
+            atomIdx_to_SMARTSIdx=atomIdx_to_SMARTSIdx,
+            SMARTS_Coordinates=SMARTS_Coordinates,
+            traj_step_size=traj_step_size,
+            molObj=self,
+        )
+        fixed_atoms_idx = [atomIdx for atomIdx in traj_dict]
+        for idx in range(num_of_steps):
+            for atomIdx in fixed_atoms_idx:
+                self.AtomsList[atomIdx].Coordinates = traj_dict[atomIdx][idx]
+            self.OptimiseGeometry_xTB_bin(
+                xtb_binary_path=xtb_binary_path,
+                xtb_method=xtb_method,
+                fixed_atoms=fixed_atoms_idx,
+            )
 
-
-
-
-
-        # Fold molecule coordinates to match SMARTS coordinates
+    def ChangeMotif(
+        self,
+        Old_SMARTS_str: str,
+        New_SMARTS_str: str,
+    ):
+        rdkitMolObj = self.MoleculeToRDKitMol()
+        old_SMARTS_pattern = Chem.MolFromSmarts(Old_SMARTS_str)
+        new_SMARTS_pattern = Chem.MolFromSmarts(New_SMARTS_str)
+        atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = (
+            self.MatchSMARTSPatternToAtomIndices(SMARTS_String)
+        )
 
     # === Translate and Rotate Molecule, and Geometry Functions ===
 
@@ -4871,7 +4962,6 @@ $end
                 f.close()
             xtb_log_str = xtb_log_str.split(" energy:")[-1]
             self.electronic_energy = float(xtb_log_str.split("gnorm:")[0])
-            
 
         # Remove all output files
         for stringObj in [
@@ -4893,7 +4983,7 @@ $end
             "xtb.out",
             "gfnff_charges",
             "gfnff_topo",
-            ".sccnotconverged"
+            ".sccnotconverged",
         ]:
             try:
                 os.remove(workdir / stringObj)
