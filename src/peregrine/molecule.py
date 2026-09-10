@@ -36,6 +36,10 @@ from xyzgraph import build_graph
 
 import networkx as nx
 
+from openmm.app import PDBFile
+from pdbfixer import PDBFixer
+from openff.toolkit import Molecule as openffMolObj
+
 from .atom import Atom
 from .atom import ATOMIC_NUMBER_OF_PRIMITIVES
 
@@ -146,12 +150,12 @@ def _GeneralHelper_BuildTrajectoryDict(
         if SMARTS_Coordinates[atomIdx_to_SMARTSIdx[atomIdx]] is not None:
             start_pos = molObj.AtomsList[atomIdx].Coordinates
             end_pos = SMARTS_Coordinates[atomIdx_to_SMARTSIdx[atomIdx]]
-            distance = np.linalg.norm(start_pos - end_pos)
+            distance = np.linalg.norm(end_pos - start_pos)
             unit_vec = (start_pos - end_pos) / distance
             num_of_steps = int(distance / traj_step_size) + 1
             step_size = distance / num_of_steps
             trajectory = [
-                start_pos - (unit_vec * step_size * step_num)
+                start_pos + (unit_vec * step_size * step_num)
                 for step_num in range(0, num_of_steps + 1)
             ]
             if len(trajectory) > max_items:
@@ -167,6 +171,19 @@ def _GeneralHelper_BuildTrajectoryDict(
         else:
             new_traj_dict[atomIdx] = trajectory
     return (new_traj_dict, max_items)
+
+
+def _GeneralHelper_CalculateTrajectory(
+    start_pos: np.ndarray,
+    end_pos: np.ndarray,
+    traj_step_size: float,
+) -> list[np.ndarray]:
+    distance = np.linalg.norm(start_pos - end_pos)
+    unit_vector = (end_pos - start_pos) / distance
+    num_of_steps = int(distance / traj_step_size) + 1
+    step_size = distance / num_of_steps
+    trajectory = [start_pos + (unit_vector * step_size * step_num) for step_num in range(1, num_of_steps + 1)]
+    return trajectory
 
 
 def _ORCAHelper_XYZBlockToAtomsList(
@@ -2423,9 +2440,16 @@ class Molecule:
             SMARTS_idx = [int(i.split("]")[0]) for i in SMARTS_str.split(":")[1:]]
             atomIdx_to_SMARTSIdx = {i: j for i, j in zip(matches, SMARTS_idx)}
             SMARTS_idx_to_atomIdx = {i: j for i, j in zip(SMARTS_idx, matches)}
-            return (atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx)
+            return ((atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx))
+        elif len(matches) > 1:
+            dict_list = []
+            for match in matches:
+                SMARTS_idx = [int(i.split("]")[0]) for i in SMARTS_str.split(":")[1:]]
+                atomIdx_to_SMARTSIdx = {i: j for i, j in zip(match, SMARTS_idx)}
+                SMARTS_idx_to_atomIdx = {i: j for i, j in zip(SMARTS_idx, match)}
+                dict_list.append((atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx))
+            return tuple(dict_list)
         else:
-            print("Sort this code, need to account for multiple smarts matching")
             return None
 
     # === Write files & SMILES/SMARTS ===
@@ -3278,6 +3302,12 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             rdmolops.Kekulize(rdkit_mol, clearAromaticFlags=True)
         except rdkit.Chem.rdchem.KekulizeException:
             pass
+        # Attach the missing conformer
+        conf = Chem.Conformer(rdkit_mol.GetNumAtoms())
+        conf.Set3D(True)
+        for idx, atomObj in enumerate(self.AtomsList):
+            conf.SetAtomPosition(idx, atomObj.Coordinates)  # substitute your actual xyz attribute(s)
+        rdkit_mol.AddConformer(conf, assignId=True)
         return rdkit_mol
 
     @classmethod
@@ -3315,6 +3345,22 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         ASEMolecule.info["spin_multiplicity"] = self.Multiplicity
         ASEMolecule.info["charge"] = self.FormalCharge
         return ASEMolecule
+
+    def MoleculeToOpenMMMol(self) -> PDBFile:
+        rdkitMolObj = self.MoleculeToRDKitMol(SuppressRDKitWarnings=False)
+        pdb_block = Chem.MolToPDBBlock(rdkitMolObj)
+        with open(Path(__file__).parent / f"{self.Identifier}.pdb", "w") as f:
+            f.write(pdb_block)
+            f.close()
+        fixer = PDBFixer(f"{str(Path(__file__).parent)}/{self.Identifier}.pdb")
+        PDBFile.writeFile(fixer.topology, fixer.positions, open(Path(__file__).parent / f"{self.Identifier}.pdb", "w"))
+        openmmMolObj = PDBFile(f"{str(Path(__file__).parent)}/{self.Identifier}.pdb")
+        #os.remove(Path(__file__).parent / f"{self.Identifier}.pdb")
+        return openmmMolObj
+
+    def MoleculeToOpenFFMol(self) -> openffMolObj:
+        rdkitMolObj = self.MoleculeToRDKitMol(SuppressRDKitWarnings=False)
+        return openffMolObj.from_rdkit(rdkitMolObj, allow_undefined_stereo=True)
 
     # === Read molecule files ===
 
@@ -4533,7 +4579,13 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         xtb_binary_path: str,
         xtb_method: str = "gfnff",
         traj_step_size: int = 0.1,
+        fitting_algorithm: str = "sequential",
     ):
+        """
+        Fitting algorithm options:
+            - sequential
+            - simultaneous
+        """
         atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = (
             self.MatchSMARTSPatternToAtomIndices(SMARTS_String)
         )
@@ -4561,25 +4613,50 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             atomObj.Coordinates = (
                 RotationMatrix @ (atomObj.Coordinates - molObj_coor_centre)
             ) + SMARTS_coor_centre
-        # Translate molObj atom positions onto SMARTS positions
-        ## Build trajectory dictionary
-        traj_dict, num_of_steps = _GeneralHelper_BuildTrajectoryDict(
-            atomIdx_to_SMARTSIdx=atomIdx_to_SMARTSIdx,
-            SMARTS_Coordinates=SMARTS_Coordinates,
-            traj_step_size=traj_step_size,
-            molObj=self,
-        )
-        fixed_atoms_idx = [atomIdx for atomIdx in traj_dict]
-        for idx in range(num_of_steps):
-            for atomIdx in fixed_atoms_idx:
-                self.AtomsList[atomIdx].Coordinates = traj_dict[atomIdx][idx]
-            self.OptimiseGeometry_xTB_bin(
-                xtb_binary_path=xtb_binary_path,
-                xtb_method=xtb_method,
-                fixed_atoms=fixed_atoms_idx,
+
+        if fitting_algorithm == "simultaneous":
+            # Translate molObj atom positions onto SMARTS positions
+            ## Build trajectory dictionary
+            traj_dict, num_of_steps = _GeneralHelper_BuildTrajectoryDict(
+                atomIdx_to_SMARTSIdx=atomIdx_to_SMARTSIdx,
+                SMARTS_Coordinates=SMARTS_Coordinates,
+                traj_step_size=traj_step_size,
+                molObj=self,
+            )
+            fixed_atoms_idx = [atomIdx for atomIdx in traj_dict]
+            for idx in range(num_of_steps):
+                for atomIdx in fixed_atoms_idx:
+                    self.AtomsList[atomIdx].Coordinates = traj_dict[atomIdx][idx]
+                self.OptimiseGeometry_xTB_bin(
+                    xtb_binary_path=xtb_binary_path,
+                    xtb_method=xtb_method,
+                    fixed_atoms=fixed_atoms_idx,
+                )
+        elif fitting_algorithm == "sequential":
+            fixed_atoms_idx = []
+            for SMARTS_idx in SMARTS_Coordinates:
+                if SMARTS_Coordinates[SMARTS_idx] is not None:
+                    fixed_atoms_idx.append(SMARTS_idx_to_atomIdx[SMARTS_idx])
+                    # Calculate trajectory
+                    trajectory = _GeneralHelper_CalculateTrajectory(
+                        start_pos=self.AtomsList[fixed_atoms_idx[-1]].Coordinates,
+                        end_pos=SMARTS_Coordinates[SMARTS_idx],
+                        traj_step_size=traj_step_size,
+                    )
+                    for traj_coors in trajectory:
+                        self.AtomsList[fixed_atoms_idx[-1]].Coordinates = traj_coors
+                        self.OptimiseGeometry_xTB_bin(
+                            xtb_binary_path=xtb_binary_path,
+                            xtb_method=xtb_method,
+                            fixed_atoms=fixed_atoms_idx,
+                        )
+                    
+        else:
+            raise ValueError(
+                f"Invalid fitting_algorithm: {fitting_algorithm}. Must be 'sequential' or 'simultaneous'."
             )
 
-    def ChangeMotif(
+    def ChangeAtomsWithSMARTS(
         self,
         Old_SMARTS_str: str,
         New_SMARTS_str: str,
@@ -4588,8 +4665,15 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         old_SMARTS_pattern = Chem.MolFromSmarts(Old_SMARTS_str)
         new_SMARTS_pattern = Chem.MolFromSmarts(New_SMARTS_str)
         atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = (
-            self.MatchSMARTSPatternToAtomIndices(SMARTS_String)
+            self.MatchSMARTSPatternToAtomIndices(Old_SMARTS_str)
         )
+        old_smarts_atoms = [i.split(":") for i in Old_SMARTS_str.split("]")[:-1]]
+        old_smarts_atoms = {int(i[1]): i[0].split("[")[1] for i in old_smarts_atoms}
+        new_smarts_atoms = [i.split(":") for i in New_SMARTS_str.split("]")[:-1]]
+        new_smarts_atoms = {int(i[1]): i[0].split("[")[1] for i in new_smarts_atoms}
+        for SMARTS_idx in old_smarts_atoms:
+            if old_smarts_atoms[SMARTS_idx] != new_smarts_atoms[SMARTS_idx]:
+                self.AtomsList[SMARTS_idx_to_atomIdx[SMARTS_idx]].AtomicSymbol = new_smarts_atoms[SMARTS_idx]
 
     # === Translate and Rotate Molecule, and Geometry Functions ===
 
@@ -4807,6 +4891,11 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         energy_tol: float = 1e-6,
         force_field: str = "UFF",
         suppress_warnings: bool = True,
+        planar_SMARTS: list[str] = [
+            "[C:1](=[O:2])[N:3]",
+            "[#6X3:1]1~[#6X3:2]~[#7X2:3]~[#6X3:4]~[#7X3:5]~1",
+            "[#6X3:1]12~[#6X3:2](~[#6X3:3]~[#6X3:4]~[#7X3:5]~2)~[#6X3:6]~[#6X3:7]~[#6X3:8]~[#6X3:9]~1",
+        ]
     ) -> float:
         if suppress_warnings:
             ob.obErrorLog.SetOutputLevel(0)
@@ -4824,6 +4913,35 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         obmol = molPybelObj.OBMol
         obmol.PerceiveBondOrders()
         obmol.SetAromaticPerceived(False)
+        # define which atoms are planar based on SMARTS
+        for SMARTS in planar_SMARTS:
+            matching_indices_tuple = self.MatchSMARTSPatternToAtomIndices(SMARTS)
+            if matching_indices_tuple is None:
+                continue
+            if (
+                len(matching_indices_tuple) == 2
+                and type(matching_indices_tuple[0]) == dict
+                and type(matching_indices_tuple[1]) == dict
+            ):
+                atomIdx_to_SMARTSIdx, _ = matching_indices_tuple
+                for atomIdx in atomIdx_to_SMARTSIdx:
+                    ob_atom = obmol.GetAtom(atomIdx + 1)
+                    #print("Setting Hybridisation to 2")
+                    #print(f"Atom {ob_atom.GetIdx()} ({ob_atom.GetType()}) Old Hyb: {ob_atom.GetHyb()}")
+                    ob_atom.SetHyb(2)
+                    ob_atom.GetHyb()
+                    ob_atom.SetType(f"{self.AtomsList[atomIdx].AtomicSymbol}2")
+                    ob_atom.GetType()
+                    #print(f"Atom {ob_atom.GetIdx()} ({ob_atom.GetType()}) New Hyb: {ob_atom.GetHyb()}")
+            else:
+                for matching_indices in matching_indices_tuple:
+                    atomIdx_to_SMARTSIdx, _ = matching_indices
+                    for atomIdx in atomIdx_to_SMARTSIdx:
+                        ob_atom = obmol.GetAtom(atomIdx + 1) 
+                        ob_atom.SetHyb(2)
+                        ob_atom.GetHyb()
+                        ob_atom.SetType(f"{self.AtomsList[atomIdx].AtomicSymbol}2")
+                        ob_atom.GetType()
         # Set up constraints
         if fixed_atoms:
             constrs = ob.OBFFConstraints()

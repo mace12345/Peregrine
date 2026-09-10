@@ -31,6 +31,9 @@ dependencies:
   - pyberny
   - umap-learn
   - geometric
+  - openmm
+  - pdbfixer
+  - openmmforcefields
   - pip:
     - xyzgraph
     - black
