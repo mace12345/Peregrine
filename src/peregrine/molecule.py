@@ -2440,7 +2440,7 @@ class Molecule:
             SMARTS_idx = [int(i.split("]")[0]) for i in SMARTS_str.split(":")[1:]]
             atomIdx_to_SMARTSIdx = {i: j for i, j in zip(matches, SMARTS_idx)}
             SMARTS_idx_to_atomIdx = {i: j for i, j in zip(SMARTS_idx, matches)}
-            return ((atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx))
+            return ((atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx),)
         elif len(matches) > 1:
             dict_list = []
             for match in matches:
@@ -4577,7 +4577,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         SMARTS_String: str,
         SMARTS_Coordinates: dict,
         xtb_binary_path: str,
-        xtb_method: str = "gfnff",
+        method: str = "gfnff",
         traj_step_size: int = 0.1,
         fitting_algorithm: str = "sequential",
     ):
@@ -4586,9 +4586,16 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             - sequential
             - simultaneous
         """
-        atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = (
+        method = method.lower()
+        matching_dicts = (
             self.MatchSMARTSPatternToAtomIndices(SMARTS_String)
         )
+        if matching_dicts is None:
+            raise ValueError("Could not match SMARTS with Molecule Object")
+        elif len(matching_dicts) == 1:
+            atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = matching_dicts[0]
+        else:
+            raise ValueError(f"SMARTS matching returned {len(matching_dicts)} possibilities, not 1 possibility")
         # Minimise RMSD between SMARTS_Coordinates and Molecule Coordinates
         ## Get SMARTS and molObj coor centres
         (
@@ -4627,11 +4634,16 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             for idx in range(num_of_steps):
                 for atomIdx in fixed_atoms_idx:
                     self.AtomsList[atomIdx].Coordinates = traj_dict[atomIdx][idx]
-                self.OptimiseGeometry_xTB_bin(
-                    xtb_binary_path=xtb_binary_path,
-                    xtb_method=xtb_method,
-                    fixed_atoms=fixed_atoms_idx,
-                )
+                if method == "uff":
+                    self.OptimiseGeometry_UFF(
+                        fixed_atoms=fixed_atoms_idx,
+                    )
+                else:
+                    self.OptimiseGeometry_xTB_bin(
+                        xtb_binary_path=xtb_binary_path,
+                        xtb_method=method,
+                        fixed_atoms=fixed_atoms_idx,
+                    )
         elif fitting_algorithm == "sequential":
             fixed_atoms_idx = []
             for SMARTS_idx in SMARTS_Coordinates:
@@ -4645,11 +4657,16 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                     )
                     for traj_coors in trajectory:
                         self.AtomsList[fixed_atoms_idx[-1]].Coordinates = traj_coors
-                        self.OptimiseGeometry_xTB_bin(
-                            xtb_binary_path=xtb_binary_path,
-                            xtb_method=xtb_method,
-                            fixed_atoms=fixed_atoms_idx,
-                        )
+                        if method == "uff":
+                            self.OptimiseGeometry_UFF(
+                                fixed_atoms=fixed_atoms_idx,
+                            )
+                        else:
+                            self.OptimiseGeometry_xTB_bin(
+                                xtb_binary_path=xtb_binary_path,
+                                xtb_method=method,
+                                fixed_atoms=fixed_atoms_idx,
+                            )
                     
         else:
             raise ValueError(
@@ -4664,9 +4681,15 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         rdkitMolObj = self.MoleculeToRDKitMol()
         old_SMARTS_pattern = Chem.MolFromSmarts(Old_SMARTS_str)
         new_SMARTS_pattern = Chem.MolFromSmarts(New_SMARTS_str)
-        atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = (
+        matching_dicts = (
             self.MatchSMARTSPatternToAtomIndices(Old_SMARTS_str)
         )
+        if matching_dicts is None:
+            raise ValueError("Could not match SMARTS with Molecule Object")
+        elif len(matching_dicts) == 1:
+            atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = matching_dicts[0]
+        else:
+            raise ValueError(f"SMARTS matching returned {len(matching_dicts)} possibilities, not 1 possibility")
         old_smarts_atoms = [i.split(":") for i in Old_SMARTS_str.split("]")[:-1]]
         old_smarts_atoms = {int(i[1]): i[0].split("[")[1] for i in old_smarts_atoms}
         new_smarts_atoms = [i.split(":") for i in New_SMARTS_str.split("]")[:-1]]
@@ -4887,14 +4910,19 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
     def OptimiseGeometry_UFF(
         self,
         fixed_atoms: list[int] | None = None,
+        constrain_bonds: list[list[int, int, float]] | None = None,
         max_steps: int = 700,
         energy_tol: float = 1e-6,
         force_field: str = "UFF",
         suppress_warnings: bool = True,
+        # TODO: Universal heteroatom SMARTS
         planar_SMARTS: list[str] = [
             "[C:1](=[O:2])[N:3]",
-            "[#6X3:1]1~[#6X3:2]~[#7X2:3]~[#6X3:4]~[#7X3:5]~1",
-            "[#6X3:1]12~[#6X3:2](~[#6X3:3]~[#6X3:4]~[#7X3:5]~2)~[#6X3:6]~[#6X3:7]~[#6X3:8]~[#6X3:9]~1",
+            "[#6X3,#7X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Not bonded to metal
+            "[#6X3,#7X3:1]1~[#6X3,#7X3:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to metal ortho pos
+            "[#6X3,#7X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X3:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to metal meta pos
+            "[#6X3,#7X2,#8X2,#16X2,#17X2:1]1~[#6X3,#7X2,#8X2,#16X2,#17X2:2]~[#6X3,#7X2,#8X2,#16X2,#17X2:3]~[#6X3,#7X2,#8X2,#16X2,#17X2:4]~[#6X3,#7X2,#8X2,#16X2,#17X2:5]~[#6X3,#7X2,#8X2,#16X2,#17X2:6]~1", # Not bonded to metal
+            "[#6X3,#7X3,#8X3,#16X3,#17X3:1]1~[#6X3,#7X2,#8X2,#16X2,#17X2:2]~[#6X3,#7X2,#8X2,#16X2,#17X2:3]~[#6X3,#7X2,#8X2,#16X2,#17X2:4]~[#6X3,#7X2,#8X2,#16X2,#17X2:5]~[#6X3,#7X2,#8X2,#16X2,#17X2:6]~1", # Bonded to metal
         ]
     ) -> float:
         if suppress_warnings:
@@ -4942,11 +4970,19 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                         ob_atom.GetHyb()
                         ob_atom.SetType(f"{self.AtomsList[atomIdx].AtomicSymbol}2")
                         ob_atom.GetType()
-        # Set up constraints
-        if fixed_atoms:
+        # Set up fixed atom constraints
+        if fixed_atoms is not None:
             constrs = ob.OBFFConstraints()
+        elif constrain_bonds is not None:
+            constrs = ob.OBFFConstraints()
+        else:
+            pass
+        if fixed_atoms:
             for atom_idx in fixed_atoms:
                 constrs.AddAtomConstraint(atom_idx + 1)
+        if constrain_bonds:
+            for bond in constrain_bonds:
+                constrs.AddDistanceConstraint(bond[0]+1, bond[1]+1, bond[2])
         # Set up force field
         ff = ob.OBForceField.FindForceField(force_field)
         if not ff:
@@ -4967,7 +5003,10 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         ff.GetCoordinates(molPybelObj.OBMol)
         for ob_atom, atomObj in zip(molPybelObj, self.AtomsList):
             atomObj.Coordinates = np.array(ob_atom.coords)
-        return ff.Energy()
+        self.calculation_method = "uff"
+        self.electronic_energy = ff.Energy()
+        ff.GetConstraints().Clear()
+        del ff, molPybelObj, obmol
 
     def OptimiseGeometry_xTB_bin(
         self,
@@ -4978,6 +5017,8 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         opt_cycles: int | None = None,
         xtb_method: str = "gxtb",
         fixed_atoms: list[int] | None = None,
+        constrain_bonds: list[list[int, int, float]] | None = None,
+        force_constant: float = 10.0,
         time_limit: float = 100,
     ):
         self.calculation_method = xtb_method
@@ -4991,7 +5032,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         xyz_path = workdir / f"{self.Identifier}_temp.xyz"
         with open(xyz_path, "w") as f:
             f.write(xyz_string)
-        cmd = [f"{xtb_binary_path}xtb", str(xyz_path)]
+        cmd = [f"{xtb_binary_path}xtb", str(xyz_path), "--parallel 1"]
 
         # Define fixed atoms
         if fixed_atoms:
@@ -5003,6 +5044,19 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
     atoms: {atom_string}
 $end
 """
+            inp_path = workdir / "xtb.inp"
+            with open(inp_path, "w") as f:
+                f.write(input_string)
+            cmd += ["--input", str(inp_path)]
+
+        # Define constrained bonds
+        if constrain_bonds:
+            bond_string = ""
+            for constrained_bond in constrain_bonds:
+                bond_string += f"   distance: {constrained_bond[0]} {constrained_bond[1]} {constrained_bond[2]}\n"
+            input_string = f"""$constrain
+{bond_string}   force constant {force_constant}
+$end"""
             inp_path = workdir / "xtb.inp"
             with open(inp_path, "w") as f:
                 f.write(input_string)
