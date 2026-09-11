@@ -819,7 +819,9 @@ ATOMIC_NUMBER_OF_PRIMITIVES = {
     "Pm": 61,
     "Sm": 62,
     "Eu": 63,
-    "Gd": 64,
+    "Gd": {
+        "def2-tzvp": 47,
+    },
     "Tb": 65,
     "Dy": {
         "def2-tzvp": 47,
@@ -828,7 +830,9 @@ ATOMIC_NUMBER_OF_PRIMITIVES = {
     "Er": 68,
     "Tm": 69,
     "Yb": 70,
-    "Lu": 71,
+    "Lu": {
+        "def2-tzvp": 48,
+    },
     "Hf": 72,
     "Ta": 73,
     "W": 74,
