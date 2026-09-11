@@ -4921,8 +4921,15 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             "[#6X3,#7X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Not bonded to metal
             "[#6X3,#7X3:1]1~[#6X3,#7X3:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to metal ortho pos
             "[#6X3,#7X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X3:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to metal meta pos
+            "[#8X2,#16X2:1]1~[#6X3,#7X2:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Not bonded to metal
+            "[#8X3,#16X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to chalgogen
+            "[#8X2,#16X2:1]1~[#6X3,#7X3:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to metal ortho pos
+            "[#8X2,#16X2:1]1~[#6X3,#7X2:2]~[#6X3,#7X3:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to metal meta pos
             "[#6X3,#7X2,#8X2,#16X2,#17X2:1]1~[#6X3,#7X2,#8X2,#16X2,#17X2:2]~[#6X3,#7X2,#8X2,#16X2,#17X2:3]~[#6X3,#7X2,#8X2,#16X2,#17X2:4]~[#6X3,#7X2,#8X2,#16X2,#17X2:5]~[#6X3,#7X2,#8X2,#16X2,#17X2:6]~1", # Not bonded to metal
             "[#6X3,#7X3,#8X3,#16X3,#17X3:1]1~[#6X3,#7X2,#8X2,#16X2,#17X2:2]~[#6X3,#7X2,#8X2,#16X2,#17X2:3]~[#6X3,#7X2,#8X2,#16X2,#17X2:4]~[#6X3,#7X2,#8X2,#16X2,#17X2:5]~[#6X3,#7X2,#8X2,#16X2,#17X2:6]~1", # Bonded to metal
+        ],
+        tetrahedral_SMARTS: list[str] = [
+            "[SX3,SeX3]",
         ]
     ) -> float:
         if suppress_warnings:
@@ -4941,35 +4948,32 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         obmol = molPybelObj.OBMol
         obmol.PerceiveBondOrders()
         obmol.SetAromaticPerceived(False)
+        # define which atoms are tetrahedral sp3 based on SMARTS
+        for SMARTS in tetrahedral_SMARTS:
+            matching_indices_tuple = self.MatchSMARTSPatternToAtomIndices(SMARTS)
+            if matching_indices_tuple is None:
+                continue
+            for matching_indices in matching_indices_tuple:
+                atomIdx_to_SMARTSIdx, _ = matching_indices
+                for atomIdx in atomIdx_to_SMARTSIdx:
+                    ob_atom = obmol.GetAtom(atomIdx + 1) 
+                    ob_atom.SetHyb(3)
+                    ob_atom.GetHyb()
+                    ob_atom.SetType(f"{self.AtomsList[atomIdx].AtomicSymbol}3")
+                    ob_atom.GetType()
         # define which atoms are planar based on SMARTS
         for SMARTS in planar_SMARTS:
             matching_indices_tuple = self.MatchSMARTSPatternToAtomIndices(SMARTS)
             if matching_indices_tuple is None:
                 continue
-            if (
-                len(matching_indices_tuple) == 2
-                and type(matching_indices_tuple[0]) == dict
-                and type(matching_indices_tuple[1]) == dict
-            ):
-                atomIdx_to_SMARTSIdx, _ = matching_indices_tuple
+            for matching_indices in matching_indices_tuple:
+                atomIdx_to_SMARTSIdx, _ = matching_indices
                 for atomIdx in atomIdx_to_SMARTSIdx:
-                    ob_atom = obmol.GetAtom(atomIdx + 1)
-                    #print("Setting Hybridisation to 2")
-                    #print(f"Atom {ob_atom.GetIdx()} ({ob_atom.GetType()}) Old Hyb: {ob_atom.GetHyb()}")
+                    ob_atom = obmol.GetAtom(atomIdx + 1) 
                     ob_atom.SetHyb(2)
                     ob_atom.GetHyb()
                     ob_atom.SetType(f"{self.AtomsList[atomIdx].AtomicSymbol}2")
                     ob_atom.GetType()
-                    #print(f"Atom {ob_atom.GetIdx()} ({ob_atom.GetType()}) New Hyb: {ob_atom.GetHyb()}")
-            else:
-                for matching_indices in matching_indices_tuple:
-                    atomIdx_to_SMARTSIdx, _ = matching_indices
-                    for atomIdx in atomIdx_to_SMARTSIdx:
-                        ob_atom = obmol.GetAtom(atomIdx + 1) 
-                        ob_atom.SetHyb(2)
-                        ob_atom.GetHyb()
-                        ob_atom.SetType(f"{self.AtomsList[atomIdx].AtomicSymbol}2")
-                        ob_atom.GetType()
         # Set up fixed atom constraints
         if fixed_atoms is not None:
             constrs = ob.OBFFConstraints()
