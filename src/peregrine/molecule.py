@@ -1941,6 +1941,11 @@ class Molecule:
         self.vibrational_frequencies = None
         self.spin_contamination = None
         self.number_of_optimisation_steps = None
+        for atomObj in self.AtomsList:
+            atomObj.MullikenCharge = None
+            atomObj.LowdinCharge = None
+            atomObj.LowdinSpin = None
+            atomObj.Gradient = None
 
     def DeriveMoleculeSMILES(self):
         # Split substructuures into their own molecule objects
@@ -4698,6 +4703,67 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             if old_smarts_atoms[SMARTS_idx] != new_smarts_atoms[SMARTS_idx]:
                 self.AtomsList[SMARTS_idx_to_atomIdx[SMARTS_idx]].AtomicSymbol = new_smarts_atoms[SMARTS_idx]
 
+    def ChangeMetalCentreCoordination(
+            self,
+            BondLengthDict: dict,
+            max_coor_num: int = 8,
+            MetalAtomObject: Atom | None = None,
+            MetalAtomLabel: str | None = None,
+            MetalAtomIndex: int | None = None,
+            ExcludeAtomSMARTS: dict[str, list[int]] | None = None,
+    ):
+        if MetalAtomObject is not None:
+            pass
+        elif MetalAtomLabel is not None:
+            MetalAtomObject = self.AtomsDict[MetalAtomLabel][1]
+        elif MetalAtomIndex is not None:
+            MetalAtomObject = self.AtomsList[MetalAtomIndex]
+        else:
+            raise ValueError("Requires MetalAtomObject, MetalAtomLabel, or MetalAtomIndex")
+        # Exclude atoms based on SMARTS if provided
+        excluded_atom_indices = []
+        if ExcludeAtomSMARTS is not None:
+            for SMARTS in ExcludeAtomSMARTS:
+                matching_dicts = self.MatchSMARTSPatternToAtomIndices(SMARTS)
+                exclude_SMARTS_idx_list = ExcludeAtomSMARTS[SMARTS]
+                if matching_dicts is not None:
+                    for atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx in matching_dicts:
+                        for atomIdx, SMARTSIdx in zip(atomIdx_to_SMARTSIdx, atomIdx_to_SMARTSIdx.values()):
+                            if atomIdx not in excluded_atom_indices and SMARTSIdx in exclude_SMARTS_idx_list:
+                                excluded_atom_indices.append(atomIdx)
+        # Get metal atom with atom distances
+        distances_dict = {}
+        for atomObj in self.AtomsList:
+            if atomObj.Label == MetalAtomObject.Label:
+                continue
+            elif self.AtomsDict[atomObj.Label][0] in excluded_atom_indices:
+                continue
+            distances_dict[atomObj.Label] = np.linalg.norm(
+                atomObj.Coordinates - MetalAtomObject.Coordinates
+            )
+        # Sort distances dict by distance
+        distances_dict = dict(sorted(distances_dict.items(), key=lambda item: item[1]))
+        # Remove all bonds to metal atom
+        for atomObj in self.GetAtomNeighbours(AtomObject=MetalAtomObject):
+            self.RemoveBond(
+                AtomObjects=[MetalAtomObject, atomObj]
+            )
+        # Add bonds to metal atom based on distances and bond length dictionary
+        coor_num = 0
+        for atomLabel in distances_dict:
+            if (
+                self.AtomsDict[atomLabel][1].AtomicSymbol in BondLengthDict
+                and distances_dict[atomLabel] <= BondLengthDict[self.AtomsDict[atomLabel][1].AtomicSymbol]
+            ):
+                self.AddBond(
+                    AtomLabels=[MetalAtomObject.Label, atomLabel],
+                    BondOrder=1
+                )
+                coor_num += 1
+                if coor_num >= max_coor_num:
+                    break
+                pass
+
     # === Translate and Rotate Molecule, and Geometry Functions ===
 
     def TranslateMolecule(
@@ -5025,6 +5091,8 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         force_constant: float = 10.0,
         time_limit: float = 100,
     ):
+        self.DeleteCalculatedAttributes()
+        
         self.calculation_method = xtb_method
 
         # Define tempory work directory

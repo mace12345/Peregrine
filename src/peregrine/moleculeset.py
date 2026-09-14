@@ -16,8 +16,8 @@ import pandas as pd
 import numpy as np
 
 
-def _Psi4Helper_CalculateRAM(
-    package: str, method: str, number_of_primitives: int, restricted: bool
+def _GeneralHelper_CalculateRAM(
+    package: str, method: str, number_of_primitives: int,
 ) -> int:
     """
     RAM (MB) = A * (primitives ^ x) + c
@@ -25,22 +25,16 @@ def _Psi4Helper_CalculateRAM(
     coeff_dict = {
         "Psi4": {
             "wb97m-d3bj": {
-                "A": 5.437e-02,
-                "x": 2.23,
-                "c": 10000,
+                "A": 2.98120298e-01,
+                "x": 1.95881368e+00,
+                "c": 4000,
             },
         }
     }
-    if restricted == True:
-        A = coeff_dict[package][method]["A"]
-        x = coeff_dict[package][method]["x"]
-        c = coeff_dict[package][method]["c"]
-        return int((A * (number_of_primitives**x)) + c)
-    else:
-        A = coeff_dict[package][method]["A"]
-        x = coeff_dict[package][method]["x"]
-        c = coeff_dict[package][method]["c"]
-        return int((2 * A * (number_of_primitives**x)) + c)
+    A = coeff_dict[package][method]["A"]
+    x = coeff_dict[package][method]["x"]
+    c = coeff_dict[package][method]["c"]
+    return int((A * (number_of_primitives**x)) + c)
 
 
 def _GeneralHelper_TooSmallBondAngle(
@@ -557,7 +551,7 @@ class MoleculeSet:
                         local_basissets
                     )
 
-            orca_inp, queue_sh = molObj.WritePsi4Input(
+            psi4_inp, queue_sh = molObj.WritePsi4Input(
                 method=method,
                 basisset=basisset,
                 local_basisset=local_basissets,
@@ -569,11 +563,10 @@ class MoleculeSet:
                 set_options=set_options,
                 CPU_count=CPU_count,
                 max_memory=(
-                    _Psi4Helper_CalculateRAM(
+                    _GeneralHelper_CalculateRAM(
                         package="Psi4",
                         method=method,
                         number_of_primitives=num_basisset_funcs,
-                        restricted=restricted,
                     )
                     if max_memory is None
                     else max_memory
@@ -586,7 +579,7 @@ class MoleculeSet:
             )
 
             with open(psi4_file_directory / f"{molObj.Identifier}.py", "w") as f:
-                f.write(orca_inp)
+                f.write(psi4_inp)
                 f.close()
             if job_scheduler_used == "slurm":
                 submit_jobs += f"sbatch {molObj.Identifier}.sh\n"
