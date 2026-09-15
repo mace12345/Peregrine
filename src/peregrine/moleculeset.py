@@ -74,6 +74,8 @@ def _xTBBinHelper_OptimiseOne(args):
         xtb_method,
         fixed_atoms,
         time_limit,
+        optimise_geometry,
+        get_gradients,
     ) = args
     try:
         new_molecule = Molecule.OptimiseGeometry_xTB_bin(
@@ -85,6 +87,8 @@ def _xTBBinHelper_OptimiseOne(args):
             xtb_method=xtb_method,
             fixed_atoms=fixed_atoms,
             time_limit=time_limit,
+            optimise_geometry=optimise_geometry,
+            get_gradients=get_gradients,
         )
     except Exception:
         return identifier, None, traceback.format_exc()
@@ -974,6 +978,8 @@ class MoleculeSet:
         xtb_method: str = "gxtb",
         fixed_atoms: list[int] | None = None,
         time_limit: float = 100,
+        optimise_geometry: bool = True,
+        get_gradients: bool = False,
     ):
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         items = [
@@ -988,6 +994,8 @@ class MoleculeSet:
                 xtb_method,
                 fixed_atoms,
                 time_limit,
+                optimise_geometry,
+                get_gradients,
             )
             for molObj in list(self.MoleculesDict.values())
         ]
@@ -1021,3 +1029,30 @@ class MoleculeSet:
         instance = MoleculeSet()
         instance.MoleculesDict = {item[1].Identifier: item[1] for item in small_molObjs}
         return instance
+
+    def CalculateRMSD(self, other: "MoleculeSet") -> pd.DataFrame:
+        """
+        Calculate the RMSD between two MoleculeSets.
+
+        Args:
+            other (MoleculeSet): Another MoleculeSet to compare with.
+
+        Returns:
+            float: The RMSD value between the two MoleculeSets.
+        """
+        if set(self.MoleculesDict.keys()) != set(other.MoleculesDict.keys()):
+            raise ValueError("MoleculeSets must have the same identifiers for RMSD calculation.")
+        rmsd_values = []
+        identifiers = sorted(self.MoleculesDict.keys())
+        for identifier in identifiers:
+            mol1 = self.MoleculesDict[identifier]
+            mol2 = other.MoleculesDict[identifier]
+            rmsd_values.append(mol1.CalculateRMSD(mol2))
+        RMSD_df = pd.DataFrame(
+            data={
+                "Identifier": identifiers,
+                "RMSD": rmsd_values,
+            }
+        )
+        RMSD_df.set_index("Identifier", inplace=True)
+        return RMSD_df

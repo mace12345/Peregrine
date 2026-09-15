@@ -2415,6 +2415,42 @@ class Molecule:
                 n_atoms.append(self.AtomsList[idx])
         return n_atoms
 
+    def CalculateRMSD(self, other_molObj: "Molecule", include_hydrogen: bool = False) -> float:
+        """
+        Calculate the root mean square deviation (RMSD) between two molecules.
+
+        The RMSD is calculated based on the atomic coordinates of the two molecules.
+        Both molecules must have the same number of atoms and the same atom ordering.
+
+        Parameters:
+        other_molObj (Molecule): Another Molecule object to compare against.
+        include_hydrogen (bool): Whether to include hydrogen atoms in the calculation.
+        """
+        # Make list of atom coordinates, excluding hydrogens if 'include_hydrogen == False'
+        mol1_coords = []
+        mol2_coords = []
+        for i, atomObj in enumerate(self.AtomsList):
+            if include_hydrogen or atomObj.AtomicSymbol != "H":
+                mol1_coords.append(atomObj.Coordinates)
+        for i, atomObj in enumerate(other_molObj.AtomsList):
+            if include_hydrogen or atomObj.AtomicSymbol != "H":
+                mol2_coords.append(atomObj.Coordinates)
+        mol1_coords = np.array(mol1_coords)
+        mol2_coords = np.array(mol2_coords)
+        # Find centre of gravity of both sets of atom coordinates
+        # Center both sets of coordinates to their respective centroids
+        mol1_centroid = np.mean(mol1_coords, axis=0)
+        mol2_centroid = np.mean(mol2_coords, axis=0)
+        mol1_coords -= mol1_centroid
+        mol2_coords -= mol2_centroid
+        # Kabsch algorithm to calculate rotation matrix
+        rotation_matrix = _GeneralHelper_KabschRotation(mol1_coords, mol2_coords)
+        # Rotate to align both sets of coordinates
+        mol1_coords_rotated = np.dot(mol1_coords, rotation_matrix)
+        # Calculate RMSD between both sets of coordinates
+        rmsd = np.sqrt(np.mean(np.sum((mol1_coords_rotated - mol2_coords) ** 2, axis=1)))
+        return rmsd
+
     # === Get atomic descriptors ===
 
     def GetSOAPDescriptors(
@@ -3511,6 +3547,9 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             # Parse optional properties
             # including gradient of atom
             Gradient = np.array([None, None, None])
+            LowdinSpin = None
+            MullikenCharge = None
+            LowdinCharge = None
             for i in range(6, len(parts)):
                 if parts[i].startswith("CHG="):
                     try:
@@ -3536,6 +3575,12 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                         .replace("]", "")
                         .split(",")
                     ]
+                elif parts[i].startswith("LDS"):
+                    LowdinSpin=float(parts[i].split("=")[1])
+                elif parts[i].startswith("MKC"):
+                    MullikenCharge=float(parts[i].split("=")[1])
+                elif parts[i].startswith("LDC"):
+                    LowdinCharge=float(parts[i].split("=")[1])
             atomObj = Atom(
                 Label=f"{atom_symbol}{mol_idx}",
                 AtomicSymbol=atom_symbol,
@@ -3545,6 +3590,12 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                 SMARTSCentre=SMARTSCentre,
                 SOAPDescriptor=SOAPDescriptor,
             )
+            if LowdinSpin is not None:
+                atomObj.LowdinSpin = LowdinSpin
+            if MullikenCharge is not None:
+                atomObj.MullikenCharge = MullikenCharge
+            if LowdinCharge is not None:
+                atomObj.LowdinCharge = LowdinCharge
             if Gradient[0] is None and Gradient[1] is None and Gradient[2] is None:
                 pass
             else:
@@ -5155,8 +5206,11 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         constrain_bonds: list[list[int, int, float]] | None = None,
         force_constant: float = 10.0,
         time_limit: float = 100,
+        optimise_geometry: bool = True,
+        get_gradients: bool = False,
     ):
         self.DeleteCalculatedAttributes()
+        self.DeriveBasicAttributes()
         
         self.calculation_method = xtb_method
 
@@ -5202,11 +5256,16 @@ $end"""
         # Command for xtb optimisation
         cmd += [
             f"--{xtb_method}",
-            "--opt",
         ]
-        self.calculation_method = xtb_method
-        if opt_tol is not None:
-            cmd.append(opt_tol)
+        if optimise_geometry:
+            cmd += [
+                "--opt",
+            ]
+            self.calculation_method = xtb_method
+            if opt_tol is not None:
+                cmd.append(opt_tol)
+        elif get_gradients:
+            cmd.append("--grad")
 
         # Define formal charge and multiplicity of molecule
         cmd += [
@@ -5272,6 +5331,22 @@ $end"""
             xtb_log_str = xtb_log_str.split(" energy:")[-1]
             self.electronic_energy = float(xtb_log_str.split("gnorm:")[0])
 
+        # Get Gradients
+        if get_gradients:
+            if "gradient" in os.listdir(workdir):
+                with open(workdir / "gradient", "r") as f:
+                    grad_str = f.read()
+                    f.close()
+                grad_list = [
+                    [
+                        float(j) for j in i.split()
+                    ] for i in grad_str.split(
+                        "\n"
+                    )[2:] if len(i.split()) == 3
+                ]
+                for atomObj, grad in zip(self.AtomsList, grad_list):
+                    atomObj.Gradient = np.array(grad)
+                
         # Remove all output files
         for stringObj in [
             "charges",
@@ -5288,6 +5363,7 @@ $end"""
             ".xtboptok",
             "xtb.inp",
             f"{self.Identifier}_temp.xyz",
+            f"{self.Identifier}_temp.engrad",
             "NOT_CONVERGED",
             "xtb.out",
             "gfnff_charges",
