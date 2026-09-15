@@ -487,7 +487,7 @@ class MoleculeSet:
         max_memory: int | None = None,
         max_time: None | int = 2880,
         job_scheduler_used: None | str = "slurm",
-        file_types_to_save: list[str] = [".out", ".json"],
+        file_types_to_save: list[str] = [".out", ".json", ".fock"],
         psi4_command: str | None = None,
         scratch_dir: str | None = None,
         remove_negative_frequencies: bool = True,
