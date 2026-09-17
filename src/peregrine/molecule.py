@@ -49,6 +49,8 @@ eV_to_Eh = 27.211407953
 BohrRad_to_Angstrom = 0.529177
 J_to_cal = 0.2390057361
 Eh_to_kcal = 627.5096080310
+R_JKmol = 8.31446261815324
+T_K = 298.15
 
 # === Important Physical Constants ===
 
