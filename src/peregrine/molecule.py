@@ -1116,7 +1116,9 @@ psi4MolObj = psi4.geometry('''
 {FormalCharge} {Multiplicity}
 {xyz_block}
 units angstrom
-
+symmetry c1
+noreorient
+nocom
 """
     psi4_str += "''',\n)\n"
     return psi4_str
@@ -1595,6 +1597,84 @@ def _Psi4Helper_ConstructMolObjFromScratch(
     pass
 
 
+def _Psi4Helper_RetrieveHOMOEnergyFromOutFile(psi4_out_str: str) -> float | None:
+    # Read out file to retreive HOMO energy
+    str_bool = "    Orbital Energies [Eh]\n    ---------------------\n\n" in psi4_out_str
+    unrestricted = "    Alpha Occupied:                                                       " in psi4_out_str
+    if str_bool == True and unrestricted == False:
+        orbital_energies = psi4_out_str.split(
+            "    Orbital Energies [Eh]\n    ---------------------\n\n"
+        )[-1]
+        orbital_energies = orbital_energies.split("\n   => Energetics <=")[0]
+        HOMO = orbital_energies.split(
+            "    Doubly Occupied:                                                      \n\n"
+        )[-1].split(
+            "\n\n    Virtual:                                                              \n\n"
+        )[0]
+        HOMO = [float(i) for i in HOMO.split() if _GeneralHelper_IsPureNumber(i)][-1]
+        return HOMO
+    elif str_bool == True and unrestricted == True:
+        orbital_energies = psi4_out_str.split(
+            "    Orbital Energies [Eh]\n    ---------------------\n\n"
+        )[-1]
+        orbital_energies = orbital_energies.split("\n   => Energetics <=")[0]
+        HOMO = orbital_energies.split(
+            "    Alpha Occupied:                                                       \n\n"
+        )[-1].split(
+            "\n\n    Alpha Virtual:                                                        \n\n"
+        )[0]
+        HOMO = [float(i) for i in HOMO.split() if _GeneralHelper_IsPureNumber(i)][-1]
+        return HOMO
+    else:
+        return None
+
+
+def _Psi4Helper_RetrieveLUMOEnergyFromOutFile(psi4_out_str: str) -> float | None:
+    # Read out file to retreive HOMO energy
+    str_bool = "    Orbital Energies [Eh]\n    ---------------------\n\n" in psi4_out_str
+    unrestricted = "    Alpha Virtual:                                                        " in psi4_out_str
+    if str_bool == True and unrestricted == False:
+        orbital_energies = psi4_out_str.split(
+            "    Orbital Energies [Eh]\n    ---------------------\n\n"
+        )[-1]
+        orbital_energies = orbital_energies.split("\n   => Energetics <=")[0]
+        LUMO = orbital_energies.split(
+            "    Virtual:                                                              \n\n"
+        )[-1].split(
+            "\n\n"
+        )[0]
+        LUMO = [float(i) for i in LUMO.split() if _GeneralHelper_IsPureNumber(i)][0]
+        return LUMO
+    elif str_bool == True and unrestricted == True:
+        orbital_energies = psi4_out_str.split(
+            "    Orbital Energies [Eh]\n    ---------------------\n\n"
+        )[-1]
+        orbital_energies = orbital_energies.split("\n   => Energetics <=")[0]
+        LUMO = orbital_energies.split(
+            "    Alpha Virtual:                                                        \n\n"
+        )[-1].split(
+            "\n\n"
+        )[0]
+        LUMO = [float(i) for i in LUMO.split() if _GeneralHelper_IsPureNumber(i)][0]
+        return LUMO
+    else:
+        return None
+
+
+def _Psi4Helper_RetrieveGradientFromOutFile(psi4_out_str: str, molObj: "Molecule") -> "Molecule":
+    str_bool = "  -Total Gradient:"
+    if str_bool in psi4_out_str:
+        grad_str = psi4_out_str.split(str_bool)[-1].split("\n\n")[0]
+        grad_str = grad_str.split("    ------   -----------------  -----------------  -----------------")[1]
+        grad_list = [i.split() for i in grad_str.split("\n")]
+        for atomObj, grad in zip(molObj.AtomsList, grad_list[1:]):
+            atomObj.Gradient = np.array(
+                [float(grad[1]), float(grad[2]), float(grad[3])]
+            )
+            atomObj.Gradient = atomObj.Gradient * (1 / BohrRad_to_Angstrom)
+    return molObj
+
+
 def _Psi4Helper_ConstructMolObjFromTemplate(
     psi4_out_str: str,
     psi4_out_json: json,
@@ -1652,6 +1732,8 @@ def _Psi4Helper_ConstructMolObjFromTemplate(
         new_gradients = np.array(psi4_out_json["Gradient (Eh/Bohr)"])
         for atomObj, new_grad in zip(molObj.AtomsList, new_gradients):
             atomObj.Gradient = new_grad * (1 / BohrRad_to_Angstrom)
+    else:
+        molObj = _Psi4Helper_RetrieveGradientFromOutFile(psi4_out_str, molObj)
     if "Mulliken Charges" in psi4_out_json.keys():
         MullikenCharges = np.array(psi4_out_json["Mulliken Charges"])
         for MullikenCharge, atomObj in zip(MullikenCharges, molObj.AtomsList):
@@ -1667,63 +1749,11 @@ def _Psi4Helper_ConstructMolObjFromTemplate(
     if "HOMO Energy (Eh)" in psi4_out_json.keys():
         molObj.HOMO_energy = psi4_out_json["HOMO Energy (Eh)"]
     else:
-        # Read out file to retreive HOMO energy
-        str_bool = "    Orbital Energies [Eh]\n    ---------------------\n\n" in psi4_out_str
-        unrestricted = "    Alpha Occupied:                                                       " in psi4_out_str
-        if str_bool == True and unrestricted == False:
-            orbital_energies = psi4_out_str.split(
-                "    Orbital Energies [Eh]\n    ---------------------\n\n"
-            )[-1]
-            orbital_energies = orbital_energies.split("\n   => Energetics <=")[0]
-            HOMO = orbital_energies.split(
-                "    Doubly Occupied:                                                      \n\n"
-            )[-1].split(
-                "\n\n    Virtual:                                                              \n\n"
-            )[0]
-            HOMO = [float(i) for i in HOMO.split() if _GeneralHelper_IsPureNumber(i)][-1]
-            molObj.HOMO_energy = HOMO
-        elif str_bool == True and unrestricted == True:
-            orbital_energies = psi4_out_str.split(
-                "    Orbital Energies [Eh]\n    ---------------------\n\n"
-            )[-1]
-            orbital_energies = orbital_energies.split("\n   => Energetics <=")[0]
-            HOMO = orbital_energies.split(
-                "    Alpha Occupied:                                                       \n\n"
-            )[-1].split(
-                "\n\n    Alpha Virtual:                                                        \n\n"
-            )[0]
-            HOMO = [float(i) for i in HOMO.split() if _GeneralHelper_IsPureNumber(i)][-1]
-            molObj.HOMO_energy = HOMO
+        molObj.HOMO_energy = _Psi4Helper_RetrieveHOMOEnergyFromOutFile(psi4_out_str)
     if "LUMO Energy (Eh)" in psi4_out_json.keys():
         molObj.LUMO_energy = psi4_out_json["LUMO Energy (Eh)"]
     else:
-        # Read out file to retreive HOMO energy
-        str_bool = "    Orbital Energies [Eh]\n    ---------------------\n\n" in psi4_out_str
-        unrestricted = "    Alpha Virtual:                                                        " in psi4_out_str
-        if str_bool == True and unrestricted == False:
-            orbital_energies = psi4_out_str.split(
-                "    Orbital Energies [Eh]\n    ---------------------\n\n"
-            )[-1]
-            orbital_energies = orbital_energies.split("\n   => Energetics <=")[0]
-            LUMO = orbital_energies.split(
-                "    Virtual:                                                              \n\n"
-            )[-1].split(
-                "\n\n"
-            )[0]
-            LUMO = [float(i) for i in LUMO.split() if _GeneralHelper_IsPureNumber(i)][0]
-            molObj.LUMO_energy = LUMO
-        elif str_bool == True and unrestricted == True:
-            orbital_energies = psi4_out_str.split(
-                "    Orbital Energies [Eh]\n    ---------------------\n\n"
-            )[-1]
-            orbital_energies = orbital_energies.split("\n   => Energetics <=")[0]
-            LUMO = orbital_energies.split(
-                "    Alpha Virtual:                                                        \n\n"
-            )[-1].split(
-                "\n\n"
-            )[0]
-            LUMO = [float(i) for i in LUMO.split() if _GeneralHelper_IsPureNumber(i)][0]
-            molObj.LUMO_energy = LUMO
+        molObj.LUMO_energy = _Psi4Helper_RetrieveLUMOEnergyFromOutFile(psi4_out_str)
     if (
         "Optimisation Trajectory Electronic Energies (Eh)" in psi4_out_json.keys()
         and "Optimisation Trajectory Coordinates (Bohr)" in psi4_out_json.keys()
@@ -2840,6 +2870,7 @@ class Molecule:
         self,
         method: str = "hf",
         basisset: str = "def2-svp",
+        local_basissets: dict | None = None,
         ORCA_commands: str = "opt freq",
         CPU_count: int = 4,
         max_memory: int = 1000,  # MB
@@ -2852,6 +2883,7 @@ class Molecule:
         orca_str = self.WriteORCAString(
             method=method,
             basisset=basisset,
+            local_basissets=local_basissets,
             ORCA_commands=ORCA_commands,
             CPU_count=CPU_count,
             max_memory=max_memory,
@@ -2877,12 +2909,22 @@ class Molecule:
         self,
         method: str = "hf",
         basisset: str = "def2-svp",
+        local_basissets: dict | None = None,
         ORCA_commands: str = "opt freq",
         CPU_count: int = 4,
         max_memory: int = 1000,  # MB
     ) -> str:
         max_memory_per_CPU_core = int((max_memory / CPU_count) * 0.95)
-        orca_str = f"""! {method} {basisset} {ORCA_commands}
+        if local_basissets is None:
+            ORCA_commands = f"{basisset} {ORCA_commands}"
+        else:
+            basis_str = "\n\n"+r"%basis"
+            for element in local_basissets:
+                basis_str += f"\n    NewGTO {element} '{local_basissets[element]}' end"
+            basis_str += "\nend"
+            ORCA_commands = f"{ORCA_commands} {basis_str}"
+
+        orca_str = f"""! {method} {ORCA_commands}
 
 %maxcore {max_memory_per_CPU_core}
 

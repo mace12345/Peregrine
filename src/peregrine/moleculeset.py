@@ -429,7 +429,9 @@ class MoleculeSet:
         orca_file_directory: str,
         method: str = "hf",
         basisset: str = "def2-svp",
+        local_basissets: dict | None = None,
         ORCA_commands: str = "opt freq",
+        orca_exe_path: str | None = None,
         CPU_count: int = 4,
         max_memory: int = 1000,  # MB
         max_time: None | int = 2880,  # minuets
@@ -441,6 +443,7 @@ class MoleculeSet:
             job_scheduler_used = job_scheduler_used.lower()
         os.makedirs(orca_file_directory, exist_ok=True)
         submit_jobs = ""
+        # Resubmit previous calculations only if unsuccessful
         if self.ResultsDF is not None:
             molObj_list = [
                 self.MoleculesDict[identifier]
@@ -450,11 +453,38 @@ class MoleculeSet:
             ]
         else:
             molObj_list = self.MoleculesDict.values()
+        # Sort local basissets
+        new_local_basissets = None
+        num_basisset_funcs = None
+        if local_basissets is not None:
+            new_local_basissets = {}
+            for atomic_symbols in local_basissets:
+                local_basisset = local_basissets[atomic_symbols]
+                atomic_symbols = [
+                    i for i in atomic_symbols.replace(" ", "").split(",") if i != ""
+                ]
+                for atomic_symbol in atomic_symbols:
+                    new_local_basissets[atomic_symbol] = local_basisset
         # Write jobs
         for molObj in molObj_list:
+
+            # Sort local basissets
+            if new_local_basissets is not None:
+                local_basissets = {
+                    atomic_symbol: (
+                        new_local_basissets[atomic_symbol]
+                        if atomic_symbol in new_local_basissets
+                        else basisset
+                    )
+                    for atomic_symbol in molObj.GetAtomicSymbolsList()
+                }
+                if len(local_basissets) == 0:
+                    local_basissets = None
+
             orca_inp, queue_sh = molObj.WriteORCAInput(
                 method=method,
                 basisset=basisset,
+                local_basissets=local_basissets,
                 ORCA_commands=ORCA_commands,
                 CPU_count=CPU_count,
                 max_memory=max_memory,
@@ -466,11 +496,17 @@ class MoleculeSet:
             with open(orca_file_directory / f"{molObj.Identifier}.inp", "w") as f:
                 f.write(orca_inp)
                 f.close()
-            with open(orca_file_directory / f"{molObj.Identifier}.sh", "w") as f:
-                f.write(queue_sh)
-                f.close()
             if job_scheduler_used == "slurm":
                 submit_jobs += f"sbatch {molObj.Identifier}.sh\n"
+                with open(orca_file_directory / f"{molObj.Identifier}.sh", "w") as f:
+                    f.write(queue_sh)
+                    f.close()
+            else:
+                if orca_exe_path is None:
+                    raise ValueError(
+                        "orca_exe_path must be provided if job_scheduler_used is None"
+                    )
+                submit_jobs += f"{orca_exe_path}/orca {molObj.Identifier}.inp > {molObj.Identifier}.out\n"
         with open(orca_file_directory / "submit_jobs.sh", "w") as f:
             f.write(submit_jobs)
             f.close()
