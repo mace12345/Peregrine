@@ -714,6 +714,7 @@ ATOMIC_PAULING_ELECTRONEGATIVITIES = {
 ATOMIC_NUMBER_OF_PRIMITIVES = {
     "H": {
         "def2-tzvppd": 9,
+        "def2-svp": 5,
     },
     "He": {},
     "Li": {
@@ -724,18 +725,23 @@ ATOMIC_NUMBER_OF_PRIMITIVES = {
     },
     "B": {
         "def2-tzvppd": 22,
+        "def2-svp": 12,
     },
     "C": {
         "def2-tzvppd": 22,
+        "def2-svp": 12,
     },
     "N": {
         "def2-tzvppd": 22,
+        "def2-svp": 12,
     },
     "O": {
         "def2-tzvppd": 23,
+        "def2-svp": 12,
     },
     "F": {
         "def2-tzvppd": 23,
+        "def2-svp": 12,
     },
     "Ne": {},
     "Na": {
@@ -747,15 +753,19 @@ ATOMIC_NUMBER_OF_PRIMITIVES = {
     "Al": {},
     "Si": {
         "def2-tzvppd": 29,
+        "def2-svp": 18,
     },
     "P": {
         "def2-tzvppd": 29,
+        "def2-svp": 18,
     },
     "S": {
         "def2-tzvppd": 30,
+        "def2-svp": 18,
     },
     "Cl": {
         "def2-tzvppd": 30,
+        "def2-svp": 18,
     },
     "Ar": {},
     "K": {
@@ -763,6 +773,7 @@ ATOMIC_NUMBER_OF_PRIMITIVES = {
     },
     "Ca": {
         "def2-tzvppd": 33,
+        "def2-svp": 27,
     },
     "Sc": {},
     "Ti": {},
@@ -778,12 +789,15 @@ ATOMIC_NUMBER_OF_PRIMITIVES = {
     "Ge": {},
     "As": {
         "def2-tzvppd": 41,
+        "def2-svp": 30,
     },
     "Se": {
         "def2-tzvppd": 42,
+        "def2-svp": 30,
     },
     "Br": {
         "def2-tzvppd": 42,
+        "def2-svp": 30,
     },
     "Kr": {},
     "Rb": {},
@@ -803,9 +817,11 @@ ATOMIC_NUMBER_OF_PRIMITIVES = {
     "Sb": {},
     "Te": {
         "def2-tzvppd": 33,
+        "def2-svp": 23,
     },
     "I": {
         "def2-tzvppd": 34,
+        "def2-svp": 23,
     },
     "Xe": {},
     "Cs": {},
@@ -848,6 +864,7 @@ ATOMIC_NUMBER_OF_PRIMITIVES = {
     "Po": 84,
     "At": {
         "def2-tzvppd": 34,
+        "def2-svp": 23,
     },
     "Rn": 86,
     "Fr": 87,
@@ -953,6 +970,8 @@ class Atom:
         self.LowdinCharge = None
         self.LowdinSpin = None
         self.SOAPDescriptor = SOAPDescriptor
+        self.pKa = None
+        self.pKb = None
         if GetAtomAttributes == True:
             self.Update()
 

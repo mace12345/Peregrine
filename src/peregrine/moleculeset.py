@@ -1,5 +1,7 @@
 import os
 import re
+import shutil
+import subprocess
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -31,10 +33,13 @@ def _GeneralHelper_CalculateRAM(
             },
         }
     }
-    A = coeff_dict[package][method]["A"]
-    x = coeff_dict[package][method]["x"]
-    c = coeff_dict[package][method]["c"]
-    return int((A * (number_of_primitives**x)) + c)
+    if method in coeff_dict:
+        A = coeff_dict[package][method]["A"]
+        x = coeff_dict[package][method]["x"]
+        c = coeff_dict[package][method]["c"]
+        return int((A * (number_of_primitives**x)) + c)
+    else:
+        return None
 
 
 def _GeneralHelper_TooSmallBondAngle(
@@ -103,6 +108,34 @@ def _GeneralHelper_ReadSMILESStrings(args):
 def _GeneralHelper_LoadMolFile(mol_file_directory: str, mol_file: str) -> "Molecule":
     with open(f"{mol_file_directory}/{mol_file}") as f:
         return Molecule.ReadMolString(f.read())
+
+
+def _xTBHelper_FindBinary() -> str:
+    hits = []
+
+    # 1. PATH (fastest; works if your conda env is active)
+    if (p := shutil.which("xtb")):
+        hits.append(os.path.realpath(p))
+
+    # 2. Spotlight fallback
+    try:
+        out = subprocess.run(
+            ["mdfind", "-name", "xtb"],
+            capture_output=True, text=True, timeout=30
+        ).stdout
+        for p in out.splitlines():
+            if p.endswith("/bin/xtb") and os.access(p, os.X_OK):
+                rp = os.path.realpath(p)
+                if rp not in hits:
+                    hits.append(rp)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass  # mdfind is missing (not macOS) or took too long
+
+    for hit in hits:
+        if "/bin/xtb" in hit and "conda" not in hit and "miniforge" not in hit:
+            hit = hit.replace("/bin/xtb", "/bin/")
+            return hit
+    raise ValueError("Could not find xtb binary")
 
 
 class MoleculeSet:
@@ -1006,7 +1039,7 @@ class MoleculeSet:
 
     def OptimiseGeometry_xTB_bin(
         self,
-        xtb_binary_path: str,
+        xtb_binary_path: str | None = None,
         solvent_model: str | None = None,
         solvent: str | None = None,
         opt_tol: str | None = None,
@@ -1017,6 +1050,9 @@ class MoleculeSet:
         optimise_geometry: bool = True,
         get_gradients: bool = False,
     ):
+        if xtb_binary_path is None:
+            xtb_binary_path = _xTBHelper_FindBinary()
+
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         items = [
             (

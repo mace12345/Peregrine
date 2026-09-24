@@ -1536,6 +1536,18 @@ psi4.set_options({
 {save_fock_matrix_rhf}
 {save_HOMO_LUMO_general}
 """
+    elif (
+        optimise_geometry == False
+        and get_frequency == False
+        and restricted == True
+        and get_gradient == False
+    ):
+        psi4_str += f"""
+{calculate_elec_energy_general}
+{save_properties_rhf}
+{save_fock_matrix_rhf}
+{save_HOMO_LUMO_general}
+"""
     return psi4_str
 
 
@@ -1729,9 +1741,10 @@ def _Psi4Helper_ConstructMolObjFromTemplate(
         for atomObj, new_coor in zip(molObj.AtomsList, new_coordinates):
             atomObj.Coordinates = new_coor
     if "Gradient (Eh/Bohr)" in psi4_out_json.keys():
-        new_gradients = np.array(psi4_out_json["Gradient (Eh/Bohr)"])
-        for atomObj, new_grad in zip(molObj.AtomsList, new_gradients):
-            atomObj.Gradient = new_grad * (1 / BohrRad_to_Angstrom)
+        if psi4_out_json["Gradient (Eh/Bohr)"] is not None:
+            new_gradients = np.array(psi4_out_json["Gradient (Eh/Bohr)"])
+            for atomObj, new_grad in zip(molObj.AtomsList, new_gradients):
+                atomObj.Gradient = new_grad * (1 / BohrRad_to_Angstrom)
     else:
         molObj = _Psi4Helper_RetrieveGradientFromOutFile(psi4_out_str, molObj)
     if "Mulliken Charges" in psi4_out_json.keys():
@@ -2482,6 +2495,11 @@ class Molecule:
         # Calculate RMSD between both sets of coordinates
         rmsd = np.sqrt(np.mean(np.sum((mol1_coords_rotated - mol2_coords) ** 2, axis=1)))
         return rmsd
+
+    def GetpKa(self, method: str = "g-xTB//M06-2X/def2-SVP/PCM(Water)"):
+        slope = -0.0038254686802786575
+        intercept = -0.4388995075926189
+        pass
 
     # === Get atomic descriptors ===
 
