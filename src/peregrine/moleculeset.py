@@ -8,6 +8,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 import itertools
 import traceback
+import tempfile
 
 
 from .atom import Atom
@@ -101,12 +102,19 @@ def _xTBBinHelper_OptimiseOne(args):
 
 
 def _solvate_worker(key, molObj, kwargs):
-    """Run SolvateAndOptimiseMetalCentre on one molecule, single-threaded."""
+    """Run SolvateAndOptimiseMetalCentre on one molecule in its own temp directory."""
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
     os.environ["OMP_STACKSIZE"] = "4G"
-    molObj.SolvateAndOptimiseMetalCentre(**kwargs)
+
+    original_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory(prefix=f"{key}_") as tmpdir:
+        os.chdir(tmpdir)
+        try:
+            molObj.SolvateAndOptimiseMetalCentre(**kwargs)
+        finally:
+            os.chdir(original_cwd)  # go back before the temp dir is deleted
     return key, molObj
 
 
