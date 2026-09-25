@@ -1109,6 +1109,7 @@ class MoleculeSet:
         xtb_method: str = "gxtb",
         mol_file_directory: str | None = None,
         n_workers: int | None = None,
+        xtb_binary_path: str | None = None,
     ):
         if mol_file_directory is not None:
             os.makedirs(mol_file_directory, exist_ok=True)
@@ -1125,6 +1126,7 @@ class MoleculeSet:
             metal_coor_num=metal_coor_num,
             cycles=cycles,
             xtb_method=xtb_method,
+            xtb_binary_path=xtb_binary_path,
         )
 
         if n_workers is None:

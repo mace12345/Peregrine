@@ -5147,6 +5147,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         metal_coor_num: int = 8,
         cycles: int = 2,
         xtb_method: str = "gxtb",
+        xtb_binary_path: str | None = None,
     ):
         # Find metal centre
         metalAtomObj= None
@@ -5157,6 +5158,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         for _ in range(cycles):
             self.OptimiseGeometry_xTB_bin(
                 xtb_method=xtb_method,
+                xtb_binary_path=xtb_binary_path,
             )
             self.ChangeMetalCentreCoordination(
                 BondLengthDict=BondLengthDict,
@@ -5174,6 +5176,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             )
         self.OptimiseGeometry_xTB_bin(
             xtb_method=xtb_method,
+            xtb_binary_path=xtb_binary_path,
         )
 
     # === Translate and Rotate Molecule, and Geometry Functions ===
