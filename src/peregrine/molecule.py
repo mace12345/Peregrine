@@ -6,6 +6,7 @@ import os
 import warnings
 import subprocess
 import json
+import shutil
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -42,6 +43,8 @@ from openff.toolkit import Molecule as openffMolObj
 
 from .atom import Atom
 from .atom import ATOMIC_NUMBER_OF_PRIMITIVES
+from .atom import EXCLUDE_NON_METAL_SMARTS_PATTERN
+from .atom import NON_METAL_EXCLUDE_H_SMARTS_PATTERN
 
 # === Important Conversions ===
 
@@ -1831,6 +1834,31 @@ def _xTBHelper_GetEnergies(xtb_out_str: str) -> float | None:
         return None
 
 
+def _xTBHelper_FindBinary() -> str:
+    hits = []
+    # 1. PATH (fastest; works if your conda env is active)
+    if (p := shutil.which("xtb")):
+        hits.append(os.path.realpath(p))
+    # 2. Spotlight fallback
+    try:
+        out = subprocess.run(
+            ["mdfind", "-name", "xtb"],
+            capture_output=True, text=True, timeout=30
+        ).stdout
+        for p in out.splitlines():
+            if p.endswith("/bin/xtb") and os.access(p, os.X_OK):
+                rp = os.path.realpath(p)
+                if rp not in hits:
+                    hits.append(rp)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass  # mdfind is missing (not macOS) or took too long
+    for hit in hits:
+        if "/bin/xtb" in hit and "conda" not in hit and "miniforge" not in hit:
+            hit = hit.replace("/bin/xtb", "/bin/")
+            return hit
+    raise ValueError("Could not find xtb binary")
+
+
 def _CRESTHelper_GetConfomers(
     xyz_str: str, template_molObj: "Molecule"
 ) -> list["Molecule"]:
@@ -2460,6 +2488,16 @@ class Molecule:
                 n_atoms.append(self.AtomsList[idx])
         return n_atoms
 
+    def GetNewUnitBondVector(self, AtomObj: Atom) -> np.ndarray:
+        neighbours = self.GetAtomNeighbours(AtomObject=AtomObj)
+        new_bond_vector = np.array([0.0, 0.0, 0.0])
+        for n_atomObj in neighbours:
+            bond_vector = n_atomObj.Coordinates - AtomObj.Coordinates
+            bond_unit_vector = bond_vector / np.linalg.norm(bond_vector)
+            new_bond_vector += bond_unit_vector
+        new_unit_bond_vector = new_bond_vector *-1 / np.linalg.norm(new_bond_vector)
+        return new_unit_bond_vector
+
     def CalculateRMSD(self, other_molObj: "Molecule", include_hydrogen: bool = False) -> float:
         """
         Calculate the root mean square deviation (RMSD) between two molecules.
@@ -2496,9 +2534,60 @@ class Molecule:
         rmsd = np.sqrt(np.mean(np.sum((mol1_coords_rotated - mol2_coords) ** 2, axis=1)))
         return rmsd
 
-    def GetpKa(self, method: str = "g-xTB//M06-2X/def2-SVP/PCM(Water)"):
+    def CalculatepKa(self, method: str = "g-xTB//M06-2X/def2-SVP/PCM(Water)"):
         slope = -0.0038254686802786575
         intercept = -0.4388995075926189
+        # For algorithm to work structure provided must be neutral
+        # Identify all the different potentially protonatable/deprotonatable sites
+        basic_smarts_dict = {
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]=[#8X1&H0,#16X1&H0,#34X1&H0:2]": 2, # Not bound to a metal cation
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]~[#8X2&H0,#7X2&H0,#16X2&H0,#15X2&H0:2]~[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:3]": 2, # Not bound to a metal cation
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#7X3&H0,#15X3&H0:2](-[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:3])-[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:4]": 2, 
+        }
+        amphoteric_smarts_dict = {
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#8HX2,#16HX2,#34HX2:2]": 2,
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#7HX3,#15HX3:2]-[!#1:3]": 2,
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#7X3&H2,#15X3&H2:2]": 2,
+        }
+        acidic_smarts_dict = {
+            "[#8:1]=[#6,#7:2]-[#6HX4,#6H2X4:3]-[#6,#7:4]=[#8:5]": 3,
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#8HX3,#16HX3,#34HX3,#7HX4,#15HX4,#7H2X4,#15H2X4:2]-[{EXCLUDE_NON_METAL_SMARTS_PATTERN}:3]": 2,
+        }
+        basic_atom_idxs = []
+        for SMARTS in basic_smarts_dict:
+            SMARTS_idx = basic_smarts_dict[SMARTS]
+            pattern_dicts = self.MatchSMARTSPatternToAtomIndices(SMARTS)
+            if pattern_dicts is None:
+                continue
+            for patterns in pattern_dicts:
+                basic_atom_idxs.append(patterns[1][SMARTS_idx])
+        amphoteric_atom_idxs = []
+        for SMARTS in amphoteric_smarts_dict:
+            SMARTS_idx = amphoteric_smarts_dict[SMARTS]
+            pattern_dicts = self.MatchSMARTSPatternToAtomIndices(SMARTS)
+            if pattern_dicts is None:
+                continue
+            for patterns in pattern_dicts:
+                amphoteric_atom_idxs.append(patterns[1][SMARTS_idx])
+        acidic_atom_idxs = []
+        for SMARTS in acidic_smarts_dict:
+            SMARTS_idx = acidic_smarts_dict[SMARTS]
+            pattern_dicts = self.MatchSMARTSPatternToAtomIndices(SMARTS)
+            if pattern_dicts is None:
+                continue
+            for patterns in pattern_dicts:
+                acidic_atom_idxs.append(patterns[1][SMARTS_idx])
+        print(basic_atom_idxs)
+        print(amphoteric_atom_idxs)
+        print(acidic_atom_idxs)
+        if method == "g-xTB//M06-2X/def2-SVP/PCM(Water)":
+            slope = -0.0038254686802786575
+            intercept = -0.4388995075926189
+            # r2 value = 0.72659
+            # Initially optimise with g-xTB
+            # self.OptimiseGeometry_xTB_bin()
+            # Based on protonatable/deprotonatable sites generate a new structure for each site
+            pass
         pass
 
     # === Get atomic descriptors ===
@@ -2588,6 +2677,62 @@ class Molecule:
     def MatchSMARTSPatternToAtomIndices(
         self, SMARTS_str: str
     ) -> tuple[tuple[dict, dict]]:
+        """
+        Match an atom-mapped SMARTS pattern to the molecule and return
+        mappings between molecule atom indices and SMARTS map numbers.
+
+        The molecule is converted to an RDKit ``Mol`` with
+        ``self.MoleculeToRDKitMol()`` and searched with
+        ``GetSubstructMatches``. For each match, the atom-map numbers in
+        ``SMARTS_str`` (e.g. the ``1`` in ``[C:1]``) are paired, in order,
+        with the matched atom indices.
+
+        Parameters
+        ----------
+        SMARTS_str : str
+            A SMARTS pattern in which every atom has an atom-map number,
+            e.g. ``"[C:1](=[O:2])[O:3]"``. The map numbers are read in the
+            order they appear in the string, and that order must match the
+            order of the query atoms.
+
+        Returns
+        -------
+        tuple of tuple(dict, dict) or None
+            One ``(atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx)`` pair for
+            each substructure match:
+
+            - ``atomIdx_to_SMARTSIdx`` : dict[int, int]
+                Maps a molecule atom index (0-based, RDKit ordering) to
+                its SMARTS atom-map number.
+            - ``SMARTS_idx_to_atomIdx`` : dict[int, int]
+                The reverse mapping: SMARTS atom-map number to molecule
+                atom index.
+
+            You always get a tuple, even when there is only one match.
+            Returns ``None`` if the pattern does not match.
+
+        Notes
+        -----
+        - Map numbers are pulled out by splitting ``SMARTS_str`` on
+          ``":"``. This fails, or gives wrong results, if the pattern
+          uses ``":"`` for anything other than atom maps, such as
+          aromatic bonds (``c:c``). It also breaks if any atom is left
+          unmapped.
+        - RDKit's default ``uniquify=True`` means matches that cover the
+          same set of atoms appear only once. Symmetry-equivalent
+          orderings of those atoms are not listed separately.
+        - Neither ``MolFromSmarts`` returning ``None`` for an invalid
+          SMARTS nor the ``None`` return value is covered by the type
+          hint. ``Optional[tuple[tuple[dict[int, int], dict[int, int]], ...]]``
+          would be more accurate.
+
+        Examples
+        --------
+        >>> maps = mol.MatchSMARTSPatternToAtomIndices("[C:1](=[O:2])[O:3]")
+        >>> atom_to_map, map_to_atom = maps[0]
+        >>> map_to_atom[2]   # molecule atom index of the carbonyl oxygen
+        4
+        """
         SMARTS_pattern = Chem.MolFromSmarts(SMARTS_str)
         rdkitMolObj = self.MoleculeToRDKitMol()
         matches = rdkitMolObj.GetSubstructMatches(SMARTS_pattern)
@@ -4303,6 +4448,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
     def AddMolecule(
         self,
         MoleculeToAdd: Self,
+        UpdateAtomLabels: bool = True,
     ):
         og_NumberOfAtoms = deepcopy(self.NumberOfAtoms)
         # Add Atoms
@@ -4313,6 +4459,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                 FormalCharge=atomObj.FormalCharge,
                 Multiplicity=atomObj.Multiplicity,
                 Label=atomObj.Label,
+                UpdateAtomLabels=UpdateAtomLabels,
             )
         # Add Bonds
         for atomIdx1 in range(MoleculeToAdd.NumberOfAtoms):
@@ -4942,6 +5089,93 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                     break
                 pass
 
+    def SolvateMetalCentre(
+        self,
+        metal_atomic_symbol: str,
+        solvent_smiles: str = "O",
+        solvent_bonding_atom_smarts: str = "[OH2:1]",
+        solvent_bonding_atom_smarts_idx: int = 1,
+        solvent_metal_bond_length: float = 1,
+        metal_coor_num: int = 8,
+    ):
+        # Find metal centre
+        metalAtomObj= None
+        for atomObj in self.AtomsList:
+            if atomObj.AtomicSymbol == metal_atomic_symbol:
+                metalAtomObj = atomObj
+                break
+        neighbours = self.GetAtomNeighbours(AtomObject=metalAtomObj)
+        num_neighbours = len(neighbours)
+        if num_neighbours >= metal_coor_num:
+            return
+        for _ in range(metal_coor_num - num_neighbours):
+            # Add solvent molecule to metal centre
+            # TODO: Need to add function that rotates solvent molecule to minimise steric clashing
+            new_unit_bond_vector = self.GetNewUnitBondVector(metalAtomObj)
+            solvent_position = metalAtomObj.Coordinates + (new_unit_bond_vector * solvent_metal_bond_length)
+            solventMolObj = self.ReadSMILESString(
+                solvent_smiles,
+                solvent_smiles,
+            )
+            for solventAtomObj in solventMolObj.AtomsList:
+                solventAtomObj.Label = f"{solventAtomObj.Label}_added"
+            patterns = solventMolObj.MatchSMARTSPatternToAtomIndices(
+                solvent_bonding_atom_smarts
+            )
+            atomIdx_to_translate = patterns[0][1][solvent_bonding_atom_smarts_idx]
+            atomLabel_to_bond = solventMolObj.AtomsList[atomIdx_to_translate].Label
+            translation_vector = solvent_position - solventMolObj.AtomsList[atomIdx_to_translate].Coordinates
+            translation_distance = np.linalg.norm(translation_vector)
+            translation_unit_vector = translation_vector / translation_distance
+            solventMolObj.TranslateMolecule(translation_unit_vector, translation_distance)
+            self.AddMolecule(solventMolObj, UpdateAtomLabels=False)
+            self.AddBond(AtomLabels=[metalAtomObj.Label, atomLabel_to_bond])
+            self.OptimiseGeometry_UFF()
+            self.NormaliseAtomLabels()
+        self.DeriveBasicAttributes()
+
+    def SolvateAndOptimiseMetalCentre(
+        self,
+        BondLengthDict: dict,
+        metal_atomic_symbol: str,
+        max_coor_num: int,
+        ExcludeAtomSMARTS: dict[str, list[int]] | None = None,
+        solvent_smiles: str = "O",
+        solvent_bonding_atom_smarts: str = "[OH2:1]",
+        solvent_bonding_atom_smarts_idx: int = 1,
+        solvent_metal_bond_length: float = 1,
+        metal_coor_num: int = 8,
+        cycles: int = 2,
+        xtb_method: str = "gxtb",
+    ):
+        # Find metal centre
+        metalAtomObj= None
+        for atomObj in self.AtomsList:
+            if atomObj.AtomicSymbol == metal_atomic_symbol:
+                metalAtomObj = atomObj
+                break
+        for _ in range(cycles):
+            self.OptimiseGeometry_xTB_bin(
+                xtb_method=xtb_method,
+            )
+            self.ChangeMetalCentreCoordination(
+                BondLengthDict=BondLengthDict,
+                MetalAtomObject=metalAtomObj,
+                max_coor_num=max_coor_num,
+                ExcludeAtomSMARTS=ExcludeAtomSMARTS,
+            )
+            self.SolvateMetalCentre(
+                solvent_smiles=solvent_smiles,
+                solvent_bonding_atom_smarts=solvent_bonding_atom_smarts,
+                solvent_bonding_atom_smarts_idx=solvent_bonding_atom_smarts_idx,
+                solvent_metal_bond_length=solvent_metal_bond_length,
+                metal_coor_num=metal_coor_num,
+                metal_atomic_symbol=metal_atomic_symbol
+            )
+        self.OptimiseGeometry_xTB_bin(
+            xtb_method=xtb_method,
+        )
+
     # === Translate and Rotate Molecule, and Geometry Functions ===
 
     def TranslateMolecule(
@@ -5258,7 +5492,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
 
     def OptimiseGeometry_xTB_bin(
         self,
-        xtb_binary_path: str,
+        xtb_binary_path: str | None = None,
         solvent_model: str | None = None,
         solvent: str | None = None,
         opt_tol: str | None = None,
@@ -5271,6 +5505,9 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         optimise_geometry: bool = True,
         get_gradients: bool = False,
     ):
+        if xtb_binary_path is None:
+            xtb_binary_path = _xTBHelper_FindBinary()
+        
         self.DeleteCalculatedAttributes()
         self.DeriveBasicAttributes()
         

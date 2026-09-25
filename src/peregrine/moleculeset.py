@@ -100,6 +100,16 @@ def _xTBBinHelper_OptimiseOne(args):
     return identifier, new_molecule, None
 
 
+def _solvate_worker(key, molObj, kwargs):
+    """Run SolvateAndOptimiseMetalCentre on one molecule, single-threaded."""
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["OMP_STACKSIZE"] = "4G"
+    molObj.SolvateAndOptimiseMetalCentre(**kwargs)
+    return key, molObj
+
+
 def _GeneralHelper_ReadSMILESStrings(args):
     SMILES, Identifier, AddHydrogens = args
     return Molecule.ReadSMILESString(SMILES, Identifier, AddHydrogens=AddHydrogens)
@@ -112,11 +122,9 @@ def _GeneralHelper_LoadMolFile(mol_file_directory: str, mol_file: str) -> "Molec
 
 def _xTBHelper_FindBinary() -> str:
     hits = []
-
     # 1. PATH (fastest; works if your conda env is active)
     if (p := shutil.which("xtb")):
         hits.append(os.path.realpath(p))
-
     # 2. Spotlight fallback
     try:
         out = subprocess.run(
@@ -130,7 +138,6 @@ def _xTBHelper_FindBinary() -> str:
                     hits.append(rp)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass  # mdfind is missing (not macOS) or took too long
-
     for hit in hits:
         if "/bin/xtb" in hit and "conda" not in hit and "miniforge" not in hit:
             hit = hit.replace("/bin/xtb", "/bin/")
@@ -1086,6 +1093,66 @@ class MoleculeSet:
                 else:
                     results[Identifier] = updated_molObj
         self.MoleculesDict.update(results)
+
+    def SolvateAndOptimiseMetalCentre(
+        self,
+        BondLengthDict: dict,
+        metal_atomic_symbol: str,
+        max_coor_num: int,
+        ExcludeAtomSMARTS: dict[str, list[int]] | None = None,
+        solvent_smiles: str = "O",
+        solvent_bonding_atom_smarts: str = "[OH2:1]",
+        solvent_bonding_atom_smarts_idx: int = 1,
+        solvent_metal_bond_length: float = 1,
+        metal_coor_num: int = 8,
+        cycles: int = 2,
+        xtb_method: str = "gxtb",
+        mol_file_directory: str | None = None,
+        n_workers: int | None = None,
+    ):
+        if mol_file_directory is not None:
+            os.makedirs(mol_file_directory, exist_ok=True)
+
+        kwargs = dict(
+            BondLengthDict=BondLengthDict,
+            metal_atomic_symbol=metal_atomic_symbol,
+            max_coor_num=max_coor_num,
+            ExcludeAtomSMARTS=ExcludeAtomSMARTS,
+            solvent_smiles=solvent_smiles,
+            solvent_bonding_atom_smarts=solvent_bonding_atom_smarts,
+            solvent_bonding_atom_smarts_idx=solvent_bonding_atom_smarts_idx,
+            solvent_metal_bond_length=solvent_metal_bond_length,
+            metal_coor_num=metal_coor_num,
+            cycles=cycles,
+            xtb_method=xtb_method,
+        )
+
+        if n_workers is None:
+            n_workers = max(1, (os.cpu_count()-2 or 1) - 1)  # leave one core free for the system
+
+        failed = {}
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            futures = {
+                pool.submit(_solvate_worker, key, molObj, kwargs): key
+                for key, molObj in self.MoleculesDict.items()
+            }
+            for fut in as_completed(futures):
+                key = futures[fut]
+                try:
+                    _, molObj = fut.result()
+                except Exception as e:
+                    failed[key] = e
+                    print(f"[{key}] failed: {e!r}")
+                    continue
+
+                self.MoleculesDict[key] = molObj
+
+                if mol_file_directory is not None:
+                    path = os.path.join(mol_file_directory, f"{molObj.Identifier}.mol")
+                    with open(path, "w") as f:
+                        f.write(molObj.WriteMolString())
+
+        return failed
 
     def GetSmallestMolecule(self) -> Molecule:
         return min(

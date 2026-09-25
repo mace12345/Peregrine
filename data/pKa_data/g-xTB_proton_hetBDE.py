@@ -22,6 +22,7 @@ if __name__ == "__main__":
     pka_df = pd.read_csv(Path(__file__).parent / "aqueous_pka_data.csv")
     pka_df.set_index("Identifier", inplace=True)
 
+    # === g-xTB optimisations ===
     """protonated_ms = MoleculeSet.ReadSMILESList(
         SMILES_list=list(pka_df["ProtonatedCompound"]),
         Identifier_List=list(pka_df.index),
@@ -39,7 +40,8 @@ if __name__ == "__main__":
         Path(__file__).parent / "Compounds_g-xTB-Opt"
     )"""
 
-    protonated_ms = MoleculeSet.ReadMolFileDirectory(
+    # === M06-2X/def2-SVP/PCM(Water) single point calculations ===
+    """protonated_ms = MoleculeSet.ReadMolFileDirectory(
         Path(__file__).parent / "ProtonatedCompounds_g-xTB-Opt"
     )
     protonated_ms.WritePsi4Input(
@@ -84,10 +86,10 @@ if __name__ == "__main__":
         Path(__file__).parent / "Compounds-g-xTB-Opt_M06-2X-def2-SVP",
         Path(__file__).parent / "Compounds-g-xTB-Opt_M06-2X-def2-SVP_Psi4Output",
         template_moleculeset=ms,
-    )
+    )"""
     
     # === g-xtb analysis ===
-    identifiers = [molObj.Identifier for molObj in protonated_ms.MoleculesDict.values()]
+    """identifiers = [molObj.Identifier for molObj in protonated_ms.MoleculesDict.values()]
     prot_elec_ens = [protonated_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
     elec_ens = [ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
     pka = [pka_df.loc[identifier, "pKa"] for identifier in identifiers]
@@ -106,9 +108,11 @@ if __name__ == "__main__":
         }
     )
     res_df["Elec En Diff (Eh)"] = res_df["Protonated Elec En (Eh)"] - res_df["Unprotonated Elec En (Eh)"]
-    res_df.to_csv(Path(__file__).parent / "g-xTB_calculated_protonation_energies.csv")
+    res_df.to_csv(Path(__file__).parent / "g-xTB_calculated_protonation_energies.csv")"""
 
-    #res_df = res_df[res_df["Functional Group"] != "Water"]
+    res_df = pd.read_csv(Path(__file__).parent / "g-xTB_calculated_protonation_energies.csv")
+
+    res_df = res_df[res_df["Functional Group"] != "Water"]
     res_df = res_df[res_df["Functional Group"] != "Halide"]
     res_df = res_df[res_df["Identifier"] != "a55"]
 
@@ -124,7 +128,7 @@ if __name__ == "__main__":
     fig.savefig(Path(__file__).parent / "gxtb_pka_scatter.png", bbox_inches="tight")
 
     # === g-xtb/m06-2x analysis ===
-    identifiers = [molObj.Identifier for molObj in new_protonated_ms.MoleculesDict.values()]
+    """identifiers = [molObj.Identifier for molObj in new_protonated_ms.MoleculesDict.values()]
     prot_elec_ens = [new_protonated_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
     elec_ens = [new_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
     pka = [pka_df.loc[identifier, "pKa"] for identifier in identifiers]
@@ -143,7 +147,9 @@ if __name__ == "__main__":
         }
     )
     res_df["Elec En Diff (Eh)"] = res_df["Protonated Elec En (Eh)"] - res_df["Unprotonated Elec En (Eh)"]
-    res_df.to_csv(Path(__file__).parent / "g-xTB-m062x_calculated_protonation_energies.csv")
+    res_df.to_csv(Path(__file__).parent / "g-xTB-m062x_calculated_protonation_energies.csv")"""
+
+    res_df = pd.read_csv(Path(__file__).parent / "g-xTB-m062x_calculated_protonation_energies.csv")
 
     res_df = res_df[res_df["Functional Group"] != "Water"]
     res_df = res_df[res_df["Functional Group"] != "Halide"]
@@ -163,7 +169,7 @@ if __name__ == "__main__":
         s=5,
     )
     res = linregress(res_df["Aqueous pKa"], res_df["Elec En Diff (Eh)"])
-    print(f"{res.slope}, {res.intercept}")
+    print(f"slope={res.slope}, intercept={res.intercept}, r2={res.rvalue**2}")
     print(res)
     ax.set_ylabel("g-xTB//M06-2X/def2-SVP/PCM(Water) (Eh)")
     ax.set_xlabel("pKa")

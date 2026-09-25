@@ -901,6 +901,9 @@ ATOMIC_NUMBER_OF_PRIMITIVES = {
     "Og": 118,
 }
 
+EXCLUDE_NON_METAL_SMARTS_PATTERN = "!#1!#5!#6!#7!#8!#9!#14!#15!#16!#17!#33!#34!#35!#52!#53!#85"
+
+NON_METAL_EXCLUDE_H_SMARTS_PATTERN = "#5,#6,#7,#8,#9,#14,#15,#16,#17,#33,#34,#35,#52,#53,#85"
 
 class Atom:
     def __init__(
