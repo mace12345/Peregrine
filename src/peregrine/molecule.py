@@ -187,7 +187,10 @@ def _GeneralHelper_CalculateTrajectory(
     unit_vector = (end_pos - start_pos) / distance
     num_of_steps = int(distance / traj_step_size) + 1
     step_size = distance / num_of_steps
-    trajectory = [start_pos + (unit_vector * step_size * step_num) for step_num in range(1, num_of_steps + 1)]
+    trajectory = [
+        start_pos + (unit_vector * step_size * step_num)
+        for step_num in range(1, num_of_steps + 1)
+    ]
     return trajectory
 
 
@@ -1614,8 +1617,13 @@ def _Psi4Helper_ConstructMolObjFromScratch(
 
 def _Psi4Helper_RetrieveHOMOEnergyFromOutFile(psi4_out_str: str) -> float | None:
     # Read out file to retreive HOMO energy
-    str_bool = "    Orbital Energies [Eh]\n    ---------------------\n\n" in psi4_out_str
-    unrestricted = "    Alpha Occupied:                                                       " in psi4_out_str
+    str_bool = (
+        "    Orbital Energies [Eh]\n    ---------------------\n\n" in psi4_out_str
+    )
+    unrestricted = (
+        "    Alpha Occupied:                                                       "
+        in psi4_out_str
+    )
     if str_bool == True and unrestricted == False:
         orbital_energies = psi4_out_str.split(
             "    Orbital Energies [Eh]\n    ---------------------\n\n"
@@ -1625,7 +1633,9 @@ def _Psi4Helper_RetrieveHOMOEnergyFromOutFile(psi4_out_str: str) -> float | None
             "    Doubly Occupied:                                                      \n\n"
         )[-1].split(
             "\n\n    Virtual:                                                              \n\n"
-        )[0]
+        )[
+            0
+        ]
         HOMO = [float(i) for i in HOMO.split() if _GeneralHelper_IsPureNumber(i)][-1]
         return HOMO
     elif str_bool == True and unrestricted == True:
@@ -1637,7 +1647,9 @@ def _Psi4Helper_RetrieveHOMOEnergyFromOutFile(psi4_out_str: str) -> float | None
             "    Alpha Occupied:                                                       \n\n"
         )[-1].split(
             "\n\n    Alpha Virtual:                                                        \n\n"
-        )[0]
+        )[
+            0
+        ]
         HOMO = [float(i) for i in HOMO.split() if _GeneralHelper_IsPureNumber(i)][-1]
         return HOMO
     else:
@@ -1646,8 +1658,13 @@ def _Psi4Helper_RetrieveHOMOEnergyFromOutFile(psi4_out_str: str) -> float | None
 
 def _Psi4Helper_RetrieveLUMOEnergyFromOutFile(psi4_out_str: str) -> float | None:
     # Read out file to retreive HOMO energy
-    str_bool = "    Orbital Energies [Eh]\n    ---------------------\n\n" in psi4_out_str
-    unrestricted = "    Alpha Virtual:                                                        " in psi4_out_str
+    str_bool = (
+        "    Orbital Energies [Eh]\n    ---------------------\n\n" in psi4_out_str
+    )
+    unrestricted = (
+        "    Alpha Virtual:                                                        "
+        in psi4_out_str
+    )
     if str_bool == True and unrestricted == False:
         orbital_energies = psi4_out_str.split(
             "    Orbital Energies [Eh]\n    ---------------------\n\n"
@@ -1655,9 +1672,7 @@ def _Psi4Helper_RetrieveLUMOEnergyFromOutFile(psi4_out_str: str) -> float | None
         orbital_energies = orbital_energies.split("\n   => Energetics <=")[0]
         LUMO = orbital_energies.split(
             "    Virtual:                                                              \n\n"
-        )[-1].split(
-            "\n\n"
-        )[0]
+        )[-1].split("\n\n")[0]
         LUMO = [float(i) for i in LUMO.split() if _GeneralHelper_IsPureNumber(i)][0]
         return LUMO
     elif str_bool == True and unrestricted == True:
@@ -1667,20 +1682,22 @@ def _Psi4Helper_RetrieveLUMOEnergyFromOutFile(psi4_out_str: str) -> float | None
         orbital_energies = orbital_energies.split("\n   => Energetics <=")[0]
         LUMO = orbital_energies.split(
             "    Alpha Virtual:                                                        \n\n"
-        )[-1].split(
-            "\n\n"
-        )[0]
+        )[-1].split("\n\n")[0]
         LUMO = [float(i) for i in LUMO.split() if _GeneralHelper_IsPureNumber(i)][0]
         return LUMO
     else:
         return None
 
 
-def _Psi4Helper_RetrieveGradientFromOutFile(psi4_out_str: str, molObj: "Molecule") -> "Molecule":
+def _Psi4Helper_RetrieveGradientFromOutFile(
+    psi4_out_str: str, molObj: "Molecule"
+) -> "Molecule":
     str_bool = "  -Total Gradient:"
     if str_bool in psi4_out_str:
         grad_str = psi4_out_str.split(str_bool)[-1].split("\n\n")[0]
-        grad_str = grad_str.split("    ------   -----------------  -----------------  -----------------")[1]
+        grad_str = grad_str.split(
+            "    ------   -----------------  -----------------  -----------------"
+        )[1]
         grad_list = [i.split() for i in grad_str.split("\n")]
         for atomObj, grad in zip(molObj.AtomsList, grad_list[1:]):
             atomObj.Gradient = np.array(
@@ -1837,13 +1854,12 @@ def _xTBHelper_GetEnergies(xtb_out_str: str) -> float | None:
 def _xTBHelper_FindBinary() -> str:
     hits = []
     # 1. PATH (fastest; works if your conda env is active)
-    if (p := shutil.which("xtb")):
+    if p := shutil.which("xtb"):
         hits.append(os.path.realpath(p))
     # 2. Spotlight fallback
     try:
         out = subprocess.run(
-            ["mdfind", "-name", "xtb"],
-            capture_output=True, text=True, timeout=30
+            ["mdfind", "-name", "xtb"], capture_output=True, text=True, timeout=30
         ).stdout
         for p in out.splitlines():
             if p.endswith("/bin/xtb") and os.access(p, os.X_OK):
@@ -2495,10 +2511,12 @@ class Molecule:
             bond_vector = n_atomObj.Coordinates - AtomObj.Coordinates
             bond_unit_vector = bond_vector / np.linalg.norm(bond_vector)
             new_bond_vector += bond_unit_vector
-        new_unit_bond_vector = new_bond_vector *-1 / np.linalg.norm(new_bond_vector)
+        new_unit_bond_vector = new_bond_vector * -1 / np.linalg.norm(new_bond_vector)
         return new_unit_bond_vector
 
-    def CalculateRMSD(self, other_molObj: "Molecule", include_hydrogen: bool = False) -> float:
+    def CalculateRMSD(
+        self, other_molObj: "Molecule", include_hydrogen: bool = False
+    ) -> float:
         """
         Calculate the root mean square deviation (RMSD) between two molecules.
 
@@ -2531,7 +2549,9 @@ class Molecule:
         # Rotate to align both sets of coordinates
         mol1_coords_rotated = np.dot(mol1_coords, rotation_matrix)
         # Calculate RMSD between both sets of coordinates
-        rmsd = np.sqrt(np.mean(np.sum((mol1_coords_rotated - mol2_coords) ** 2, axis=1)))
+        rmsd = np.sqrt(
+            np.mean(np.sum((mol1_coords_rotated - mol2_coords) ** 2, axis=1))
+        )
         return rmsd
 
     def CalculatepKa(self, method: str = "g-xTB//M06-2X/def2-SVP/PCM(Water)"):
@@ -2540,9 +2560,9 @@ class Molecule:
         # For algorithm to work structure provided must be neutral
         # Identify all the different potentially protonatable/deprotonatable sites
         basic_smarts_dict = {
-            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]=[#8X1&H0,#16X1&H0,#34X1&H0:2]": 2, # Not bound to a metal cation
-            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]~[#8X2&H0,#7X2&H0,#16X2&H0,#15X2&H0:2]~[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:3]": 2, # Not bound to a metal cation
-            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#7X3&H0,#15X3&H0:2](-[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:3])-[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:4]": 2, 
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]=[#8X1&H0,#16X1&H0,#34X1&H0:2]": 2,  # Not bound to a metal cation
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]~[#8X2&H0,#7X2&H0,#16X2&H0,#15X2&H0:2]~[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:3]": 2,  # Not bound to a metal cation
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#7X3&H0,#15X3&H0:2](-[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:3])-[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:4]": 2,
         }
         amphoteric_smarts_dict = {
             f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#8HX2,#16HX2,#34HX2:2]": 2,
@@ -3081,7 +3101,7 @@ class Molecule:
         if local_basissets is None:
             ORCA_commands = f"{basisset} {ORCA_commands}"
         else:
-            basis_str = "\n\n"+r"%basis"
+            basis_str = "\n\n" + r"%basis"
             for element in local_basissets:
                 basis_str += f"\n    NewGTO {element} '{local_basissets[element]}' end"
             basis_str += "\nend"
@@ -3619,7 +3639,9 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         conf = Chem.Conformer(rdkit_mol.GetNumAtoms())
         conf.Set3D(True)
         for idx, atomObj in enumerate(self.AtomsList):
-            conf.SetAtomPosition(idx, atomObj.Coordinates)  # substitute your actual xyz attribute(s)
+            conf.SetAtomPosition(
+                idx, atomObj.Coordinates
+            )  # substitute your actual xyz attribute(s)
         rdkit_mol.AddConformer(conf, assignId=True)
         return rdkit_mol
 
@@ -3666,9 +3688,13 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             f.write(pdb_block)
             f.close()
         fixer = PDBFixer(f"{str(Path(__file__).parent)}/{self.Identifier}.pdb")
-        PDBFile.writeFile(fixer.topology, fixer.positions, open(Path(__file__).parent / f"{self.Identifier}.pdb", "w"))
+        PDBFile.writeFile(
+            fixer.topology,
+            fixer.positions,
+            open(Path(__file__).parent / f"{self.Identifier}.pdb", "w"),
+        )
         openmmMolObj = PDBFile(f"{str(Path(__file__).parent)}/{self.Identifier}.pdb")
-        #os.remove(Path(__file__).parent / f"{self.Identifier}.pdb")
+        # os.remove(Path(__file__).parent / f"{self.Identifier}.pdb")
         return openmmMolObj
 
     def MoleculeToOpenFFMol(self) -> openffMolObj:
@@ -3783,11 +3809,11 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                         .split(",")
                     ]
                 elif parts[i].startswith("LDS"):
-                    LowdinSpin=float(parts[i].split("=")[1])
+                    LowdinSpin = float(parts[i].split("=")[1])
                 elif parts[i].startswith("MKC"):
-                    MullikenCharge=float(parts[i].split("=")[1])
+                    MullikenCharge = float(parts[i].split("=")[1])
                 elif parts[i].startswith("LDC"):
-                    LowdinCharge=float(parts[i].split("=")[1])
+                    LowdinCharge = float(parts[i].split("=")[1])
             atomObj = Atom(
                 Label=f"{atom_symbol}{mol_idx}",
                 AtomicSymbol=atom_symbol,
@@ -4917,15 +4943,15 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             - simultaneous
         """
         method = method.lower()
-        matching_dicts = (
-            self.MatchSMARTSPatternToAtomIndices(SMARTS_String)
-        )
+        matching_dicts = self.MatchSMARTSPatternToAtomIndices(SMARTS_String)
         if matching_dicts is None:
             raise ValueError("Could not match SMARTS with Molecule Object")
         elif len(matching_dicts) == 1:
             atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = matching_dicts[0]
         else:
-            raise ValueError(f"SMARTS matching returned {len(matching_dicts)} possibilities, not 1 possibility")
+            raise ValueError(
+                f"SMARTS matching returned {len(matching_dicts)} possibilities, not 1 possibility"
+            )
         # Minimise RMSD between SMARTS_Coordinates and Molecule Coordinates
         ## Get SMARTS and molObj coor centres
         (
@@ -4997,7 +5023,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                                 xtb_method=method,
                                 fixed_atoms=fixed_atoms_idx,
                             )
-                    
+
         else:
             raise ValueError(
                 f"Invalid fitting_algorithm: {fitting_algorithm}. Must be 'sequential' or 'simultaneous'."
@@ -5011,31 +5037,33 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         rdkitMolObj = self.MoleculeToRDKitMol()
         old_SMARTS_pattern = Chem.MolFromSmarts(Old_SMARTS_str)
         new_SMARTS_pattern = Chem.MolFromSmarts(New_SMARTS_str)
-        matching_dicts = (
-            self.MatchSMARTSPatternToAtomIndices(Old_SMARTS_str)
-        )
+        matching_dicts = self.MatchSMARTSPatternToAtomIndices(Old_SMARTS_str)
         if matching_dicts is None:
             raise ValueError("Could not match SMARTS with Molecule Object")
         elif len(matching_dicts) == 1:
             atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx = matching_dicts[0]
         else:
-            raise ValueError(f"SMARTS matching returned {len(matching_dicts)} possibilities, not 1 possibility")
+            raise ValueError(
+                f"SMARTS matching returned {len(matching_dicts)} possibilities, not 1 possibility"
+            )
         old_smarts_atoms = [i.split(":") for i in Old_SMARTS_str.split("]")[:-1]]
         old_smarts_atoms = {int(i[1]): i[0].split("[")[1] for i in old_smarts_atoms}
         new_smarts_atoms = [i.split(":") for i in New_SMARTS_str.split("]")[:-1]]
         new_smarts_atoms = {int(i[1]): i[0].split("[")[1] for i in new_smarts_atoms}
         for SMARTS_idx in old_smarts_atoms:
             if old_smarts_atoms[SMARTS_idx] != new_smarts_atoms[SMARTS_idx]:
-                self.AtomsList[SMARTS_idx_to_atomIdx[SMARTS_idx]].AtomicSymbol = new_smarts_atoms[SMARTS_idx]
+                self.AtomsList[SMARTS_idx_to_atomIdx[SMARTS_idx]].AtomicSymbol = (
+                    new_smarts_atoms[SMARTS_idx]
+                )
 
     def ChangeMetalCentreCoordination(
-            self,
-            BondLengthDict: dict,
-            max_coor_num: int = 8,
-            MetalAtomObject: Atom | None = None,
-            MetalAtomLabel: str | None = None,
-            MetalAtomIndex: int | None = None,
-            ExcludeAtomSMARTS: dict[str, list[int]] | None = None,
+        self,
+        BondLengthDict: dict,
+        max_coor_num: int = 8,
+        MetalAtomObject: Atom | None = None,
+        MetalAtomLabel: str | None = None,
+        MetalAtomIndex: int | None = None,
+        ExcludeAtomSMARTS: dict[str, list[int]] | None = None,
     ):
         if MetalAtomObject is not None:
             pass
@@ -5044,7 +5072,9 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         elif MetalAtomIndex is not None:
             MetalAtomObject = self.AtomsList[MetalAtomIndex]
         else:
-            raise ValueError("Requires MetalAtomObject, MetalAtomLabel, or MetalAtomIndex")
+            raise ValueError(
+                "Requires MetalAtomObject, MetalAtomLabel, or MetalAtomIndex"
+            )
         # Exclude atoms based on SMARTS if provided
         excluded_atom_indices = []
         if ExcludeAtomSMARTS is not None:
@@ -5053,8 +5083,13 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                 exclude_SMARTS_idx_list = ExcludeAtomSMARTS[SMARTS]
                 if matching_dicts is not None:
                     for atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx in matching_dicts:
-                        for atomIdx, SMARTSIdx in zip(atomIdx_to_SMARTSIdx, atomIdx_to_SMARTSIdx.values()):
-                            if atomIdx not in excluded_atom_indices and SMARTSIdx in exclude_SMARTS_idx_list:
+                        for atomIdx, SMARTSIdx in zip(
+                            atomIdx_to_SMARTSIdx, atomIdx_to_SMARTSIdx.values()
+                        ):
+                            if (
+                                atomIdx not in excluded_atom_indices
+                                and SMARTSIdx in exclude_SMARTS_idx_list
+                            ):
                                 excluded_atom_indices.append(atomIdx)
         # Get metal atom with atom distances
         distances_dict = {}
@@ -5070,20 +5105,16 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         distances_dict = dict(sorted(distances_dict.items(), key=lambda item: item[1]))
         # Remove all bonds to metal atom
         for atomObj in self.GetAtomNeighbours(AtomObject=MetalAtomObject):
-            self.RemoveBond(
-                AtomObjects=[MetalAtomObject, atomObj]
-            )
+            self.RemoveBond(AtomObjects=[MetalAtomObject, atomObj])
         # Add bonds to metal atom based on distances and bond length dictionary
         coor_num = 0
         for atomLabel in distances_dict:
             if (
                 self.AtomsDict[atomLabel][1].AtomicSymbol in BondLengthDict
-                and distances_dict[atomLabel] <= BondLengthDict[self.AtomsDict[atomLabel][1].AtomicSymbol]
+                and distances_dict[atomLabel]
+                <= BondLengthDict[self.AtomsDict[atomLabel][1].AtomicSymbol]
             ):
-                self.AddBond(
-                    AtomLabels=[MetalAtomObject.Label, atomLabel],
-                    BondOrder=1
-                )
+                self.AddBond(AtomLabels=[MetalAtomObject.Label, atomLabel], BondOrder=1)
                 coor_num += 1
                 if coor_num >= max_coor_num:
                     break
@@ -5099,7 +5130,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         metal_coor_num: int = 8,
     ):
         # Find metal centre
-        metalAtomObj= None
+        metalAtomObj = None
         for atomObj in self.AtomsList:
             if atomObj.AtomicSymbol == metal_atomic_symbol:
                 metalAtomObj = atomObj
@@ -5112,7 +5143,9 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             # Add solvent molecule to metal centre
             # TODO: Need to add function that rotates solvent molecule to minimise steric clashing
             new_unit_bond_vector = self.GetNewUnitBondVector(metalAtomObj)
-            solvent_position = metalAtomObj.Coordinates + (new_unit_bond_vector * solvent_metal_bond_length)
+            solvent_position = metalAtomObj.Coordinates + (
+                new_unit_bond_vector * solvent_metal_bond_length
+            )
             solventMolObj = self.ReadSMILESString(
                 solvent_smiles,
                 solvent_smiles,
@@ -5124,10 +5157,15 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             )
             atomIdx_to_translate = patterns[0][1][solvent_bonding_atom_smarts_idx]
             atomLabel_to_bond = solventMolObj.AtomsList[atomIdx_to_translate].Label
-            translation_vector = solvent_position - solventMolObj.AtomsList[atomIdx_to_translate].Coordinates
+            translation_vector = (
+                solvent_position
+                - solventMolObj.AtomsList[atomIdx_to_translate].Coordinates
+            )
             translation_distance = np.linalg.norm(translation_vector)
             translation_unit_vector = translation_vector / translation_distance
-            solventMolObj.TranslateMolecule(translation_unit_vector, translation_distance)
+            solventMolObj.TranslateMolecule(
+                translation_unit_vector, translation_distance
+            )
             self.AddMolecule(solventMolObj, UpdateAtomLabels=False)
             self.AddBond(AtomLabels=[metalAtomObj.Label, atomLabel_to_bond])
             self.OptimiseGeometry_UFF()
@@ -5150,7 +5188,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         xtb_binary_path: str | None = None,
     ):
         # Find metal centre
-        metalAtomObj= None
+        metalAtomObj = None
         for atomObj in self.AtomsList:
             if atomObj.AtomicSymbol == metal_atomic_symbol:
                 metalAtomObj = atomObj
@@ -5172,7 +5210,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                 solvent_bonding_atom_smarts_idx=solvent_bonding_atom_smarts_idx,
                 solvent_metal_bond_length=solvent_metal_bond_length,
                 metal_coor_num=metal_coor_num,
-                metal_atomic_symbol=metal_atomic_symbol
+                metal_atomic_symbol=metal_atomic_symbol,
             )
         self.OptimiseGeometry_xTB_bin(
             xtb_method=xtb_method,
@@ -5399,19 +5437,19 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         # TODO: Universal heteroatom SMARTS
         planar_SMARTS: list[str] = [
             "[C:1](=[O:2])[N:3]",
-            "[#6X3,#7X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Not bonded to metal
-            "[#6X3,#7X3:1]1~[#6X3,#7X3:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to metal ortho pos
-            "[#6X3,#7X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X3:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to metal meta pos
-            "[#8X2,#16X2:1]1~[#6X3,#7X2:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Not bonded to metal
-            "[#8X3,#16X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to chalgogen
-            "[#8X2,#16X2:1]1~[#6X3,#7X3:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to metal ortho pos
-            "[#8X2,#16X2:1]1~[#6X3,#7X2:2]~[#6X3,#7X3:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1", # Bonded to metal meta pos
-            "[#6X3,#7X2,#8X2,#16X2,#17X2:1]1~[#6X3,#7X2,#8X2,#16X2,#17X2:2]~[#6X3,#7X2,#8X2,#16X2,#17X2:3]~[#6X3,#7X2,#8X2,#16X2,#17X2:4]~[#6X3,#7X2,#8X2,#16X2,#17X2:5]~[#6X3,#7X2,#8X2,#16X2,#17X2:6]~1", # Not bonded to metal
-            "[#6X3,#7X3,#8X3,#16X3,#17X3:1]1~[#6X3,#7X2,#8X2,#16X2,#17X2:2]~[#6X3,#7X2,#8X2,#16X2,#17X2:3]~[#6X3,#7X2,#8X2,#16X2,#17X2:4]~[#6X3,#7X2,#8X2,#16X2,#17X2:5]~[#6X3,#7X2,#8X2,#16X2,#17X2:6]~1", # Bonded to metal
+            "[#6X3,#7X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1",  # Not bonded to metal
+            "[#6X3,#7X3:1]1~[#6X3,#7X3:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1",  # Bonded to metal ortho pos
+            "[#6X3,#7X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X3:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1",  # Bonded to metal meta pos
+            "[#8X2,#16X2:1]1~[#6X3,#7X2:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1",  # Not bonded to metal
+            "[#8X3,#16X3:1]1~[#6X3,#7X2:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1",  # Bonded to chalgogen
+            "[#8X2,#16X2:1]1~[#6X3,#7X3:2]~[#6X3,#7X2:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1",  # Bonded to metal ortho pos
+            "[#8X2,#16X2:1]1~[#6X3,#7X2:2]~[#6X3,#7X3:3]~[#6X3,#7X2:4]~[#6X3,#7X2:5]~1",  # Bonded to metal meta pos
+            "[#6X3,#7X2,#8X2,#16X2,#17X2:1]1~[#6X3,#7X2,#8X2,#16X2,#17X2:2]~[#6X3,#7X2,#8X2,#16X2,#17X2:3]~[#6X3,#7X2,#8X2,#16X2,#17X2:4]~[#6X3,#7X2,#8X2,#16X2,#17X2:5]~[#6X3,#7X2,#8X2,#16X2,#17X2:6]~1",  # Not bonded to metal
+            "[#6X3,#7X3,#8X3,#16X3,#17X3:1]1~[#6X3,#7X2,#8X2,#16X2,#17X2:2]~[#6X3,#7X2,#8X2,#16X2,#17X2:3]~[#6X3,#7X2,#8X2,#16X2,#17X2:4]~[#6X3,#7X2,#8X2,#16X2,#17X2:5]~[#6X3,#7X2,#8X2,#16X2,#17X2:6]~1",  # Bonded to metal
         ],
         tetrahedral_SMARTS: list[str] = [
             "[SX3,SeX3]",
-        ]
+        ],
     ) -> float:
         if suppress_warnings:
             ob.obErrorLog.SetOutputLevel(0)
@@ -5437,7 +5475,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             for matching_indices in matching_indices_tuple:
                 atomIdx_to_SMARTSIdx, _ = matching_indices
                 for atomIdx in atomIdx_to_SMARTSIdx:
-                    ob_atom = obmol.GetAtom(atomIdx + 1) 
+                    ob_atom = obmol.GetAtom(atomIdx + 1)
                     ob_atom.SetHyb(3)
                     ob_atom.GetHyb()
                     ob_atom.SetType(f"{self.AtomsList[atomIdx].AtomicSymbol}3")
@@ -5450,7 +5488,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             for matching_indices in matching_indices_tuple:
                 atomIdx_to_SMARTSIdx, _ = matching_indices
                 for atomIdx in atomIdx_to_SMARTSIdx:
-                    ob_atom = obmol.GetAtom(atomIdx + 1) 
+                    ob_atom = obmol.GetAtom(atomIdx + 1)
                     ob_atom.SetHyb(2)
                     ob_atom.GetHyb()
                     ob_atom.SetType(f"{self.AtomsList[atomIdx].AtomicSymbol}2")
@@ -5467,7 +5505,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                 constrs.AddAtomConstraint(atom_idx + 1)
         if constrain_bonds:
             for bond in constrain_bonds:
-                constrs.AddDistanceConstraint(bond[0]+1, bond[1]+1, bond[2])
+                constrs.AddDistanceConstraint(bond[0] + 1, bond[1] + 1, bond[2])
         # Set up force field
         ff = ob.OBForceField.FindForceField(force_field)
         if not ff:
@@ -5504,16 +5542,16 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         fixed_atoms: list[int] | None = None,
         constrain_bonds: list[list[int, int, float]] | None = None,
         force_constant: float = 10.0,
-        time_limit: float = 100,
+        time_limit: float = 1000,
         optimise_geometry: bool = True,
         get_gradients: bool = False,
     ):
         if xtb_binary_path is None:
             xtb_binary_path = _xTBHelper_FindBinary()
-        
+
         self.DeleteCalculatedAttributes()
         self.DeriveBasicAttributes()
-        
+
         self.calculation_method = xtb_method
 
         # Define tempory work directory
@@ -5611,7 +5649,7 @@ $end"""
         if "xtbopt.xyz" in os.listdir(workdir):
             self.ReadXYZFileMapCoords(xyz_file=str(workdir / "xtbopt.xyz"))
         elif "xtbopt.log" in os.listdir(workdir):
-            with open(workdir / "xtb.out", "r") as f:
+            with open(workdir / "xtbopt.log", "r") as f:
                 xtb_log_str = f.read()
                 f.close()
             xtb_log_str = f"{self.NumberOfAtoms}\n{xtb_log_str.split(" energy:")[-1]}"
@@ -5627,7 +5665,7 @@ $end"""
                 f.close()
             self.electronic_energy = _xTBHelper_GetEnergies(xtb_out_str)
         elif "xtbopt.log" in os.listdir(workdir):
-            with open(workdir / "xtb.out", "r") as f:
+            with open(workdir / "xtbopt.log", "r") as f:
                 xtb_log_str = f.read()
                 f.close()
             xtb_log_str = xtb_log_str.split(" energy:")[-1]
@@ -5640,15 +5678,13 @@ $end"""
                     grad_str = f.read()
                     f.close()
                 grad_list = [
-                    [
-                        float(j) for j in i.split()
-                    ] for i in grad_str.split(
-                        "\n"
-                    )[2:] if len(i.split()) == 3
+                    [float(j) for j in i.split()]
+                    for i in grad_str.split("\n")[2:]
+                    if len(i.split()) == 3
                 ]
                 for atomObj, grad in zip(self.AtomsList, grad_list):
                     atomObj.Gradient = np.array(grad)
-                
+
         # Remove all output files
         for stringObj in [
             "charges",

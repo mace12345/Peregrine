@@ -21,7 +21,9 @@ import numpy as np
 
 
 def _GeneralHelper_CalculateRAM(
-    package: str, method: str, number_of_primitives: int,
+    package: str,
+    method: str,
+    number_of_primitives: int,
 ) -> int:
     """
     RAM (MB) = A * (primitives ^ x) + c
@@ -30,7 +32,7 @@ def _GeneralHelper_CalculateRAM(
         "Psi4": {
             "wb97m-d3bj": {
                 "A": 2.98120298e-01,
-                "x": 1.95881368e+00,
+                "x": 1.95881368e00,
                 "c": 4000,
             },
         }
@@ -146,6 +148,7 @@ def _xTBHelper_FindBinary() -> str:
       3. ~/xtb-*/bin/xtb and ~/*/xtb-*/bin/xtb  (Linux/macOS)
       4. Spotlight (macOS only)
     """
+
     def _ok(p: str) -> bool:
         return os.path.isfile(p) and os.access(p, os.X_OK)
 
@@ -1179,7 +1182,9 @@ class MoleculeSet:
         )
 
         if n_workers is None:
-            n_workers = max(1, (os.cpu_count()-2 or 1) - 1)  # leave one core free for the system
+            n_workers = max(
+                1, (os.cpu_count() - 2 or 1) - 1
+            )  # leave one core free for the system
 
         failed = {}
         with ProcessPoolExecutor(max_workers=n_workers) as pool:
@@ -1231,7 +1236,9 @@ class MoleculeSet:
             float: The RMSD value between the two MoleculeSets.
         """
         if set(self.MoleculesDict.keys()) != set(other.MoleculesDict.keys()):
-            raise ValueError("MoleculeSets must have the same identifiers for RMSD calculation.")
+            raise ValueError(
+                "MoleculeSets must have the same identifiers for RMSD calculation."
+            )
         rmsd_values = []
         identifiers = sorted(self.MoleculesDict.keys())
         for identifier in identifiers:

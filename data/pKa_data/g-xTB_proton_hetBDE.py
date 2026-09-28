@@ -18,7 +18,7 @@ plt.rcParams["figure.figsize"] = (6, 6)
 plt.rcParams["mathtext.fontset"] = "cm"
 
 if __name__ == "__main__":
-    
+
     pka_df = pd.read_csv(Path(__file__).parent / "aqueous_pka_data.csv")
     pka_df.set_index("Identifier", inplace=True)
 
@@ -87,7 +87,7 @@ if __name__ == "__main__":
         Path(__file__).parent / "Compounds-g-xTB-Opt_M06-2X-def2-SVP_Psi4Output",
         template_moleculeset=ms,
     )"""
-    
+
     # === g-xtb analysis ===
     """identifiers = [molObj.Identifier for molObj in protonated_ms.MoleculesDict.values()]
     prot_elec_ens = [protonated_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
@@ -110,7 +110,9 @@ if __name__ == "__main__":
     res_df["Elec En Diff (Eh)"] = res_df["Protonated Elec En (Eh)"] - res_df["Unprotonated Elec En (Eh)"]
     res_df.to_csv(Path(__file__).parent / "g-xTB_calculated_protonation_energies.csv")"""
 
-    res_df = pd.read_csv(Path(__file__).parent / "g-xTB_calculated_protonation_energies.csv")
+    res_df = pd.read_csv(
+        Path(__file__).parent / "g-xTB_calculated_protonation_energies.csv"
+    )
 
     res_df = res_df[res_df["Functional Group"] != "Water"]
     res_df = res_df[res_df["Functional Group"] != "Halide"]
@@ -149,7 +151,9 @@ if __name__ == "__main__":
     res_df["Elec En Diff (Eh)"] = res_df["Protonated Elec En (Eh)"] - res_df["Unprotonated Elec En (Eh)"]
     res_df.to_csv(Path(__file__).parent / "g-xTB-m062x_calculated_protonation_energies.csv")"""
 
-    res_df = pd.read_csv(Path(__file__).parent / "g-xTB-m062x_calculated_protonation_energies.csv")
+    res_df = pd.read_csv(
+        Path(__file__).parent / "g-xTB-m062x_calculated_protonation_energies.csv"
+    )
 
     res_df = res_df[res_df["Functional Group"] != "Water"]
     res_df = res_df[res_df["Functional Group"] != "Halide"]
