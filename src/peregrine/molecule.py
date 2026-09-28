@@ -5542,7 +5542,7 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         fixed_atoms: list[int] | None = None,
         constrain_bonds: list[list[int, int, float]] | None = None,
         force_constant: float = 10.0,
-        time_limit: float = 1000,
+        time_limit: float = 10000,
         optimise_geometry: bool = True,
         get_gradients: bool = False,
     ):
@@ -5652,7 +5652,7 @@ $end"""
             with open(workdir / "xtbopt.log", "r") as f:
                 xtb_log_str = f.read()
                 f.close()
-            xtb_log_str = f"{self.NumberOfAtoms}\n{xtb_log_str.split(" energy:")[-1]}"
+            xtb_log_str = f"{self.NumberOfAtoms}\n{xtb_log_str.split(f"\n{self.NumberOfAtoms}")[-1]}"
             self.error_code = "xtb did not optimise"
             self.ReadXYZStringMapCoords(xtb_log_str)
         else:
