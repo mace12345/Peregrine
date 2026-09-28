@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import subprocess
+import glob
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -136,28 +137,61 @@ def _GeneralHelper_LoadMolFile(mol_file_directory: str, mol_file: str) -> "Molec
 
 
 def _xTBHelper_FindBinary() -> str:
-    hits = []
-    # 1. PATH (fastest; works if your conda env is active)
-    if (p := shutil.which("xtb")):
-        hits.append(os.path.realpath(p))
-    # 2. Spotlight fallback
+    """
+    Locate a standalone (non-conda) xtb binary and return its bin/ directory.
+
+    Search order:
+      1. $XTB_BIN (path to the xtb executable or its bin/ directory)
+      2. PATH
+      3. ~/xtb-*/bin/xtb and ~/*/xtb-*/bin/xtb  (Linux/macOS)
+      4. Spotlight (macOS only)
+    """
+    def _ok(p: str) -> bool:
+        return os.path.isfile(p) and os.access(p, os.X_OK)
+
+    def _is_conda(p: str) -> bool:
+        return "conda" in p or "miniforge" in p
+
+    hits: list[str] = []
+
+    def _add(p: str) -> None:
+        rp = os.path.realpath(p)
+        if _ok(rp) and rp not in hits:
+            hits.append(rp)
+
+    # 1. Explicit override
+    if env := os.environ.get("XTB_BIN"):
+        _add(os.path.join(env, "xtb") if os.path.isdir(env) else env)
+
+    # 2. PATH
+    if p := shutil.which("xtb"):
+        _add(p)
+
+    # 3. Common install locations in $HOME
+    home = os.path.expanduser("~")
+    for pattern in ("xtb-*/bin/xtb", "*/xtb-*/bin/xtb", "xtb/bin/xtb"):
+        for p in sorted(glob.glob(os.path.join(home, pattern)), reverse=True):
+            _add(p)  # reverse sort -> newest version first
+
+    # 4. Spotlight (macOS)
     try:
         out = subprocess.run(
-            ["mdfind", "-name", "xtb"],
-            capture_output=True, text=True, timeout=30
+            ["mdfind", "-name", "xtb"], capture_output=True, text=True, timeout=30
         ).stdout
         for p in out.splitlines():
-            if p.endswith("/bin/xtb") and os.access(p, os.X_OK):
-                rp = os.path.realpath(p)
-                if rp not in hits:
-                    hits.append(rp)
+            if p.endswith("/bin/xtb"):
+                _add(p)
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass  # mdfind is missing (not macOS) or took too long
+        pass
+
     for hit in hits:
-        if "/bin/xtb" in hit and "conda" not in hit and "miniforge" not in hit:
-            hit = hit.replace("/bin/xtb", "/bin/")
-            return hit
-    raise ValueError("Could not find xtb binary")
+        if hit.endswith("/bin/xtb") and not _is_conda(hit):
+            return os.path.dirname(hit) + os.sep  # ".../bin/"
+
+    raise ValueError(
+        "Could not find a standalone xtb binary. Checked: $XTB_BIN, PATH, "
+        f"~/xtb-*/bin/xtb, Spotlight. Candidates found (rejected): {hits or 'none'}"
+    )
 
 
 class MoleculeSet:
