@@ -1146,6 +1146,10 @@ class MoleculeSet:
                     results[Identifier] = updated_molObj
         self.MoleculesDict.update(results)
 
+    def MACE(self, solvent_correction: str | None=None):
+        for molObj in self.MoleculesDict.values():
+            molObj.SinglePointMACE(solvent_correction=solvent_correction)
+
     def SolvateAndOptimiseMetalCentre(
         self,
         BondLengthDict: dict,

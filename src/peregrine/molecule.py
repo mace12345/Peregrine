@@ -4,6 +4,9 @@ from copy import deepcopy
 from pathlib import Path
 import os
 import warnings
+import contextlib
+import io
+from functools import lru_cache
 import subprocess
 import json
 import shutil
@@ -41,6 +44,8 @@ from openmm.app import PDBFile
 from pdbfixer import PDBFixer
 from openff.toolkit import Molecule as openffMolObj
 
+import pyddx
+
 from .atom import Atom
 from .atom import ATOMIC_NUMBER_OF_PRIMITIVES
 from .atom import EXCLUDE_NON_METAL_SMARTS_PATTERN
@@ -48,7 +53,7 @@ from .atom import NON_METAL_EXCLUDE_H_SMARTS_PATTERN
 
 # === Important Conversions ===
 
-eV_to_Eh = 27.211407953
+Eh_to_eV = 27.211407953
 BohrRad_to_Angstrom = 0.529177
 J_to_cal = 0.2390057361
 Eh_to_kcal = 627.5096080310
@@ -199,6 +204,28 @@ def _GeneralHelper_IsPureNumber(string: str) -> bool:
         if c.isalpha():
             return False
     return True
+
+
+def _GeneralHelper_FindCondaEnvPython(env_name: str) -> str:
+    """Return the path to the Python executable of a named conda environment."""
+    candidates = []
+    if conda_exe := os.environ.get("CONDA_EXE"):          # .../miniforge3/bin/conda
+        base = Path(conda_exe).resolve().parent.parent
+        candidates.append(base / "envs" / env_name / "bin" / "python")
+    if prefix := os.environ.get("CONDA_PREFIX"):          # active env, e.g. .../envs/chem-env
+        p = Path(prefix)
+        base = p.parent.parent if p.parent.name == "envs" else p
+        candidates.append(base / "envs" / env_name / "bin" / "python")
+    for base in ("~/miniforge3", "~/mambaforge", "~/miniconda3", "~/anaconda3"):
+        candidates.append(Path(base).expanduser() / "envs" / env_name / "bin" / "python")
+
+    for c in candidates:
+        if c.is_file() and os.access(c, os.X_OK):
+            return str(c)
+    raise FileNotFoundError(
+        f"Could not find python for conda env '{env_name}'. Tried: "
+        + ", ".join(str(c) for c in candidates)
+    )
 
 
 def _ORCAHelper_XYZBlockToAtomsList(
@@ -1903,6 +1930,54 @@ def _CRESTHelper_GetConfomers(
     return molObj_list
 
 
+@lru_cache(maxsize=None)
+def _MACEHelper_GetMACECalc(model: str = "MACE-MP-0", device: str = "cpu"):
+    if model == "MACE-MP-0":
+        """Build a MACE-MP-0 calculator once per process and reuse it."""
+        warnings.filterwarnings("ignore", message=".*TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD.*")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            from mace.calculators import mace_mp
+            return mace_mp(model="large", default_dtype="float64", device=device)
+    elif model == "MACE-POLAR":
+        """Build a MACE-POLAR calculator once per process and reuse it."""
+        warnings.filterwarnings("ignore", message=".*TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD.*")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            from mace.calculators import mace_polar
+            return mace_polar(model="polar-1-m", default_dtype="float64", device=device)
+
+
+def _ddXHelper_SolvationEnergy(
+    molObj: "Molecule",
+    model: str = "pcm",              # "pcm", "cosmo" or "lpb"
+    solvent_epsilon: float = 78.3553, # water
+    radii_scaling: float = 1.1,
+    lmax: int = 8,
+) -> float:
+    """
+    Electrostatic solvation energy (Eh) of a set of point charges in a
+    domain-decomposition continuum (ddCOSMO / ddPCM / ddLPB) via pyddx.
+    """
+
+    try:
+        radii_A = np.array([atomObj.AtomicRadii for atomObj in molObj.AtomsList]) * radii_scaling
+    except KeyError as e:
+        raise KeyError(f"No vdW radius for element {e}; add it to _BONDI_RADII.") from None
+
+    centres = (np.asarray([atomObj.Coordinates for atomObj in molObj.AtomsList]) * (1/BohrRad_to_Angstrom)).T        # (3, N), Bohr
+    radii = radii_A * (1/BohrRad_to_Angstrom)                              # Bohr
+
+    dd_model = pyddx.Model(model, centres, radii, solvent_epsilon=solvent_epsilon, lmax=lmax)
+
+    solute_multipoles = np.asarray([atomObj.MullikenCharge for atomObj in molObj.AtomsList], dtype=float).reshape(1, -1) / np.sqrt(4 * np.pi)
+    solute_field = dd_model.multipole_electrostatics(solute_multipoles)
+    solute_psi = dd_model.multipole_psi(solute_multipoles)
+
+    state = pyddx.State(dd_model, solute_psi, solute_field["phi"])
+    state.fill_guess()
+    state.solve()
+    return 0.5 * np.sum(state.x * solute_psi)                        # Eh
+
+
 class Molecule:
     def __init__(
         self,
@@ -2505,6 +2580,12 @@ class Molecule:
         return n_atoms
 
     def GetNewUnitBondVector(self, AtomObj: Atom) -> np.ndarray:
+        """
+        # TODO: /home/samuel.mace/Peregrine/src/peregrine/molecule.py:2514: RuntimeWarning: invalid value encountered in divide
+        new_unit_bond_vector = new_bond_vector * -1 / np.linalg.norm(new_bond_vector)
+        /home/samuel.mace/Peregrine/src/peregrine/molecule.py:2514: RuntimeWarning: invalid value encountered in divide
+        new_unit_bond_vector = new_bond_vector * -1 / np.linalg.norm(new_bond_vector)
+        """
         neighbours = self.GetAtomNeighbours(AtomObject=AtomObj)
         new_bond_vector = np.array([0.0, 0.0, 0.0])
         for n_atomObj in neighbours:
@@ -2554,9 +2635,10 @@ class Molecule:
         )
         return rmsd
 
-    def CalculatepKa(self, method: str = "g-xTB//M06-2X/def2-SVP/PCM(Water)"):
-        slope = -0.0038254686802786575
-        intercept = -0.4388995075926189
+    def CalculatepKa(
+        self,
+        method: str = "g-xTB//MACE-MP-0"
+    ):
         # For algorithm to work structure provided must be neutral
         # Identify all the different potentially protonatable/deprotonatable sites
         basic_smarts_dict = {
@@ -2597,17 +2679,63 @@ class Molecule:
                 continue
             for patterns in pattern_dicts:
                 acidic_atom_idxs.append(patterns[1][SMARTS_idx])
-        print(basic_atom_idxs)
-        print(amphoteric_atom_idxs)
-        print(acidic_atom_idxs)
+
         if method == "g-xTB//M06-2X/def2-SVP/PCM(Water)":
             slope = -0.0038254686802786575
             intercept = -0.4388995075926189
             # r2 value = 0.72659
+
             # Initially optimise with g-xTB
             # self.OptimiseGeometry_xTB_bin()
+            # Calculate electronic energy with M06-2X/sef2-SVP/PCM(Water)
+            psi4_input_str = self.WritePsi4String(
+                method="m06-2x",
+                basisset="def2-svp",
+                max_memory=4000,
+                CPU_count=1,
+                set_options={
+                    "ddx": True,
+                    "ddx_model": "pcm",        # pcm, cosmo or lpb
+                    "ddx_solvent": "water",
+                    "ddx_radii_set": "uff",    # or bondi
+                },
+                restricted=True,
+            )
+            workdir = Path(__file__).parent / f"{self.Identifier}_TempDir"
+            os.makedirs(workdir, exist_ok=True)
+            with open(workdir / f"{self.Identifier}.py", "w") as f:
+                f.write(psi4_input_str)
+                f.close()
+            # TODO: Change into workdir
+            psi4env_path = _GeneralHelper_FindCondaEnvPython("psi4env")
+            # TODO: Change conda python environment from chem-env to psi4env in order to run psi4 input
+            # TODO: run psi4 input
+
             # Based on protonatable/deprotonatable sites generate a new structure for each site
+            # (1) Deprotonate acidic sites first, optimise and calculate electonic en
+            for acidic_atom_idx in acidic_atom_idxs:
+                temp_molObj = deepcopy(self)
+                # Deprotonate
+                n_atoms = temp_molObj.GetAtomNeighbours(AtomIndex=acidic_atom_idx)
+                for n_atomObj in n_atoms:
+                    if n_atomObj.AtomicSymbol == "H" and n_atomObj.FormalCharge == 0:
+                        temp_molObj.AtomsList[acidic_atom_idx].FormalCharge -= 1
+                        temp_molObj.RemoveAtom(AtomObject=n_atomObj)
+                        break
+                # Optimise with g-xTB
+                # temp_molObj.OptimiseGeometry_xTB_bin()
+                # Calculate electronic energy with M06-2X/sef2-SVP/PCM(Water)
+
             pass
+        elif method =="g-xTB//MACE-MP-0":
+            slope = -0.0023513537871010996
+            intercept = -0.438464916314113
+            # r2 value = 0.756
+            # Initially optimise with g-xTB
+            # self.OptimiseGeometry_xTB_bin()
+            # Calculate electronic energy with MACE-MP-0
+            self.MACE()
+            print(self.electronic_energy)
         pass
 
     # === Get atomic descriptors ===
@@ -3483,6 +3611,8 @@ rm slurm-$SLURM_JOB_ID.out
             set_options=set_options,
         )
         if job_scheduler_used == "slurm":
+            if scratch_dir is None:
+                raise ValueError("Please provide a SCRATCH direcory path")
             psi4_command = f"""{psi4_command}
 
 python {self.Identifier}.py"""
@@ -3676,9 +3806,11 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         ASEMolecule = aseAtoms(
             symbols=[atomObj.AtomicSymbol for atomObj in self.AtomsList],
             positions=[tuple(atomObj.Coordinates) for atomObj in self.AtomsList],
+            pbc=False,
         )
-        ASEMolecule.info["spin_multiplicity"] = self.Multiplicity
-        ASEMolecule.info["charge"] = self.FormalCharge
+        ASEMolecule.info["charge"] = int(self.FormalCharge)
+        ASEMolecule.info["spin"] = int(self.Multiplicity)               # read by MACE-POLAR and UMA
+        ASEMolecule.info["spin_multiplicity"] = int(self.Multiplicity)  # keep for existing code
         return ASEMolecule
 
     def MoleculeToOpenMMMol(self) -> PDBFile:
@@ -5899,6 +6031,26 @@ $end"""
             )
         if tblite == True:
             pass
+
+    def SinglePointMACE(self, model: str="MACE-POLAR", solvent_correction: str | None=None):
+        calc = _MACEHelper_GetMACECalc(model)
+        ASEMolObj = self.MoleculeToASEMolecule()
+        if model == "MACE-POLAR":
+            ASEMolObj.info["external_field"] = [0.0, 0.0, 0.0]
+        ASEMolObj.calc = calc
+        self.electronic_energy = ASEMolObj.get_potential_energy() / Eh_to_eV
+        for atomObj, force, charge in zip(self.AtomsList, ASEMolObj.get_forces(), calc.results["charges"]):
+            atomObj.Gradient = force * -1 * Eh_to_eV
+            atomObj.MullikenCharge = charge
+        self.calculation_method = model
+        if solvent_correction is not None:
+            solvent_correction = solvent_correction.lower()
+        if solvent_correction == "pcm(water)":
+            solv_corr = _ddXHelper_SolvationEnergy(
+                molObj=self,
+            )
+            self.electronic_energy += solv_corr
+            self.calculation_method += "/pcm(water)"
 
     # === Construct Transition State ===
 

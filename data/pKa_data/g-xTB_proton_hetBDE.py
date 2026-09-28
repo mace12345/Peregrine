@@ -88,6 +88,50 @@ if __name__ == "__main__":
         template_moleculeset=ms,
     )"""
 
+    # === wB97M-V/def2-TZVPD (MACE-MP-0 MLIP data generation method) ===
+    """protonated_ms = MoleculeSet.ReadMolFileDirectory(
+        Path(__file__).parent / "ProtonatedCompounds_g-xTB-Opt"
+    )
+    protonated_ms.WritePsi4Input(
+        Path(__file__).parent / "ProtonatedCompounds-g-xTB-Opt_wB97M-V-def2-TZVPD",
+        method="wb97m-v",
+        basisset="def2-tzvpd",
+        restricted=True,
+        CPU_count=16,
+        job_scheduler_used="slurm",
+        max_memory=16000,
+        psi4_command="source ~/miniforge3/etc/profile.d/conda.sh\nconda activate psi4env",
+        scratch_dir="/scratch-fsx/samuel.mace",
+    )
+    protonated_ms.MACE(solvent_correction="PCM(Water)")
+    protonated_ms.WriteMolFileDirectory(Path(__file__).parent / "ProtonatedCompounds-g-xTB-Opt_MACE-POLAR")
+    #new_protonated_ms = MoleculeSet.ReadPsi4Output(
+    #    Path(__file__).parent / "ProtonatedCompounds-g-xTB-Opt_wB97M-V-def2-TZVPD",
+    #    Path(__file__).parent / "ProtonatedCompounds-g-xTB-Opt_wB97M-V-def2-TZVPD_Psi4Output",
+    #    template_moleculeset=protonated_ms,
+    #)
+    ms = MoleculeSet.ReadMolFileDirectory(
+        Path(__file__).parent / "Compounds_g-xTB-Opt"
+    )
+    ms.WritePsi4Input(
+        Path(__file__).parent / "Compounds-g-xTB-Opt_wB97M-V-def2-TZVPD",
+        method="wb97m-v",
+        basisset="def2-tzvpd",
+        restricted=True,
+        CPU_count=16,
+        job_scheduler_used="slurm",
+        max_memory=16000,
+        psi4_command="source ~/miniforge3/etc/profile.d/conda.sh\nconda activate psi4env",
+        scratch_dir="/scratch-fsx/samuel.mace",
+    )
+    ms.MACE(solvent_correction="PCM(Water)")
+    ms.WriteMolFileDirectory(Path(__file__).parent / "Compounds-g-xTB-Opt_MACE-POLAR")
+    #new_ms = MoleculeSet.ReadPsi4Output(
+    #    Path(__file__).parent / "Compounds-g-xTB-Opt_wB97M-V-def2-TZVPD",
+    #    Path(__file__).parent / "Compounds-g-xTB-Opt_wB97M-V-def2-TZVPD_Psi4Output",
+    #    template_moleculeset=ms,
+    #)"""
+
     # === g-xtb analysis ===
     """identifiers = [molObj.Identifier for molObj in protonated_ms.MoleculesDict.values()]
     prot_elec_ens = [protonated_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
@@ -110,7 +154,7 @@ if __name__ == "__main__":
     res_df["Elec En Diff (Eh)"] = res_df["Protonated Elec En (Eh)"] - res_df["Unprotonated Elec En (Eh)"]
     res_df.to_csv(Path(__file__).parent / "g-xTB_calculated_protonation_energies.csv")"""
 
-    res_df = pd.read_csv(
+    """res_df = pd.read_csv(
         Path(__file__).parent / "g-xTB_calculated_protonation_energies.csv"
     )
 
@@ -127,7 +171,7 @@ if __name__ == "__main__":
         res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"],
         res_df[res_df["Formal Charge"] == -1]["Elec En Diff (Eh)"],
     )
-    fig.savefig(Path(__file__).parent / "gxtb_pka_scatter.png", bbox_inches="tight")
+    fig.savefig(Path(__file__).parent / "gxtb_pka_scatter.png", bbox_inches="tight")"""
 
     # === g-xtb/m06-2x analysis ===
     """identifiers = [molObj.Identifier for molObj in new_protonated_ms.MoleculesDict.values()]
@@ -151,7 +195,7 @@ if __name__ == "__main__":
     res_df["Elec En Diff (Eh)"] = res_df["Protonated Elec En (Eh)"] - res_df["Unprotonated Elec En (Eh)"]
     res_df.to_csv(Path(__file__).parent / "g-xTB-m062x_calculated_protonation_energies.csv")"""
 
-    res_df = pd.read_csv(
+    """res_df = pd.read_csv(
         Path(__file__).parent / "g-xTB-m062x_calculated_protonation_energies.csv"
     )
 
@@ -177,4 +221,108 @@ if __name__ == "__main__":
     print(res)
     ax.set_ylabel("g-xTB//M06-2X/def2-SVP/PCM(Water) (Eh)")
     ax.set_xlabel("pKa")
-    fig.savefig(Path(__file__).parent / "m062x_pka_scatter.png", bbox_inches="tight")
+    fig.savefig(Path(__file__).parent / "m062x_pka_scatter.png", bbox_inches="tight")"""
+
+    # === g-xtb/MACE-MP-0 analysis ===
+    """new_protonated_ms = MoleculeSet.ReadMolFileDirectory(Path(__file__).parent / "ProtonatedCompounds-g-xTB-Opt_MACE-MP-0")
+    new_ms = MoleculeSet.ReadMolFileDirectory(Path(__file__).parent / "Compounds-g-xTB-Opt_MACE-MP-0")
+    identifiers = [molObj.Identifier for molObj in new_protonated_ms.MoleculesDict.values()]
+    prot_elec_ens = [new_protonated_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
+    elec_ens = [new_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
+    pka = [pka_df.loc[identifier, "pKa"] for identifier in identifiers]
+    atom_centres = [pka_df.loc[identifier, "AtomCentre"] for identifier in identifiers]
+    hybrid = [pka_df.loc[identifier, "FunctionalGroup"] for identifier in identifiers]
+    charge = [new_ms.MoleculesDict[identifier].FormalCharge for identifier in identifiers]
+    res_df = pd.DataFrame(
+        {
+            "Identifier": identifiers,
+            "Atom Centres": atom_centres,
+            "Functional Group":  hybrid,
+            "Formal Charge": charge,
+            "Aqueous pKa": pka,
+            "Protonated Elec En (Eh)": prot_elec_ens,
+            "Unprotonated Elec En (Eh)": elec_ens,
+        }
+    )
+    res_df["Elec En Diff (Eh)"] = res_df["Protonated Elec En (Eh)"] - res_df["Unprotonated Elec En (Eh)"]
+    res_df.to_csv(Path(__file__).parent / "g-xTB-mace-mp-0_calculated_protonation_energies.csv")"""
+
+    """res_df = pd.read_csv(
+        Path(__file__).parent / "g-xTB-mace-mp-0_calculated_protonation_energies.csv"
+    )
+
+    res_df = res_df[res_df["Functional Group"] != "Water"]
+    res_df = res_df[res_df["Functional Group"] != "Halide"]
+    res_df = res_df[res_df["Identifier"] != "a55"]
+
+    fig, ax = plt.subplots()
+    ax.scatter(
+        res_df[res_df["Formal Charge"] == 0]["Aqueous pKa"],
+        res_df[res_df["Formal Charge"] == 0]["Elec En Diff (Eh)"],
+        color="#D81B60",
+        s=5,
+    )
+    ax.scatter(
+        res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"],
+        res_df[res_df["Formal Charge"] == -1]["Elec En Diff (Eh)"],
+        color="#1E88E5",
+        s=5,
+    )
+    res = linregress(res_df["Aqueous pKa"], res_df["Elec En Diff (Eh)"])
+    print(f"slope={res.slope}, intercept={res.intercept}, r2={res.rvalue**2}")
+    print(res)
+    ax.set_ylabel("g-xTB//MACE-MP-0 (Eh)")
+    ax.set_xlabel("pKa")
+    fig.savefig(Path(__file__).parent / "mace-mp-0_pka_scatter.png", bbox_inches="tight")"""
+
+    # === g-xtb/MACE-POLAR analysis ===
+    """new_protonated_ms = MoleculeSet.ReadMolFileDirectory(Path(__file__).parent / "ProtonatedCompounds-g-xTB-Opt_MACE-POLAR")
+    new_ms = MoleculeSet.ReadMolFileDirectory(Path(__file__).parent / "Compounds-g-xTB-Opt_MACE-POLAR")
+    identifiers = [molObj.Identifier for molObj in new_protonated_ms.MoleculesDict.values()]
+    prot_elec_ens = [new_protonated_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
+    elec_ens = [new_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
+    pka = [pka_df.loc[identifier, "pKa"] for identifier in identifiers]
+    atom_centres = [pka_df.loc[identifier, "AtomCentre"] for identifier in identifiers]
+    hybrid = [pka_df.loc[identifier, "FunctionalGroup"] for identifier in identifiers]
+    charge = [new_ms.MoleculesDict[identifier].FormalCharge for identifier in identifiers]
+    res_df = pd.DataFrame(
+        {
+            "Identifier": identifiers,
+            "Atom Centres": atom_centres,
+            "Functional Group":  hybrid,
+            "Formal Charge": charge,
+            "Aqueous pKa": pka,
+            "Protonated Elec En (Eh)": prot_elec_ens,
+            "Unprotonated Elec En (Eh)": elec_ens,
+        }
+    )
+    res_df["Elec En Diff (Eh)"] = res_df["Protonated Elec En (Eh)"] - res_df["Unprotonated Elec En (Eh)"]
+    res_df.to_csv(Path(__file__).parent / "g-xTB-mace-polar_calculated_protonation_energies.csv")"""
+
+    res_df = pd.read_csv(
+        Path(__file__).parent / "g-xTB-mace-polar_calculated_protonation_energies.csv"
+    )
+
+    res_df = res_df[res_df["Functional Group"] != "Water"]
+    res_df = res_df[res_df["Functional Group"] != "Halide"]
+    res_df = res_df[res_df["Identifier"] != "a55"]
+
+    fig, ax = plt.subplots()
+    ax.scatter(
+        res_df[res_df["Formal Charge"] == 0]["Aqueous pKa"],
+        res_df[res_df["Formal Charge"] == 0]["Elec En Diff (Eh)"],
+        color="#D81B60",
+        s=5,
+    )
+    ax.scatter(
+        res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"],
+        res_df[res_df["Formal Charge"] == -1]["Elec En Diff (Eh)"],
+        color="#1E88E5",
+        s=5,
+    )
+    res = linregress(res_df["Aqueous pKa"], res_df["Elec En Diff (Eh)"])
+    print(f"slope={res.slope}, intercept={res.intercept}, r2={res.rvalue**2}")
+    print(res)
+    ax.set_ylabel("g-xTB//MACE-POLAR (Eh)")
+    ax.set_xlabel("pKa")
+    fig.savefig(Path(__file__).parent / "mace-polar_pka_scatter.png", bbox_inches="tight")
