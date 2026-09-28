@@ -102,7 +102,6 @@ def _xTBBinHelper_OptimiseOne(args):
 
 
 def _solvate_worker(key, molObj, kwargs):
-    """Run SolvateAndOptimiseMetalCentre on one molecule in its own temp directory."""
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -113,8 +112,16 @@ def _solvate_worker(key, molObj, kwargs):
         os.chdir(tmpdir)
         try:
             molObj.SolvateAndOptimiseMetalCentre(**kwargs)
+        except Exception as e:
+            raise RuntimeError(
+                f"{e!r}\n"
+                f"filename={getattr(e, 'filename', None)}\n"
+                f"cwd={os.getcwd()}\n"
+                f"xtb on PATH: {shutil.which('xtb')}\n"
+                f"{traceback.format_exc()}"
+            ) from None
         finally:
-            os.chdir(original_cwd)  # go back before the temp dir is deleted
+            os.chdir(original_cwd)
     return key, molObj
 
 
