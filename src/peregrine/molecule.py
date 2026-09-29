@@ -10,6 +10,8 @@ from functools import lru_cache
 import subprocess
 import json
 import shutil
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -1961,6 +1963,34 @@ def _MACEHelper_GetMACECalc(model: str = "MACE-MP-0", device: str = "cpu"):
             return mace_polar(model="polar-1-l", default_dtype="float64", device=device)
 
 
+def _MACEHelper_SinglePoint_MACE(key, molObj: "Molecule", solvent_correction: str | None = None):
+    """Worker: run one MACE single point and return the updated object."""
+    import torch
+    torch.set_num_threads(1)      # stop the workers competing for threads
+    torch.set_num_interop_threads(1)
+    molObj.SinglePoint_MACE(solvent_correction=solvent_correction)
+    return key, molObj
+
+
+def _MACEHelper_OptimiseGeometry_MACE(key, molObj: "Molecule"):
+    """Worker: run one MACE single point and return the updated object."""
+    import torch
+    torch.set_num_threads(1)      # stop the workers competing for threads
+    torch.set_num_interop_threads(1)
+    molObj.OptimiseGeometry_MACE()
+    return key, molObj
+
+
+def _MACEHelper_OptimiseGeometryAndSinglePoint_MACE(key, molObj: "Molecule", solvent_correction: str | None = None):
+    """Worker: run one MACE single point and return the updated object."""
+    import torch
+    torch.set_num_threads(1)      # stop the workers competing for threads
+    torch.set_num_interop_threads(1)
+    molObj.OptimiseGeometry_MACE()
+    molObj.SinglePoint_MACE(solvent_correction=solvent_correction)
+    return key, molObj
+
+
 def _ddXHelper_SolvationEnergy(
     molObj: "Molecule",
     model: str = "pcm",              # "pcm", "cosmo" or "lpb"
@@ -2650,7 +2680,8 @@ class Molecule:
 
     def CalculatepKa(
         self,
-        method: str = "g-xTB/MACE-POLAR//MACE-POLAR/PCM(Water)"
+        method: str = "g-xTB/MACE-POLAR//MACE-POLAR/PCM(Water)",
+        CPU_count: int = 8,
     ):
         # For algorithm to work structure provided must be neutral
         # Identify all the different potentially protonatable/deprotonatable sites
@@ -2667,7 +2698,7 @@ class Molecule:
         acidic_smarts_dict = {
             "[#8:1]=[#6,#7:2]-[#6HX4,#6H2X4:3]-[#6,#7:4]=[#8:5]": 3,
             f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#8HX3,#16HX3,#34HX3,#7HX4,#15HX4,#7H2X4,#15H2X4:2]-[{EXCLUDE_NON_METAL_SMARTS_PATTERN}:3]": 2,
-            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#7HX3,#15HX3,#7H2X3,#15H2X3:2]": 2,
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#8HX2,#16HX2,#34HX2,#7HX3,#15HX3,#7H2X3,#15H2X3:2]": 2,
         }
         basic_atom_idxs = []
         for SMARTS in basic_smarts_dict:
@@ -2764,25 +2795,75 @@ class Molecule:
             anionic_slope = -0.003364958747186327
             anionic_intercept = -0.4219389962049124
             # r2 value = 0.893
+            def _anionic_pka_calc(
+                protonated_species: float,
+                deprotonated_species: float,
+                anionic_intercept: float = -0.4219389962049124,
+                anionic_slope: float = -0.003364958747186327
+            ):
+                return round(
+                    (protonated_species - deprotonated_species - anionic_intercept) / anionic_slope, 1
+                )
+            # (ProtonatedSpecies - DeprotonatedSpecies - anionic_intercept) / anionic_slope
+
             # Optimise with g-xTB
             # self.OptimiseGeometry_xTB_bin()
+
             # Optimise with MACE-POLAR
             # self.OptimiseGeometry_MACE()
-            # Get single point energy with solvent correction
-            self.SinglePoint_MACE(solvent_correction="pcm(water)", CPU_count=14)
+
+            # Get single point energy with solvent correction of the neutral compound
+            self.SinglePoint_MACE(solvent_correction="pcm(water)")
+
+            # Generate all the different tempMolObjs for calculation of acidic proton
+            temp_molObj_dict = {}
             for acidic_atom_idx in acidic_atom_idxs:
                 temp_molObj = deepcopy(self)
                 # Adjust formal charge
                 temp_molObj.AtomsList[acidic_atom_idx].FormalCharge -= 1
+                formal_charge = temp_molObj.AtomsList[acidic_atom_idx].FormalCharge
                 # Remove proton
                 for n_atom in temp_molObj.GetAtomNeighbours(AtomIndex=acidic_atom_idx):
                     if n_atom.AtomicSymbol == "H" and n_atom.FormalCharge == 0:
                         temp_molObj.RemoveAtom(AtomObject=n_atom)
                         break
-                # Optimise and calculate pka
-                temp_molObj.OptimiseGeometry_MACE(CPU_count=14)
-                temp_molObj.SinglePoint_MACE(solvent_correction="pcm(water)",CPU_count=14)
-                return temp_molObj
+                temp_molObj_dict[acidic_atom_idx] = [formal_charge, temp_molObj]
+            # ---- Parallel MACE optimise and single points on all deprotonated species ----
+            n_tasks = len(temp_molObj_dict)
+            if n_tasks > 0:
+                n_cpus = CPU_count
+                n_workers = min(n_tasks, n_cpus)
+
+                ctx = mp.get_context("spawn")   # fork + torch can deadlock
+                failed = {}
+                with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as ex:
+                    futures = {
+                        ex.submit(_MACEHelper_OptimiseGeometryAndSinglePoint_MACE, idx, mol, "pcm(water)"): idx
+                        for idx, (fc, mol) in temp_molObj_dict.items()
+                    }
+                    for fut in as_completed(futures):
+                        idx = futures[fut]
+                        try:
+                            _, mol_done = fut.result()
+                            temp_molObj_dict[idx][1] = mol_done   # replace with the computed copy
+                        except Exception as e:
+                            failed[idx] = repr(e)
+                            print(f"MACE SP failed for acidic atom {idx}: {e}")
+
+                for idx in failed:
+                    temp_molObj_dict.pop(idx, None)
+            # Calculate pKa's on all the deprotonated atoms
+            for idx in temp_molObj_dict:
+                formal_charge = temp_molObj_dict[idx][0]
+                temp_molObj = temp_molObj_dict[idx][1]
+                if formal_charge == -1:
+                    self.AtomsList[idx].pKa = _anionic_pka_calc(
+                        self.electronic_energy,
+                        temp_molObj.electronic_energy,
+                    )
+            
+            return temp_molObj_dict
+                
 
     # === Get atomic descriptors ===
 
@@ -3004,6 +3085,8 @@ class Molecule:
                 mol_str += f" LDC={atomObj.LowdinCharge}"
             if atomObj.LowdinSpin is not None:
                 mol_str += f" LDS={atomObj.LowdinSpin}"
+            if atomObj.pKa is not None:
+                mol_str += f" PKA={atomObj.pKa}"
             mol_str += "\n"
         # End atom and begin bonds
         mol_str += "M V30 END ATOM\nM V30 BEGIN BOND\n"
@@ -6113,7 +6196,7 @@ $end"""
         model: str="MACE-POLAR",
         fixed_atoms: list[int] | None = None,
         trajectory: str | None = None,
-        logfile: str | None = None,
+        logfile: str | None = "-",
         optimiser: str = "BFGS",
         fmax: float = 0.01,          # eV/Å (ASE's convergence criterion)
         steps: int = 500,
