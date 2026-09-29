@@ -30,8 +30,6 @@ from openbabel import pybel
 from openbabel import openbabel as ob
 
 from ase import Atoms as aseAtoms
-from ase.optimize import BFGS, FIRE, LBFGS
-from ase.constraints import FixAtoms
 
 import tblite.interface as tb
 from berny import Berny, geomlib, angstrom
@@ -1932,6 +1930,21 @@ def _CRESTHelper_GetConfomers(
     return molObj_list
 
 
+def _MACEHelper_SetThreads(n: int = 1):
+    """Call once, before anything imports torch."""
+    n = n or os.cpu_count()
+    for v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS",
+              "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+        os.environ[v] = str(n)
+    import torch
+    torch.set_num_threads(n)          # threads used within each operation
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        pass                          # already set once PyTorch has started working
+    return torch.get_num_threads()
+
+
 @lru_cache(maxsize=None)
 def _MACEHelper_GetMACECalc(model: str = "MACE-MP-0", device: str = "cpu"):
     if model == "MACE-MP-0":
@@ -2637,7 +2650,7 @@ class Molecule:
 
     def CalculatepKa(
         self,
-        method: str = "g-xTB//MACE-MP-0"
+        method: str = "g-xTB/MACE-POLAR//MACE-POLAR/PCM(Water)"
     ):
         # For algorithm to work structure provided must be neutral
         # Identify all the different potentially protonatable/deprotonatable sites
@@ -2654,6 +2667,7 @@ class Molecule:
         acidic_smarts_dict = {
             "[#8:1]=[#6,#7:2]-[#6HX4,#6H2X4:3]-[#6,#7:4]=[#8:5]": 3,
             f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#8HX3,#16HX3,#34HX3,#7HX4,#15HX4,#7H2X4,#15H2X4:2]-[{EXCLUDE_NON_METAL_SMARTS_PATTERN}:3]": 2,
+            f"[{NON_METAL_EXCLUDE_H_SMARTS_PATTERN}:1]-[#7HX3,#15HX3,#7H2X3,#15H2X3:2]": 2,
         }
         basic_atom_idxs = []
         for SMARTS in basic_smarts_dict:
@@ -2662,6 +2676,8 @@ class Molecule:
             if pattern_dicts is None:
                 continue
             for patterns in pattern_dicts:
+                if patterns[1][SMARTS_idx] in basic_atom_idxs:
+                    continue
                 basic_atom_idxs.append(patterns[1][SMARTS_idx])
         amphoteric_atom_idxs = []
         for SMARTS in amphoteric_smarts_dict:
@@ -2670,6 +2686,8 @@ class Molecule:
             if pattern_dicts is None:
                 continue
             for patterns in pattern_dicts:
+                if patterns[1][SMARTS_idx] in amphoteric_atom_idxs:
+                    continue
                 amphoteric_atom_idxs.append(patterns[1][SMARTS_idx])
         acidic_atom_idxs = []
         for SMARTS in acidic_smarts_dict:
@@ -2678,8 +2696,11 @@ class Molecule:
             if pattern_dicts is None:
                 continue
             for patterns in pattern_dicts:
+                if patterns[1][SMARTS_idx] in acidic_atom_idxs:
+                    continue
                 acidic_atom_idxs.append(patterns[1][SMARTS_idx])
 
+        # Calculate pKa's of all the different functional groups
         if method == "g-xTB//M06-2X/def2-SVP/PCM(Water)":
             slope = -0.0038254686802786575
             intercept = -0.4388995075926189
@@ -2743,7 +2764,25 @@ class Molecule:
             anionic_slope = -0.003364958747186327
             anionic_intercept = -0.4219389962049124
             # r2 value = 0.893
-        pass
+            # Optimise with g-xTB
+            # self.OptimiseGeometry_xTB_bin()
+            # Optimise with MACE-POLAR
+            # self.OptimiseGeometry_MACE()
+            # Get single point energy with solvent correction
+            self.SinglePoint_MACE(solvent_correction="pcm(water)", CPU_count=14)
+            for acidic_atom_idx in acidic_atom_idxs:
+                temp_molObj = deepcopy(self)
+                # Adjust formal charge
+                temp_molObj.AtomsList[acidic_atom_idx].FormalCharge -= 1
+                # Remove proton
+                for n_atom in temp_molObj.GetAtomNeighbours(AtomIndex=acidic_atom_idx):
+                    if n_atom.AtomicSymbol == "H" and n_atom.FormalCharge == 0:
+                        temp_molObj.RemoveAtom(AtomObject=n_atom)
+                        break
+                # Optimise and calculate pka
+                temp_molObj.OptimiseGeometry_MACE(CPU_count=14)
+                temp_molObj.SinglePoint_MACE(solvent_correction="pcm(water)",CPU_count=14)
+                return temp_molObj
 
     # === Get atomic descriptors ===
 
@@ -6039,7 +6078,13 @@ $end"""
         if tblite == True:
             pass
 
-    def SinglePointMACE(self, model: str="MACE-POLAR", solvent_correction: str | None=None):
+    def SinglePoint_MACE(
+        self,
+        model: str="MACE-POLAR",
+        solvent_correction: str | None=None,
+        CPU_count: int = 1,
+    ):
+        _MACEHelper_SetThreads(CPU_count)
         self.DeleteCalculatedAttributes()
         self.DeriveBasicAttributes()
         calc = _MACEHelper_GetMACECalc(model)
@@ -6072,7 +6117,13 @@ $end"""
         optimiser: str = "BFGS",
         fmax: float = 0.01,          # eV/Å (ASE's convergence criterion)
         steps: int = 500,
+        CPU_count: int = 1,
     ):
+        _MACEHelper_SetThreads(CPU_count)
+
+        from ase.optimize import BFGS, FIRE, LBFGS
+        from ase.constraints import FixAtoms
+        
         self.DeleteCalculatedAttributes()
         self.DeriveBasicAttributes()
 

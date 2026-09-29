@@ -1169,7 +1169,7 @@ class MoleculeSet:
 
     def MACE(self, solvent_correction: str | None=None):
         for molObj in self.MoleculesDict.values():
-            molObj.SinglePointMACE(solvent_correction=solvent_correction)
+            molObj.SinglePoint_MACE(solvent_correction=solvent_correction)
 
     def SolvateAndOptimiseMetalCentre(
         self,
