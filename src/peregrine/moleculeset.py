@@ -3,9 +3,11 @@ import re
 import shutil
 import subprocess
 import glob
+import warnings
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing as mp
 from functools import partial
 import itertools
 import traceback
@@ -104,40 +106,6 @@ def _xTBBinHelper_OptimiseOne(args):
     return identifier, new_molecule, None
 
 
-def _solvate_worker(key, molObj, kwargs):
-    os.environ["OMP_NUM_THREADS"] = "1"
-    os.environ["MKL_NUM_THREADS"] = "1"
-    os.environ["OPENBLAS_NUM_THREADS"] = "1"
-    os.environ["OMP_STACKSIZE"] = "4G"
-
-    original_cwd = os.getcwd()
-    with tempfile.TemporaryDirectory(prefix=f"{key}_") as tmpdir:
-        os.chdir(tmpdir)
-        try:
-            molObj.SolvateAndOptimiseMetalCentre(**kwargs)
-        except Exception as e:
-            raise RuntimeError(
-                f"{e!r}\n"
-                f"filename={getattr(e, 'filename', None)}\n"
-                f"cwd={os.getcwd()}\n"
-                f"xtb on PATH: {shutil.which('xtb')}\n"
-                f"{traceback.format_exc()}"
-            ) from None
-        finally:
-            os.chdir(original_cwd)
-    return key, molObj
-
-
-def _GeneralHelper_ReadSMILESStrings(args):
-    SMILES, Identifier, AddHydrogens = args
-    return Molecule.ReadSMILESString(SMILES, Identifier, AddHydrogens=AddHydrogens)
-
-
-def _GeneralHelper_LoadMolFile(mol_file_directory: str, mol_file: str) -> "Molecule":
-    with open(f"{mol_file_directory}/{mol_file}") as f:
-        return Molecule.ReadMolString(f.read())
-
-
 def _xTBHelper_FindBinary() -> str:
     """
     Locate a standalone (non-conda) xtb binary and return its bin/ directory.
@@ -195,6 +163,52 @@ def _xTBHelper_FindBinary() -> str:
         "Could not find a standalone xtb binary. Checked: $XTB_BIN, PATH, "
         f"~/xtb-*/bin/xtb, Spotlight. Candidates found (rejected): {hits or 'none'}"
     )
+
+
+def _solvate_worker(key, molObj, kwargs):
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["OMP_STACKSIZE"] = "4G"
+
+    original_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory(prefix=f"{key}_") as tmpdir:
+        os.chdir(tmpdir)
+        try:
+            molObj.SolvateAndOptimiseMetalCentre(**kwargs)
+        except Exception as e:
+            raise RuntimeError(
+                f"{e!r}\n"
+                f"filename={getattr(e, 'filename', None)}\n"
+                f"cwd={os.getcwd()}\n"
+                f"xtb on PATH: {shutil.which('xtb')}\n"
+                f"{traceback.format_exc()}"
+            ) from None
+        finally:
+            os.chdir(original_cwd)
+    return key, molObj
+
+
+def _GeneralHelper_ReadSMILESStrings(args):
+    SMILES, Identifier, AddHydrogens = args
+    return Molecule.ReadSMILESString(SMILES, Identifier, AddHydrogens=AddHydrogens)
+
+
+def _GeneralHelper_LoadMolFile(mol_file_directory: str, mol_file: str) -> "Molecule":
+    with open(f"{mol_file_directory}/{mol_file}") as f:
+        return Molecule.ReadMolString(f.read())
+
+
+def _MACEHelper_InitWorker():
+    os.environ["OMP_NUM_THREADS"] = "1"
+    import torch
+    torch.set_num_threads(1)
+    warnings.filterwarnings("ignore")
+
+def _MACEHelper_OptimiseOne(item):
+    key, molObj = item
+    molObj.OptimiseGeometry_MACE(logfile=None)
+    return key, molObj
 
 
 class MoleculeSet:
@@ -1145,6 +1159,13 @@ class MoleculeSet:
                 else:
                     results[Identifier] = updated_molObj
         self.MoleculesDict.update(results)
+
+    def OptimiseGeometry_MACE(self, n_workers=None):
+        n_workers = n_workers or os.cpu_count() - 2
+        ctx = mp.get_context("spawn")
+        with ProcessPoolExecutor(n_workers, mp_context=ctx, initializer=_MACEHelper_InitWorker) as pool:
+            for key, molObj in pool.map(_MACEHelper_OptimiseOne, self.MoleculesDict.items()):
+                self.MoleculesDict[key] = molObj
 
     def MACE(self, solvent_correction: str | None=None):
         for molObj in self.MoleculesDict.values():

@@ -1,3 +1,0 @@
-2026-09-28:11:24:56,665 INFO     [psi4.driver.task_planner:259] PLANNING Atomic:  keywords={'DDX': 1, 'DDX_MODEL': 'PCM', 'DDX_RADII_SET': 'UFF', 'DDX_SOLVENT': 'WATER', 'DF_BASIS_SCF': 'MYJKFIT', 'GUESS': 'CORE', 'REFERENCE': 'RHF', 'SCF_TYPE': 'DF', 'function_kwargs': {}}
-2026-09-28:11:24:56,667 INFO     [psi4.driver.driver:531] Compute energy(): method=m06-2x, basis=mybasis, molecule=default, nre=5447.479722449372
-2026-09-28:11:38:22,611 INFO     [psi4.driver.driver:534] Return energy(): -2683.0133249383466

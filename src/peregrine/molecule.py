@@ -30,6 +30,8 @@ from openbabel import pybel
 from openbabel import openbabel as ob
 
 from ase import Atoms as aseAtoms
+from ase.optimize import BFGS, FIRE, LBFGS
+from ase.constraints import FixAtoms
 
 import tblite.interface as tb
 from berny import Berny, geomlib, angstrom
@@ -1943,7 +1945,7 @@ def _MACEHelper_GetMACECalc(model: str = "MACE-MP-0", device: str = "cpu"):
         warnings.filterwarnings("ignore", message=".*TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD.*")
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             from mace.calculators import mace_polar
-            return mace_polar(model="polar-1-m", default_dtype="float64", device=device)
+            return mace_polar(model="polar-1-l", default_dtype="float64", device=device)
 
 
 def _ddXHelper_SolvationEnergy(
@@ -1951,27 +1953,25 @@ def _ddXHelper_SolvationEnergy(
     model: str = "pcm",              # "pcm", "cosmo" or "lpb"
     solvent_epsilon: float = 78.3553, # water
     radii_scaling: float = 1.1,
+    radii_set: str = "vdw",
     lmax: int = 8,
 ) -> float:
     """
     Electrostatic solvation energy (Eh) of a set of point charges in a
     domain-decomposition continuum (ddCOSMO / ddPCM / ddLPB) via pyddx.
     """
-
-    try:
-        radii_A = np.array([atomObj.AtomicRadii for atomObj in molObj.AtomsList]) * radii_scaling
-    except KeyError as e:
-        raise KeyError(f"No vdW radius for element {e}; add it to _BONDI_RADII.") from None
-
+    radii_set = radii_set
+    if radii_set == "vdw":
+        try:
+            radii_A = np.array([atomObj.AtomicRadii for atomObj in molObj.AtomsList]) * radii_scaling
+        except KeyError as e:
+            raise KeyError(f"No vdW radius for element {e}; add it to _BONDI_RADII.") from None
     centres = (np.asarray([atomObj.Coordinates for atomObj in molObj.AtomsList]) * (1/BohrRad_to_Angstrom)).T        # (3, N), Bohr
     radii = radii_A * (1/BohrRad_to_Angstrom)                              # Bohr
-
     dd_model = pyddx.Model(model, centres, radii, solvent_epsilon=solvent_epsilon, lmax=lmax)
-
     solute_multipoles = np.asarray([atomObj.MullikenCharge for atomObj in molObj.AtomsList], dtype=float).reshape(1, -1) / np.sqrt(4 * np.pi)
     solute_field = dd_model.multipole_electrostatics(solute_multipoles)
     solute_psi = dd_model.multipole_psi(solute_multipoles)
-
     state = pyddx.State(dd_model, solute_psi, solute_field["phi"])
     state.fill_guess()
     state.solve()
@@ -2736,6 +2736,13 @@ class Molecule:
             # Calculate electronic energy with MACE-MP-0
             self.MACE()
             print(self.electronic_energy)
+        elif method == "g-xTB/MACE-POLAR//MACE-POLAR/PCM(Water)":
+            neutral_slope = -0.0026568576585500685
+            neutral_intercept = -0.4449766642896787
+            # r2 value = 0.899
+            anionic_slope = -0.003364958747186327
+            anionic_intercept = -0.4219389962049124
+            # r2 value = 0.893
         pass
 
     # === Get atomic descriptors ===
@@ -6033,10 +6040,14 @@ $end"""
             pass
 
     def SinglePointMACE(self, model: str="MACE-POLAR", solvent_correction: str | None=None):
+        self.DeleteCalculatedAttributes()
+        self.DeriveBasicAttributes()
         calc = _MACEHelper_GetMACECalc(model)
         ASEMolObj = self.MoleculeToASEMolecule()
         if model == "MACE-POLAR":
             ASEMolObj.info["external_field"] = [0.0, 0.0, 0.0]
+            ASEMolObj.info["charge"] = self.FormalCharge
+            ASEMolObj.info["spin"] = self.Multiplicity
         ASEMolObj.calc = calc
         self.electronic_energy = ASEMolObj.get_potential_energy() / Eh_to_eV
         for atomObj, force, charge in zip(self.AtomsList, ASEMolObj.get_forces(), calc.results["charges"]):
@@ -6051,6 +6062,52 @@ $end"""
             )
             self.electronic_energy += solv_corr
             self.calculation_method += "/pcm(water)"
+
+    def OptimiseGeometry_MACE(
+        self,
+        model: str="MACE-POLAR",
+        fixed_atoms: list[int] | None = None,
+        trajectory: str | None = None,
+        logfile: str | None = None,
+        optimiser: str = "BFGS",
+        fmax: float = 0.01,          # eV/Å (ASE's convergence criterion)
+        steps: int = 500,
+    ):
+        self.DeleteCalculatedAttributes()
+        self.DeriveBasicAttributes()
+
+        calc = _MACEHelper_GetMACECalc(model)
+        ASEMolObj = self.MoleculeToASEMolecule()
+
+        if model == "MACE-POLAR":
+            ASEMolObj.info["external_field"] = [0.0, 0.0, 0.0]
+            ASEMolObj.info["charge"] = self.FormalCharge
+            ASEMolObj.info["spin"] = self.Multiplicity
+
+        if fixed_atoms:
+            ASEMolObj.set_constraint(FixAtoms(indices=fixed_atoms))
+
+        ASEMolObj.calc = calc
+
+        opt_cls = {"BFGS": BFGS, "LBFGS": LBFGS, "FIRE": FIRE}[optimiser.upper()]
+        opt = opt_cls(ASEMolObj, trajectory=trajectory, logfile=logfile)
+        converged = opt.run(fmax=fmax, steps=steps)
+
+        # Final energy, gradient and charges, in the units of the rest of your class
+        self.electronic_energy = ASEMolObj.get_potential_energy() / Eh_to_eV
+        for atomObj, force, charge, pos in zip(
+            self.AtomsList,
+            ASEMolObj.get_forces(),
+            calc.results["charges"],
+            ASEMolObj.get_positions(),
+        ):
+            atomObj.Gradient = -force / Eh_to_eV   # Eh/Å (see the note on units below)
+            atomObj.MullikenCharge = charge
+            atomObj.Coordinates = pos
+
+        self.calculation_method = model
+
+        return converged
 
     # === Construct Transition State ===
 
