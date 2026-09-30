@@ -40,6 +40,24 @@ if __name__ == "__main__":
         Path(__file__).parent / "Compounds_g-xTB-Opt"
     )"""
 
+    # === g-xTB/SolventModel(water) optimisations ===
+    """protonated_ms = MoleculeSet.ReadSMILESList(
+        SMILES_list=list(pka_df["ProtonatedCompound"]),
+        Identifier_List=list(pka_df.index),
+    )
+    ms = MoleculeSet.ReadSMILESList(
+        SMILES_list=list(pka_df["Compound"]),
+        Identifier_List=list(pka_df.index), 
+    )
+    protonated_ms.OptimiseGeometry_xTB_bin(solvent="water", solvent_model="gbe")
+    protonated_ms.WriteMolFileDirectory(
+        Path(__file__).parent / "ProtonatedCompounds_g-xTB-GBE(Water)-Opt"
+    )
+    ms.OptimiseGeometry_xTB_bin(solvent="water", solvent_model="gbe")
+    ms.WriteMolFileDirectory(
+        Path(__file__).parent / "Compounds_g-xTB-GBE(Water)-Opt"
+    )"""
+
     # === M06-2X/def2-SVP/PCM(Water) single point calculations ===
     """protonated_ms = MoleculeSet.ReadMolFileDirectory(
         Path(__file__).parent / "ProtonatedCompounds_g-xTB-Opt"
@@ -347,7 +365,7 @@ if __name__ == "__main__":
     fig.savefig(Path(__file__).parent / "mace-polar_pka_scatter.png", bbox_inches="tight")"""
 
     # === MACE-POLAR/PCM(Water) analysis ===
-    protonated_ms = MoleculeSet.ReadMolFileDirectory(
+    """protonated_ms = MoleculeSet.ReadMolFileDirectory(
         Path(__file__).parent / "ProtonatedCompounds-g-xTB-Opt_MACE-POLAR-Opt-PCMWater"
     )
     ms = MoleculeSet.ReadMolFileDirectory(
@@ -417,4 +435,150 @@ if __name__ == "__main__":
     )
     ax.set_ylabel("g-xTB//MACE-POLAR (Eh)")
     ax.set_xlabel("pKa")
-    fig.savefig(Path(__file__).parent / "mace-polar-pcmwater_pka_scatter.png", bbox_inches="tight")
+    fig.savefig(Path(__file__).parent / "mace-polar-pcmwater_pka_scatter.png", bbox_inches="tight")"""
+
+    """# === g-xTB/COSMO(water) analysis ===
+    protonated_ms = MoleculeSet.ReadMolFileDirectory(
+        Path(__file__).parent / "ProtonatedCompounds_g-xTB-COSMO(Water)-Opt"
+    )
+    ms = MoleculeSet.ReadMolFileDirectory(
+        Path(__file__).parent / "Compounds_g-xTB-COSMO(Water)-Opt"
+    )
+    identifiers = [molObj.Identifier for molObj in protonated_ms.MoleculesDict.values()]
+    prot_elec_ens = [protonated_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
+    elec_ens = [ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
+    pka = [pka_df.loc[identifier, "pKa"] for identifier in identifiers]
+    atom_centres = [pka_df.loc[identifier, "AtomCentre"] for identifier in identifiers]
+    hybrid = [pka_df.loc[identifier, "FunctionalGroup"] for identifier in identifiers]
+    charge = [ms.MoleculesDict[identifier].FormalCharge for identifier in identifiers]
+    res_df = pd.DataFrame(
+        {
+            "Identifier": identifiers,
+            "Atom Centres": atom_centres,
+            "Functional Group":  hybrid,
+            "Formal Charge": charge,
+            "Aqueous pKa": pka,
+            "Protonated Elec En (Eh)": prot_elec_ens,
+            "Unprotonated Elec En (Eh)": elec_ens,
+        }
+    )
+    res_df["Elec En Diff (Eh)"] = res_df["Protonated Elec En (Eh)"] - res_df["Unprotonated Elec En (Eh)"]
+    res_df.to_csv(Path(__file__).parent / "g-xTB-cosmo_calculated_protonation_energies.csv")
+
+    res_df = pd.read_csv(
+        Path(__file__).parent / "g-xTB-cosmo_calculated_protonation_energies.csv"
+    )
+
+    #res_df = res_df[res_df["Functional Group"] != "Water"]
+    #res_df = res_df[res_df["Functional Group"] != "Halide"]
+    res_df = res_df[res_df["Identifier"] != "a55"]
+
+    fig, ax = plt.subplots()
+    ax.scatter(
+        res_df[res_df["Formal Charge"] == 0]["Aqueous pKa"],
+        res_df[res_df["Formal Charge"] == 0]["Elec En Diff (Eh)"],
+        color="#D81B60",
+        s=5,
+    )
+    res = linregress(res_df[res_df["Formal Charge"] == 0]["Aqueous pKa"], res_df[res_df["Formal Charge"] == 0]["Elec En Diff (Eh)"])
+    print(f"slope={res.slope}, intercept={res.intercept}, r2={res.rvalue**2}")
+    print(res)
+    ax.plot(
+        res_df[res_df["Formal Charge"] == 0]["Aqueous pKa"],
+        [
+            i*res.slope + res.intercept for i in list(res_df[res_df["Formal Charge"] == 0]["Aqueous pKa"])
+        ],
+        color="#D81B60",
+    )
+    ax.scatter(
+        res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"],
+        res_df[res_df["Formal Charge"] == -1]["Elec En Diff (Eh)"],
+        color="#1E88E5",
+        s=5,
+    )
+    res = linregress(res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"], res_df[res_df["Formal Charge"] == -1]["Elec En Diff (Eh)"])
+    print(f"slope={res.slope}, intercept={res.intercept}, r2={res.rvalue**2}")
+    print(res)
+    ax.plot(
+        res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"],
+        [
+            i*res.slope + res.intercept for i in list(res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"])
+        ],
+        color="#1E88E5",
+    )
+    ax.set_ylabel("g-xTB/COSMO(Water) (Eh)")
+    ax.set_xlabel("pKa")
+    fig.savefig(Path(__file__).parent / "g-xtb-cosmo_pka_scatter.png", bbox_inches="tight")"""
+
+    # === g-xTB/GBE(water) analysis ===
+    protonated_ms = MoleculeSet.ReadMolFileDirectory(
+        Path(__file__).parent / "ProtonatedCompounds_g-xTB-GBE(Water)-Opt"
+    )
+    ms = MoleculeSet.ReadMolFileDirectory(
+        Path(__file__).parent / "Compounds_g-xTB-GBE(Water)-Opt"
+    )
+    identifiers = [molObj.Identifier for molObj in protonated_ms.MoleculesDict.values()]
+    prot_elec_ens = [protonated_ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
+    elec_ens = [ms.MoleculesDict[identifier].electronic_energy for identifier in identifiers]
+    pka = [pka_df.loc[identifier, "pKa"] for identifier in identifiers]
+    atom_centres = [pka_df.loc[identifier, "AtomCentre"] for identifier in identifiers]
+    hybrid = [pka_df.loc[identifier, "FunctionalGroup"] for identifier in identifiers]
+    charge = [ms.MoleculesDict[identifier].FormalCharge for identifier in identifiers]
+    res_df = pd.DataFrame(
+        {
+            "Identifier": identifiers,
+            "Atom Centres": atom_centres,
+            "Functional Group":  hybrid,
+            "Formal Charge": charge,
+            "Aqueous pKa": pka,
+            "Protonated Elec En (Eh)": prot_elec_ens,
+            "Unprotonated Elec En (Eh)": elec_ens,
+        }
+    )
+    res_df["Elec En Diff (Eh)"] = res_df["Protonated Elec En (Eh)"] - res_df["Unprotonated Elec En (Eh)"]
+    res_df.to_csv(Path(__file__).parent / "g-xTB-gbe_calculated_protonation_energies.csv")
+
+    res_df = pd.read_csv(
+        Path(__file__).parent / "g-xTB-gbe_calculated_protonation_energies.csv"
+    )
+
+    #res_df = res_df[res_df["Functional Group"] != "Water"]
+    #res_df = res_df[res_df["Functional Group"] != "Halide"]
+    res_df = res_df[res_df["Identifier"] != "a55"]
+
+    fig, ax = plt.subplots()
+    ax.scatter(
+        res_df[res_df["Formal Charge"] == 0]["Aqueous pKa"],
+        res_df[res_df["Formal Charge"] == 0]["Elec En Diff (Eh)"],
+        color="#D81B60",
+        s=5,
+    )
+    res = linregress(res_df[res_df["Formal Charge"] == 0]["Aqueous pKa"], res_df[res_df["Formal Charge"] == 0]["Elec En Diff (Eh)"])
+    print(f"slope={res.slope}, intercept={res.intercept}, r2={res.rvalue**2}")
+    print(res)
+    ax.plot(
+        res_df[res_df["Formal Charge"] == 0]["Aqueous pKa"],
+        [
+            i*res.slope + res.intercept for i in list(res_df[res_df["Formal Charge"] == 0]["Aqueous pKa"])
+        ],
+        color="#D81B60",
+    )
+    ax.scatter(
+        res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"],
+        res_df[res_df["Formal Charge"] == -1]["Elec En Diff (Eh)"],
+        color="#1E88E5",
+        s=5,
+    )
+    res = linregress(res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"], res_df[res_df["Formal Charge"] == -1]["Elec En Diff (Eh)"])
+    print(f"slope={res.slope}, intercept={res.intercept}, r2={res.rvalue**2}")
+    print(res)
+    ax.plot(
+        res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"],
+        [
+            i*res.slope + res.intercept for i in list(res_df[res_df["Formal Charge"] == -1]["Aqueous pKa"])
+        ],
+        color="#1E88E5",
+    )
+    ax.set_ylabel("g-xTB/COSMO(Water) (Eh)")
+    ax.set_xlabel("pKa")
+    fig.savefig(Path(__file__).parent / "g-xtb-gbe_pka_scatter.png", bbox_inches="tight")

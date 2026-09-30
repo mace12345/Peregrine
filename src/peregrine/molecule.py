@@ -1948,7 +1948,8 @@ def _MACEHelper_SetThreads(n: int = 1):
 
 
 @lru_cache(maxsize=None)
-def _MACEHelper_GetMACECalc(model: str = "MACE-MP-0", device: str = "cpu"):
+def _MACEHelper_GetMACECalc(model: str = "MACE-MP-0", model_size: str = "large", default_dtype: str = "float64", device: str = "cpu"):
+    model_size = model_size.lower()
     if model == "MACE-MP-0":
         """Build a MACE-MP-0 calculator once per process and reuse it."""
         warnings.filterwarnings("ignore", message=".*TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD.*")
@@ -1960,7 +1961,12 @@ def _MACEHelper_GetMACECalc(model: str = "MACE-MP-0", device: str = "cpu"):
         warnings.filterwarnings("ignore", message=".*TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD.*")
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             from mace.calculators import mace_polar
-            return mace_polar(model="polar-1-l", default_dtype="float64", device=device)
+            if model_size == "large":
+                return mace_polar(model="polar-1-l", default_dtype=default_dtype, device=device)
+            elif model_size == "medium":
+                return mace_polar(model="polar-1-m", default_dtype=default_dtype, device=device)
+            elif model_size == "small":
+                return mace_polar(model="polar-1-s", default_dtype=default_dtype, device=device)
 
 
 def _MACEHelper_SinglePoint_MACE(key, molObj: "Molecule", solvent_correction: str | None = None):
@@ -1981,12 +1987,18 @@ def _MACEHelper_OptimiseGeometry_MACE(key, molObj: "Molecule"):
     return key, molObj
 
 
-def _MACEHelper_OptimiseGeometryAndSinglePoint_MACE(key, molObj: "Molecule", solvent_correction: str | None = None):
+def _pKaCalcHelper_OptimiseGeometryAndSinglePoint_MACE(key, molObj: "Molecule", solvent_correction: str | None = None):
     """Worker: run one MACE single point and return the updated object."""
     import torch
     torch.set_num_threads(1)      # stop the workers competing for threads
     torch.set_num_interop_threads(1)
-    molObj.OptimiseGeometry_MACE()
+    print("Pre Opt with g-xTB")
+    molObj.OptimiseGeometry_xTB_bin()
+    print("Opt with cheap MACE")
+    molObj.OptimiseGeometry_MACE(model_size="small", default_dtype="float32", steps=1000)
+    print("Opt with expensive MACE")
+    molObj.OptimiseGeometry_MACE(model_size="large", default_dtype="float64", steps=1000)
+    print("SP with MACE")
     molObj.SinglePoint_MACE(solvent_correction=solvent_correction)
     return key, molObj
 
@@ -2827,6 +2839,7 @@ class Molecule:
                     if n_atom.AtomicSymbol == "H" and n_atom.FormalCharge == 0:
                         temp_molObj.RemoveAtom(AtomObject=n_atom)
                         break
+                temp_molObj.Identifier = f"{temp_molObj.Identifier}_acidic{acidic_atom_idx}"
                 temp_molObj_dict[acidic_atom_idx] = [formal_charge, temp_molObj]
             # ---- Parallel MACE optimise and single points on all deprotonated species ----
             n_tasks = len(temp_molObj_dict)
@@ -2838,7 +2851,7 @@ class Molecule:
                 failed = {}
                 with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as ex:
                     futures = {
-                        ex.submit(_MACEHelper_OptimiseGeometryAndSinglePoint_MACE, idx, mol, "pcm(water)"): idx
+                        ex.submit(_pKaCalcHelper_OptimiseGeometryAndSinglePoint_MACE, idx, mol, "pcm(water)"): idx
                         for idx, (fc, mol) in temp_molObj_dict.items()
                     }
                     for fut in as_completed(futures):
@@ -5814,6 +5827,8 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
         self.DeriveBasicAttributes()
 
         self.calculation_method = xtb_method
+        if solvent is not None:
+            self.calculation_method += f"/{solvent_model}({solvent})"
 
         # Define tempory work directory
         workdir = Path(__file__).parent / f"{self.Identifier}_TempDir"
@@ -5862,7 +5877,6 @@ $end"""
             cmd += [
                 "--opt",
             ]
-            self.calculation_method = xtb_method
             if opt_tol is not None:
                 cmd.append(opt_tol)
         elif get_gradients:
@@ -6003,6 +6017,10 @@ $end"""
             list[Molecule] | None: A list of molecule snapshots from the optimization
             trajectory if save_trajectory is True; otherwise None.
         """
+        self.calculation_method = xtb_method
+        if solvent is not None:
+            self.calculation_method += f"/{solvent_model}({solvent})"
+
         # Write temp xyz file
         xyz_string = self.WriteXYZString()
         with open(f"{Path(__file__).parent}/{self.Identifier}_temp.xyz", "w") as f:
@@ -6055,7 +6073,6 @@ $end"""
         # Retrieve final geometry
         final_geom = trajectory[-1]
         self.electronic_energy = final_geom[0]
-        self.calculation_method = xtb_method
         for atomObj, coor, grad in zip(self.AtomsList, final_geom[2], final_geom[1]):
             atomObj.Coordinates = coor
             atomObj.Gradient = grad
@@ -6194,11 +6211,14 @@ $end"""
     def OptimiseGeometry_MACE(
         self,
         model: str="MACE-POLAR",
+        model_size: str = "large",
+        default_dtype: str = "float64",
+        device: str = "cpu",
         fixed_atoms: list[int] | None = None,
         trajectory: str | None = None,
         logfile: str | None = "-",
         optimiser: str = "BFGS",
-        fmax: float = 0.01,          # eV/Å (ASE's convergence criterion)
+        fmax: float = 0.0154,          # eV/Å (ASE's convergence criterion, same as ORCA)
         steps: int = 500,
         CPU_count: int = 1,
     ):
@@ -6210,7 +6230,7 @@ $end"""
         self.DeleteCalculatedAttributes()
         self.DeriveBasicAttributes()
 
-        calc = _MACEHelper_GetMACECalc(model)
+        calc = _MACEHelper_GetMACECalc(model, model_size, default_dtype, device)
         ASEMolObj = self.MoleculeToASEMolecule()
 
         if model == "MACE-POLAR":
