@@ -58,3 +58,7 @@ M V30 24 4 21 22
 M V30 END BOND
 M V30 END CTAB
 M END
+> <Calculation Method>
+uff
+> <Electronic Energy (Eh)>
+210.4745429111518

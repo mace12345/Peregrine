@@ -5,7 +5,7 @@ from copy import deepcopy
 from peregrine.molecule import Molecule
 from peregrine.atom import Atom
 
-xtb_binary_path = "C:/Users/samue/Desktop/xtb-bleed-windows/bin/"
+xtb_binary_path = None
 
 
 def test_molecule_ConstructTS_diels_alder():

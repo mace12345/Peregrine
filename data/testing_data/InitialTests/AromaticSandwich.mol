@@ -73,6 +73,6 @@ M V30 END BOND
 M V30 END CTAB
 M END
 > <Calculation Method>
-gxtb
+gxtb/gbe(ethanol)
 > <Electronic Energy (Eh)>
 -685.062832311153

@@ -1277,7 +1277,69 @@ metadata['Alpha Fock Matrix File Name'] = '{identifier}.alpha.fock'
 metadata['Beta Fock Matrix File Name'] = '{identifier}.beta.fock'
 np.savetxt('{identifier}.alpha.fock', Fa_ao, fmt='%.16e')
 np.savetxt('{identifier}.beta.fock', Fb_ao, fmt='%.16e')"""
-    save_properties_rhf = """# Save properties
+    if "ccsd" in method:
+        save_properties_rhf = """# Save properties
+coords_bohr = np.array(wfn.molecule().geometry())
+grad = np.array(wfn.gradient())
+basis = wfn.basisset()
+metadata['Electronic Energy (Eh)'] = psi4.variable('CURRENT ENERGY')
+metadata['One Electron Energy (Eh)'] = psi4.variable('ONE-ELECTRON ENERGY')
+metadata['Two Electron Energy (Eh)'] = psi4.variable('TWO-ELECTRON ENERGY')
+metadata['Nuclear Repulsion Energy (Eh)'] = psi4.variable('NUCLEAR REPULSION ENERGY')
+metadata['CCSD Correlation Energy (Eh)'] = psi4.variable('CCSD CORRELATION ENERGY')
+metadata['(T) Correction Energy (Eh)'] = psi4.variable('(T) CORRECTION ENERGY')
+metadata['Gradient (Eh/Bohr)'] = grad.tolist()
+metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+metadata['Number of Primitive Basis Functions'] = basis.nprimitive()
+# Calculate and save more properties
+psi4.oeprop(
+    wfn,
+    'DIPOLE',
+    'QUADRUPOLE',
+    'MULLIKEN_CHARGES',
+    'LOWDIN_CHARGES',
+    'WIBERG_LOWDIN_INDICES',
+    'MAYER_INDICES',
+)
+metadata['Dipole'] = np.array(wfn.variable('CURRENT DIPOLE')).tolist()
+metadata['Quadrupole'] = np.array(wfn.variable('QUADRUPOLE')).tolist()
+metadata['Mulliken Charges'] = np.array(wfn.variable('MULLIKEN CHARGES')).tolist()
+metadata['Lowdin Charges'] = np.array(wfn.variable('LOWDIN CHARGES')).tolist()
+metadata['Wiberg Bond Orders'] = np.array(wfn.array_variable('WIBERG LOWDIN INDICES')).tolist()
+metadata['Mayer Bond Orders']  = np.array(wfn.array_variable('MAYER INDICES')).tolist()"""
+        save_properties_uhf = """# Save properties
+coords_bohr = np.array(wfn.molecule().geometry())
+grad = np.array(wfn.gradient())
+basis = wfn.basisset()
+metadata['Electronic Energy (Eh)'] = psi4.variable('CURRENT ENERGY')
+metadata['One Electron Energy (Eh)'] = psi4.variable('ONE-ELECTRON ENERGY')
+metadata['Two Electron Energy (Eh)'] = psi4.variable('TWO-ELECTRON ENERGY')
+metadata['Nuclear Repulsion Energy (Eh)'] = psi4.variable('NUCLEAR REPULSION ENERGY')
+metadata['CCSD Correlation Energy (Eh)'] = psi4.variable('CCSD CORRELATION ENERGY')
+metadata['(T) Correction Energy (Eh)'] = psi4.variable('(T) CORRECTION ENERGY')
+metadata['Gradient (Eh/Bohr)'] = grad.tolist()
+metadata['Coordinates (Bohr)'] = coords_bohr.tolist()
+metadata['Number of Primitive Basis Functions'] = basis.nprimitive()
+# Calculate and save more properties
+psi4.oeprop(
+    wfn,
+    'DIPOLE',
+    'QUADRUPOLE',
+    'MULLIKEN_CHARGES',
+    'LOWDIN_CHARGES',
+    'LOWDIN_SPINS',
+    'WIBERG_LOWDIN_INDICES',
+    'MAYER_INDICES',
+)
+metadata['Dipole'] = np.array(wfn.variable('CURRENT DIPOLE')).tolist()
+metadata['Quadrupole'] = np.array(wfn.variable('QUADRUPOLE')).tolist()
+metadata['Mulliken Charges'] = np.array(wfn.variable('MULLIKEN CHARGES')).tolist()
+metadata['Lowdin Charges'] = np.array(wfn.variable('LOWDIN CHARGES')).tolist()
+metadata['Lowdin Spin Populations'] = np.array(wfn.variable('LOWDIN SPINS')).tolist()
+metadata['Wiberg Bond Orders'] = np.array(wfn.array_variable('WIBERG LOWDIN INDICES')).tolist()
+metadata['Mayer Bond Orders']  = np.array(wfn.array_variable('MAYER INDICES')).tolist()"""
+    else:
+        save_properties_rhf = """# Save properties
 coords_bohr = np.array(wfn.molecule().geometry())
 grad = np.array(wfn.gradient())
 basis = wfn.basisset()
@@ -1304,7 +1366,7 @@ metadata['Mulliken Charges'] = np.array(wfn.variable('MULLIKEN CHARGES')).tolist
 metadata['Lowdin Charges'] = np.array(wfn.variable('LOWDIN CHARGES')).tolist()
 metadata['Wiberg Bond Orders'] = np.array(wfn.array_variable('WIBERG LOWDIN INDICES')).tolist()
 metadata['Mayer Bond Orders']  = np.array(wfn.array_variable('MAYER INDICES')).tolist()"""
-    save_properties_uhf = """# Save properties
+        save_properties_uhf = """# Save properties
 coords_bohr = np.array(wfn.molecule().geometry())
 grad = np.array(wfn.gradient())
 basis = wfn.basisset()
@@ -1467,6 +1529,8 @@ except psi4.OptimizationConvergenceError as exc:
         + f""", 'w') as f:
         json.dump(metadata, f, indent=2)
     exit()
+except Exception as e:
+    metadata['Error Code'] = str(e)
     """
     )
     psi4_str = "\n# Set up and run calculation"
@@ -1992,13 +2056,9 @@ def _pKaCalcHelper_OptimiseGeometryAndSinglePoint_MACE(key, molObj: "Molecule", 
     import torch
     torch.set_num_threads(1)      # stop the workers competing for threads
     torch.set_num_interop_threads(1)
-    print("Pre Opt with g-xTB")
     molObj.OptimiseGeometry_xTB_bin()
-    print("Opt with cheap MACE")
     molObj.OptimiseGeometry_MACE(model_size="small", default_dtype="float32", steps=1000)
-    print("Opt with expensive MACE")
     molObj.OptimiseGeometry_MACE(model_size="large", default_dtype="float64", steps=1000)
-    print("SP with MACE")
     molObj.SinglePoint_MACE(solvent_correction=solvent_correction)
     return key, molObj
 
@@ -2470,6 +2530,44 @@ class Molecule:
         atomObj_rings = [[self.AtomsList[idx] for idx in ring] for ring in rings]
         return atomObj_rings
 
+    def GetRingAtoms_V2(
+        self,
+        max_ring_size: int | None = None,
+        all_rings: bool = False,
+    ) -> list[list[Atom]]:
+        """
+        Rings as lists of Atom objects in cycle order (consecutive atoms are bonded).
+
+        all_rings=False : smallest set of smallest rings (SSSR, via minimum_cycle_basis)
+        all_rings=True  : every simple ring up to max_ring_size (includes envelope
+                        rings, e.g. the 6-ring in norbornane); requires max_ring_size
+        """
+        A = (np.asarray(self.ConnectivityMatrix) != 0).astype(int)
+        np.fill_diagonal(A, 0)                              # no self-loops
+        G = nx.from_numpy_array(A)
+        if all_rings:
+            if max_ring_size is None:
+                raise ValueError("all_rings=True needs max_ring_size")
+            rings = list(nx.simple_cycles(G, length_bound=max_ring_size))  # already ordered
+        else:
+            rings = []
+            for ring_nodes in nx.minimum_cycle_basis(G):
+                # Walk round the ring so consecutive indices are bonded
+                sub = G.subgraph(ring_nodes)
+                start = ring_nodes[0]
+                order, prev, cur = [start], None, start
+                while True:
+                    nxt = next(n for n in sub.neighbors(cur) if n != prev)
+                    if nxt == start:
+                        break
+                    order.append(nxt)
+                    prev, cur = cur, nxt
+                rings.append(order)
+            if max_ring_size is not None:
+                rings = [r for r in rings if len(r) <= max_ring_size]
+        rings.sort(key=len)
+        return [[self.AtomsList[i] for i in ring] for ring in rings]
+
     def GetBondAngle(
         self,
         AtomLabels: list[str] | None = None,
@@ -2744,63 +2842,7 @@ class Molecule:
                 acidic_atom_idxs.append(patterns[1][SMARTS_idx])
 
         # Calculate pKa's of all the different functional groups
-        if method == "g-xTB//M06-2X/def2-SVP/PCM(Water)":
-            slope = -0.0038254686802786575
-            intercept = -0.4388995075926189
-            # r2 value = 0.72659
-
-            # Initially optimise with g-xTB
-            # self.OptimiseGeometry_xTB_bin()
-            # Calculate electronic energy with M06-2X/sef2-SVP/PCM(Water)
-            psi4_input_str = self.WritePsi4String(
-                method="m06-2x",
-                basisset="def2-svp",
-                max_memory=4000,
-                CPU_count=1,
-                set_options={
-                    "ddx": True,
-                    "ddx_model": "pcm",        # pcm, cosmo or lpb
-                    "ddx_solvent": "water",
-                    "ddx_radii_set": "uff",    # or bondi
-                },
-                restricted=True,
-            )
-            workdir = Path(__file__).parent / f"{self.Identifier}_TempDir"
-            os.makedirs(workdir, exist_ok=True)
-            with open(workdir / f"{self.Identifier}.py", "w") as f:
-                f.write(psi4_input_str)
-                f.close()
-            # TODO: Change into workdir
-            psi4env_path = _GeneralHelper_FindCondaEnvPython("psi4env")
-            # TODO: Change conda python environment from chem-env to psi4env in order to run psi4 input
-            # TODO: run psi4 input
-
-            # Based on protonatable/deprotonatable sites generate a new structure for each site
-            # (1) Deprotonate acidic sites first, optimise and calculate electonic en
-            for acidic_atom_idx in acidic_atom_idxs:
-                temp_molObj = deepcopy(self)
-                # Deprotonate
-                n_atoms = temp_molObj.GetAtomNeighbours(AtomIndex=acidic_atom_idx)
-                for n_atomObj in n_atoms:
-                    if n_atomObj.AtomicSymbol == "H" and n_atomObj.FormalCharge == 0:
-                        temp_molObj.AtomsList[acidic_atom_idx].FormalCharge -= 1
-                        temp_molObj.RemoveAtom(AtomObject=n_atomObj)
-                        break
-                # Optimise with g-xTB
-                # temp_molObj.OptimiseGeometry_xTB_bin()
-                # Calculate electronic energy with M06-2X/sef2-SVP/PCM(Water)
-
-            pass
-        elif method =="g-xTB//MACE-MP-0":
-            slope = -0.0023513537871010996
-            intercept = -0.438464916314113
-            # r2 value = 0.756
-            # Initially optimise with g-xTB
-            # self.OptimiseGeometry_xTB_bin()
-            # Calculate electronic energy with MACE-MP-0
-            self.MACE()
-            print(self.electronic_energy)
-        elif method == "g-xTB/MACE-POLAR//MACE-POLAR/PCM(Water)":
+        if method == "g-xTB/MACE-POLAR//MACE-POLAR/PCM(Water)":
             neutral_slope = -0.0026568576585500685
             neutral_intercept = -0.4449766642896787
             # r2 value = 0.899
@@ -2816,17 +2858,11 @@ class Molecule:
                 return round(
                     (protonated_species - deprotonated_species - anionic_intercept) / anionic_slope, 1
                 )
-            # (ProtonatedSpecies - DeprotonatedSpecies - anionic_intercept) / anionic_slope
-
-            # Optimise with g-xTB
-            # self.OptimiseGeometry_xTB_bin()
-
-            # Optimise with MACE-POLAR
-            # self.OptimiseGeometry_MACE()
-
-            # Get single point energy with solvent correction of the neutral compound
+            self.OptimiseGeometry_xTB_bin()
+            self.OptimiseGeometry_MACE(model_size="small", default_dtype="float32", steps=1000)
+            self.OptimiseGeometry_MACE(model_size="large", default_dtype="float64", steps=1000)
             self.SinglePoint_MACE(solvent_correction="pcm(water)")
-
+            # === Acidic Proton Calculations ===
             # Generate all the different tempMolObjs for calculation of acidic proton
             temp_molObj_dict = {}
             for acidic_atom_idx in acidic_atom_idxs:
@@ -2841,12 +2877,11 @@ class Molecule:
                         break
                 temp_molObj.Identifier = f"{temp_molObj.Identifier}_acidic{acidic_atom_idx}"
                 temp_molObj_dict[acidic_atom_idx] = [formal_charge, temp_molObj]
-            # ---- Parallel MACE optimise and single points on all deprotonated species ----
+            # Parallel MACE optimise and single points on all deprotonated species 
             n_tasks = len(temp_molObj_dict)
             if n_tasks > 0:
                 n_cpus = CPU_count
                 n_workers = min(n_tasks, n_cpus)
-
                 ctx = mp.get_context("spawn")   # fork + torch can deadlock
                 failed = {}
                 with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as ex:
@@ -2862,7 +2897,6 @@ class Molecule:
                         except Exception as e:
                             failed[idx] = repr(e)
                             print(f"MACE SP failed for acidic atom {idx}: {e}")
-
                 for idx in failed:
                     temp_molObj_dict.pop(idx, None)
             # Calculate pKa's on all the deprotonated atoms
@@ -2874,9 +2908,152 @@ class Molecule:
                         self.electronic_energy,
                         temp_molObj.electronic_energy,
                     )
-            
-            return temp_molObj_dict
-                
+            # TODO: === Amphorteric protons pKa/pKb calculations ===
+            # TODO: === Basic proton pKb calculations ===
+        
+        elif method == "SMARTS":
+            protonated_SMARTS = []
+            deprotonated_SMARTS = []
+            # === Acidic Groups first ===
+            for amp_idx in amphoteric_atom_idxs:
+                if amp_idx not in acidic_atom_idxs:
+                    acidic_atom_idxs.append(amp_idx)
+            for acidic_atom_idx in acidic_atom_idxs:
+                temp_molObj = deepcopy(self)
+                temp_molObj.AtomsList[acidic_atom_idx].SMARTSCentre = True
+                # Identify the framgment by defining where the SMARTS centres are
+                n_atoms_dict = {
+                    temp_molObj.AtomsList[acidic_atom_idx].Label: temp_molObj.AtomsList[acidic_atom_idx]
+                }
+                for n_atom in temp_molObj.GetAtomNeighbours(AtomIndex=acidic_atom_idx):
+                    n_atom.SMARTSCentre = True
+                for _ in range(3-1):
+                    new_n_atoms_dict = {}
+                    for atomLabel in n_atoms_dict:
+                        n_atoms = temp_molObj.GetAtomNeighbours(AtomLabel=atomLabel)
+                        for n_atom in n_atoms:
+                            if n_atom.IsMetal == True:
+                                n_atom.SMARTSCentre = True
+                                continue
+                            if n_atom not in n_atoms_dict:
+                                new_n_atoms_dict[n_atom.Label] = n_atom
+                    n_atoms_dict = n_atoms_dict | new_n_atoms_dict
+                # Define the fragment with SMARTS centres
+                for atomObj in n_atoms_dict.values():
+                    atomObj.SMARTSCentre = True
+                # Check if fragment atom is in aromatic ring
+                # If so include all aromatic ring atoms into the SMARTS Centre
+                ring_temp_molObj = deepcopy(temp_molObj)
+                rings = ring_temp_molObj.GetRingAtoms_V2(max_ring_size=6)
+                fragment_ring_atoms = []
+                for ring in rings:
+                    # is ring organic?
+                    organic = True
+                    for atomObj in ring:
+                        if atomObj.IsMetal == True:
+                            organic = False
+                    # is ring aromatic?
+                    aromatic = True
+                    for atomObj in ring:
+                        if len(temp_molObj.GetAtomNeighbours(AtomObject=atomObj)) > 3:
+                            aromatic = False
+                    # is ring part of fragment?
+                    fragment = False
+                    for atomObj in ring:
+                        if temp_molObj.AtomsDict[atomObj.Label][1].SMARTSCentre == True:
+                            fragment = True
+                            break
+                    if organic == True and aromatic == True and fragment == True:
+                        fragment_ring_atoms += ring
+                        for atomObj in ring:
+                            atomObj.SMARTSCentre = True
+                        for atomObj in ring:
+                            atomObj.SMARTSCentre = False
+                for atomObj in fragment_ring_atoms:
+                    temp_molObj.AtomsDict[atomObj.Label][1].SMARTSCentre = True
+                # Write Protonated Species
+                protonated_SMARTS.append(temp_molObj.WriteSMARTSString(HandleAromaticity=False))
+                # Write Deprotonates Species
+                temp_molObj.AtomsList[acidic_atom_idx].FormalCharge -= 1
+                for n_atom in temp_molObj.GetAtomNeighbours(AtomIndex=acidic_atom_idx):
+                    if n_atom.AtomicSymbol == "H" and n_atom.FormalCharge == 0:
+                        temp_molObj.RemoveAtom(AtomObject=n_atom)
+                        break
+                deprotonated_SMARTS.append(temp_molObj.WriteSMARTSString(HandleAromaticity=False))
+            # === Takle Basic Groups next ===
+            for amp_idx in amphoteric_atom_idxs:
+                if amp_idx not in basic_atom_idxs:
+                    basic_atom_idxs.append(amp_idx)
+            for basic_atom_idx in basic_atom_idxs:
+                temp_molObj = deepcopy(self)
+                temp_molObj.AtomsList[basic_atom_idx].SMARTSCentre = True
+                # Identify the framgment by defining where the SMARTS centres are
+                n_atoms_dict = {
+                    temp_molObj.AtomsList[basic_atom_idx].Label: temp_molObj.AtomsList[basic_atom_idx]
+                }
+                for n_atom in temp_molObj.GetAtomNeighbours(AtomIndex=basic_atom_idx):
+                    n_atom.SMARTSCentre = True
+                for _ in range(3-1):
+                    new_n_atoms_dict = {}
+                    for atomLabel in n_atoms_dict:
+                        n_atoms = temp_molObj.GetAtomNeighbours(AtomLabel=atomLabel)
+                        for n_atom in n_atoms:
+                            if n_atom.IsMetal == True:
+                                n_atom.SMARTSCentre = True
+                                continue
+                            if n_atom not in n_atoms_dict:
+                                new_n_atoms_dict[n_atom.Label] = n_atom
+                    n_atoms_dict = n_atoms_dict | new_n_atoms_dict
+                # Define the fragment with SMARTS centres
+                for atomObj in n_atoms_dict.values():
+                    atomObj.SMARTSCentre = True
+                # Check if fragment atom is in aromatic ring
+                # If so include all aromatic ring atoms into the SMARTS Centre
+                ring_temp_molObj = deepcopy(temp_molObj)
+                rings = ring_temp_molObj.GetRingAtoms_V2(max_ring_size=6)
+                fragment_ring_atoms = []
+                for ring in rings:
+                    # is ring organic?
+                    organic = True
+                    for atomObj in ring:
+                        if atomObj.IsMetal == True:
+                            organic = False
+                    # is ring aromatic?
+                    aromatic = True
+                    for atomObj in ring:
+                        if len(temp_molObj.GetAtomNeighbours(AtomObject=atomObj)) > 3:
+                            aromatic = False
+                    # is ring part of fragment?
+                    fragment = False
+                    for atomObj in ring:
+                        if temp_molObj.AtomsDict[atomObj.Label][1].SMARTSCentre == True:
+                            fragment = True
+                            break
+                    if organic == True and aromatic == True and fragment == True:
+                        fragment_ring_atoms += ring
+                        for atomObj in ring:
+                            atomObj.SMARTSCentre = True
+                        for atomObj in ring:
+                            atomObj.SMARTSCentre = False
+                for atomObj in fragment_ring_atoms:
+                    temp_molObj.AtomsDict[atomObj.Label][1].SMARTSCentre = True
+                # Write Deprotonated Species First
+                deprotonated_SMARTS.append(temp_molObj.WriteSMARTSString(HandleAromaticity=False))
+                # Add proton and write Protonated Species
+                temp_molObj.AtomsList[basic_atom_idx].FormalCharge += 1
+                temp_molObj.AddAtom(
+                    AtomicSymbol="H",
+                    Coordinates=np.array([0.0, 0.0, 0.0]),
+                    Label="H_added",
+                    UpdateAtomLabels=False,
+                )
+                temp_molObj.AddBond(AtomLabels=[
+                    temp_molObj.AtomsList[basic_atom_idx].Label,
+                    "H_added"
+                ])
+                temp_molObj.AtomsDict["H_added"][1].SMARTSCentre = True
+                protonated_SMARTS.append(temp_molObj.WriteSMARTSString(HandleAromaticity=False))
+            return (protonated_SMARTS, deprotonated_SMARTS)
 
     # === Get atomic descriptors ===
 
@@ -3316,7 +3493,6 @@ class Molecule:
                 new_rdkitAtomObj_idx
             ]
             SMARTS = SMARTS.replace(old_smarts_pattern, new_smarts_pattern)
-
         return SMARTS
 
     def WriteORCAInput(
@@ -4388,6 +4564,48 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                     break
             if embed_result != 0:
                 raise ValueError(f"3D embedding failed for SMILES: {SMILES}")
+        molObj = cls.RDKitMolToMolecule(
+            RDKitMolObj,
+            Identifier,
+        )
+        if OptimiseGeometry == True:
+            molObj.OptimiseGeometry_UFF()
+        return molObj
+
+    @classmethod
+    def ReadSMARTSString(
+        cls,
+        SMARTS: str,
+        Identifier: str,
+        AddHydrogens: bool = True,
+        SuppressRDKitWarnings: bool = True,
+        OptimiseGeometry: bool = False,
+    ) -> "Molecule":
+        
+        if SuppressRDKitWarnings == True:
+            RDLogger.DisableLog("rdApp.warning")
+            RDLogger.DisableLog("rdApp.error")
+
+        RDKitMolObj = Chem.MolFromSmarts(SMARTS)
+        if RDKitMolObj is None:
+            raise ValueError(f"RDKit failed to parse SMILES: {SMARTS}")
+        
+        if AddHydrogens == True:
+            RDKitMolObj.UpdatePropertyCache(strict=False)
+            RDKitMolObj = Chem.AddHs(RDKitMolObj)
+        
+        embed_result = AllChem.EmbedMolecule(RDKitMolObj)
+        if embed_result != 0:
+            for _ in range(10):
+                embed_result = AllChem.EmbedMolecule(
+                    RDKitMolObj,
+                    useRandomCoords=True,
+                    randomSeed=np.random.randint(0, 1001),
+                )
+                if embed_result == 0:
+                    break
+            if embed_result != 0:
+                raise ValueError(f"3D embedding failed for SMILES: {SMARTS}")
         molObj = cls.RDKitMolToMolecule(
             RDKitMolObj,
             Identifier,
