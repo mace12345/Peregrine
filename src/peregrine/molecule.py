@@ -85,7 +85,7 @@ BONDTYPE_TO_RDKIT_TRANSLATION = {
 
 RDKIT_TO_BONDTYPE_TRANSLATION = {v: k for k, v in BONDTYPE_TO_RDKIT_TRANSLATION.items()}
 
-PYSCF_DFT_FUNCTIONS = {"wb97m_v", "m06_l", "r2scan", "wb97m_d3bj"}
+PYSCF_DFT_FUNCTIONS = {"wb97m_v", "m06_l", "r2scan", "wb97m_d3bj", "m062x"}
 
 PYSCF_CC_FUNCTIONS = {"ccsdt", "ccsd(t)"}
 
@@ -844,7 +844,7 @@ def _PySCFHelper_DetermineImports(
         str: A string containing the necessary Python import statements and an
         initial metadata dictionary definition.
     """
-    pyscf_str = "import json\nimport resource\nimport basis_set_exchange as bse\nimport pyscf.gto.basis.bse as pbse\nfrom pyscf import gto\nfrom pyscf import lib\n"
+    pyscf_str = "import json\nimport basis_set_exchange as bse\nimport pyscf.gto.basis.bse as pbse\nfrom pyscf import gto\nfrom pyscf import lib\n"
     if method_type == "HF":
         pyscf_str += "from pyscf import scf\n"
     if method_type == "CC":
@@ -915,7 +915,7 @@ pyscfMolObj = gto.Mole(
     basis={processed_basis},
     ecp={processed_ecp},
     unit = 'Ang',
-    output = '{molObj.Identifier}_PySCFOutput.log',
+    output = '{molObj.Identifier}.log',
     verbose = 4,
     max_memory = {max_memory},
     charge = {molObj.FormalCharge},
@@ -941,6 +941,9 @@ def _PySCFHelper_DefineAndRunCalculation(
     method: str,
     grid_density: str,
     prune_grids: bool,
+    optimisation_max_steps: int | None = None,
+    solvent_model: str | None = None,
+    solvent: str | None = None,
 ) -> str:
     """
     Construct the PySCF calculation block for a supported electronic-structure run.
@@ -961,6 +964,15 @@ def _PySCFHelper_DefineAndRunCalculation(
         calculation, runs the kernel, and records energy-related metadata.
         Returns a placeholder string for unsupported calculation types.
     """
+    if optimisation_max_steps is None:
+        optimisation_max_steps = 100
+    if solvent_model is not None and solvent is not None:
+        use_solvent_model = True
+        solvent_model = solvent_model.upper()
+    else:
+        use_solvent_model = False
+        solvent_model = "SMD"
+        solvent = "water"
     pyscf_str = "# UNDETERMINED CALCULATION"
     # HF calculations
     if calculation_type == "single point" and method_type == "HF":
@@ -977,6 +989,31 @@ metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
 pyscfMolObj_calc.xc = '{method}'
 pyscfMolObj_calc.grids.level = {grid_density}
 pyscfMolObj_calc.grids.prune = {prune_grids}
+pyscfMolObj_calc.kernel()
+metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
+metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
+metadata['One Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[0] - pyscfMolObj_calc.energy_elec()[1]
+metadata['Nuclear Repulsion Energy (Eh)'] = pyscfMolObj_calc.energy_nuc()
+"""
+    elif calculation_type == "opt" and method_type == "DFT":
+        pyscf_str = f"""pyscfMolObj_calc = dft.{restricted_str}(pyscfMolObj)
+pyscfMolObj_calc.xc = '{method}'
+pyscfMolObj_calc.grids.level = {grid_density}
+if {prune_grids}:
+    pyscfMolObj_calc.grids.prune = dft.gen_grid.nwchem_prune
+if {use_solvent_model}:
+    pyscfMolObj_calc = pyscfMolObj_calc.{solvent_model}()
+    pyscfMolObj_calc.with_solvent.solvent = '{solvent}'
+pyscfMolObj_eq = optimise(pyscfMolObj_calc, maxsteps={optimisation_max_steps})
+metadata['Coordinates (A)'] = pyscfMolObj_eq.atom_coords(unit='Angstrom').tolist()
+pyscfMolObj_calc = dft.{restricted_str}(pyscfMolObj_eq)
+pyscfMolObj_calc.xc = '{method}'
+pyscfMolObj_calc.grids.level = {grid_density}
+if {prune_grids}:
+    pyscfMolObj_calc.grids.prune = dft.gen_grid.nwchem_prune
+if {use_solvent_model}:
+    pyscfMolObj_calc = pyscfMolObj_calc.{solvent_model}()
+    pyscfMolObj_calc.with_solvent.solvent = '{solvent}'
 pyscfMolObj_calc.kernel()
 metadata['Electronic Energy (Eh)'] = pyscfMolObj_calc.e_tot
 metadata['Two Electron Energy (Eh)'] = pyscfMolObj_calc.energy_elec()[1]
@@ -3598,7 +3635,7 @@ export OMPI_MCA_orte_default_hostfile=$SLURM_JOB_NODELIST
 INPUT_DIR=$(pwd)
 
 # Create a scratch directory and navigate to it
-SCRATCH_DIR=/scratch/$USER/$SLURM_JOB_ID
+SCRATCH_DIR=/$SCRATCH/$SLURM_JOB_ID
 mkdir -p $SCRATCH_DIR
 cd $SCRATCH_DIR
 
@@ -3648,6 +3685,8 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         grid_density: int = 5,
         prune_grids: None | bool = True,
         optimisation_convergence_settings: dict | None = None,
+        solvent_model: str | None = None,
+        solvent: str | None = None,
     ) -> str:
 
         # Optimisation Settings using geomeTRIC
@@ -3664,6 +3703,8 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         }
 
         pyscf_str = f"import time\nstart = time.time()\n\nconv_params = {str(optimisation_convergence_settings)}\n\n"
+        pyscf_str += "import resource\nimport platform\n\ndef get_max_rss_mb():\n    raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss\n    if platform.system() == 'Darwin':\n        return raw / (1024 * 1024)\n    return raw / 1024\n\n"
+        pyscf_str += f"import os\nos.environ['OMP_NUM_THREADS'] = '{CPU_count}'\nos.environ['OPENBLAS_NUM_THREADS'] = '{CPU_count}'\nos.environ['MKL_NUM_THREADS'] = '{CPU_count}'\n\n"
 
         # Standardise method and basis set names
         method = method.lower()
@@ -3710,6 +3751,8 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
             method=method,
             grid_density=grid_density,
             prune_grids=prune_grids,
+            solvent_model=solvent_model,
+            solvent=solvent,
         )
 
         # Post-Processing of single point and calculations
@@ -3730,11 +3773,11 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
             )
 
         # Get time taken to run program
-        pyscf_str += "end = time.time()\ntime_taken = round(end - start, 2)\nmetadata['Time Taken (s)'] = time_taken\n"
+        pyscf_str += "\nend = time.time()\ntime_taken = round(end - start, 2)\nmetadata['Time Taken (s)'] = time_taken\n"
         # Get maximum RAM usage
-        pyscf_str += "metadata['Maximum RAM used (MB)'] = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)\n"
+        pyscf_str += "metadata['Maximum RAM used (MB)'] = int(get_max_rss_mb())\n"
         # Write meta data .json file
-        pyscf_str += f"# Write metadata to .json file\nwith open('{self.Identifier}_PySCFOutput.meta.json', 'w') as f:\n   json.dump(metadata, f, indent=2)\n"
+        pyscf_str += f"# Write metadata to .json file\nwith open('{self.Identifier}.meta.json', 'w') as f:\n   json.dump(metadata, f, indent=2)\n"
 
         return pyscf_str
 
@@ -3745,6 +3788,7 @@ $orca_pltvib_exe {job_name}.out 6 7 8 9"""
         CPU_count: int = 4,
         max_memory: int = 1000,
         max_time: None | int = 2880,
+        scratch_dir: str = "/scratch",
     ):
         time = _GeneralHelper_MinutesToHHMMSS(max_time)
         slurm_str = f"""#!/bin/bash
@@ -3760,13 +3804,13 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-# Load pyscf conda environment
-source activate chem-env
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate pyscf-env
 
 INPUT_DIR=$(pwd)
 
 # Create a scratch directory and navigate to it
-SCRATCH_DIR=/scratch/$USER/$SLURM_JOB_ID
+SCRATCH_DIR={scratch_dir}/$USER/$SLURM_JOB_ID
 mkdir -p $SCRATCH_DIR
 cd $SCRATCH_DIR
 
@@ -3783,11 +3827,11 @@ python {job_name}.py > {job_name}.log
             slurm_str += f"cp *.{file_type} $INPUT_DIR/\n"
         slurm_str += """
 # Clean up the scratch directory
-rm -rf $SCRATCH_DIR
+# rm -rf $SCRATCH_DIR
 
 cd $INPUT_DIR
 # Remove slurm.out file
-rm slurm-$SLURM_JOB_ID.out
+# rm slurm-$SLURM_JOB_ID.out
 
 """
         return slurm_str
@@ -4628,10 +4672,11 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                 Identifier=str(ORCA_output_filepath).split("/")[-1].split(".")[0],
             )
         else:
-            template_molObj.DeleteCalculatedAttributes()
+            new_template_molObj = deepcopy(template_molObj)
+            new_template_molObj.DeleteCalculatedAttributes()
             molObj = _ORCAHelper_ConstructMolObjFromTemplate(
                 ORCA_out_str=out_file,
-                template_molObj=template_molObj,
+                template_molObj=new_template_molObj,
             )
         # Retreive calculation attributes: method, basisset, dispersions,
         molObj.calculation_method, molObj.basisset, molObj.dispersion = (

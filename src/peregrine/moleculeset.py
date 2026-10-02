@@ -283,7 +283,7 @@ class MoleculeSet:
 
     @classmethod
     def ReadMolFileDirectory(
-        cls, mol_file_directory: str, do_not_read_opt_traj_files: bool = False
+        cls, mol_file_directory: str, do_not_read_opt_traj_files: bool = False, parallel: bool = False
     ) -> "MoleculeSet":
         mol_file_list = [
             i for i in os.listdir(mol_file_directory) if i.endswith(".mol")
@@ -291,14 +291,21 @@ class MoleculeSet:
         if do_not_read_opt_traj_files == True:
             mol_file_list = [i for i in mol_file_list if "_TRAJ" not in i]
 
-        max_workers = max(1, os.cpu_count() - 2)
-        self = cls()
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            for molObj in executor.map(
-                partial(_GeneralHelper_LoadMolFile, mol_file_directory), mol_file_list
-            ):
+        if parallel == False:
+            self = cls()
+            for mol_file in mol_file_list:
+                molObj = _GeneralHelper_LoadMolFile(mol_file_directory, mol_file)
                 self.MoleculesDict[molObj.Identifier] = molObj
-        return self
+            return self
+        else:
+            max_workers = max(1, os.cpu_count() - 2)
+            self = cls()
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                for molObj in executor.map(
+                    partial(_GeneralHelper_LoadMolFile, mol_file_directory), mol_file_list
+                ):
+                    self.MoleculesDict[molObj.Identifier] = molObj
+            return self
 
     @classmethod
     def ReadMol2File(cls, mol2_file: str) -> "MoleculeSet":
@@ -493,6 +500,9 @@ class MoleculeSet:
         job_scheduler_used: None | str = "SLURM",
         CPU_count: int = 4,
         max_time: int = 2880,
+        solvent_model: str | None = None,
+        solvent: str | None = None,
+        scratch_dir: str | None = None,
     ):
         os.makedirs(pyscf_file_directory, exist_ok=True)
         submit_jobs = ""
@@ -510,6 +520,8 @@ class MoleculeSet:
                 prune_grids=prune_grids,
                 optimisation_convergence_settings=optimisation_convergence_settings,
                 CPU_count=CPU_count,
+                solvent=solvent,
+                solvent_model=solvent_model,
             )
             with open(pyscf_file_directory / f"{molObj.Identifier}.py", "w") as f:
                 f.write(pyscf_str)
@@ -520,6 +532,7 @@ class MoleculeSet:
                     CPU_count=CPU_count,
                     max_memory=max_memory,
                     max_time=max_time,
+                    scratch_dir=scratch_dir,
                 )
                 with open(pyscf_file_directory / f"{molObj.Identifier}.sh", "w") as f:
                     f.write(slurm_str)
@@ -551,14 +564,12 @@ class MoleculeSet:
         submit_jobs = ""
         # Resubmit previous calculations only if unsuccessful
         if self.ResultsDF is not None:
-            molObj_list = [
-                self.MoleculesDict[identifier]
-                for identifier in self.ResultsDF[
-                    self.ResultsDF["Error Code"].isna() == False
-                ]["Identifier"]
-            ]
+            df = self.ResultsDF
+            freq6 = pd.to_numeric(df["Vibrational Frequency 6 (cm-1)"], errors="coerce")
+            mask = df["Error Code"].notna() | (freq6 < 0) | freq6.isna()
+            molObj_list = [self.MoleculesDict[i] for i in df.loc[mask, "Identifier"]]
         else:
-            molObj_list = self.MoleculesDict.values()
+            molObj_list = list(self.MoleculesDict.values())
         # Sort local basissets
         new_local_basissets = None
         num_basisset_funcs = None
@@ -780,6 +791,7 @@ class MoleculeSet:
         output_mol_file_directory: str,
         template_moleculeset: "MoleculeSet | None" = None,
     ) -> "MoleculeSet":
+        
         dir_list = os.listdir(orca_file_directory)
         # Remove unnessicary files
         # Track files to .out files to read
@@ -792,6 +804,8 @@ class MoleculeSet:
             for pattern in remove_patterns:
                 if re.search(pattern, file) is not None:
                     files_to_remove.append(file)
+                elif "slurm-" in file:
+                    files_to_remove.append(file)
             # Look for .out files to keep
             if (
                 re.search(remove_patterns[1], file) is None
@@ -799,11 +813,19 @@ class MoleculeSet:
             ):
                 out_files.append(file)
         for file in files_to_remove:
-            os.remove(orca_file_directory / file)
+            try:
+                os.remove(orca_file_directory / file)
+            except FileNotFoundError:
+                pass
 
         # Read ORCA output files
         instance = MoleculeSet()
         for out_file in sorted(out_files):
+            if (
+                len(out_file.split(".")) != 2
+                and out_file.split(".")[-1] != "out"
+            ):
+                continue
             Identifier = str(out_file).split(".")[0]
             if template_moleculeset is None:
                 template_molObj = None
@@ -871,9 +893,9 @@ class MoleculeSet:
                 ],
                 "Vibrational Frequency 6 (cm-1)": [
                     (
-                        molObj.vibrational_frequencies[5][1]
-                        if molObj.vibrational_frequencies is not None
-                        else None
+                        None if molObj.vibrational_frequencies is None
+                        else molObj.vibrational_frequencies[5][1] if len(molObj.vibrational_frequencies) == 6
+                        else molObj.vibrational_frequencies[6][1]
                     )
                     for molObj in instance.MoleculesDict.values()
                 ],
