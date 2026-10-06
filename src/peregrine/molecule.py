@@ -84,6 +84,7 @@ BONDTYPE_TO_RDKIT_TRANSLATION = {
 }
 
 RDKIT_TO_BONDTYPE_TRANSLATION = {v: k for k, v in BONDTYPE_TO_RDKIT_TRANSLATION.items()}
+RDKIT_TO_BONDTYPE_TRANSLATION[Chem.BondType.DATIVE] = 1
 
 PYSCF_DFT_FUNCTIONS = {"wb97m_v", "m06_l", "r2scan", "wb97m_d3bj", "m062x"}
 
@@ -1165,6 +1166,86 @@ metadata['Gradients (Eh/Bohr)'] = grad.tolist()
 
 """
     return pyscf_str
+
+
+def _PySCFHelper_ConstructMolObjFromTemplate(
+    template_molObj: "Molecule",
+    pyscf_output_filepath: str,
+    log_file_name: str,
+    json_file_name: str,
+) -> "Molecule":
+    """
+    Construct a new Molecule object based on a template and a new geometry.
+
+    Args:
+        template_molObj: The original Molecule object to use as a template.
+        xyz_block: A string containing the new atomic coordinates in XYZ format.
+    """
+    molObj = deepcopy(template_molObj)
+    molObj.DeleteCalculatedAttributes()
+    try:
+        with open(pyscf_output_filepath / log_file_name, "r") as f:
+            pyscf_log_str = f.read()
+            f.close()
+        with open(pyscf_output_filepath / json_file_name, "r") as f:
+            pyscf_json = json.load(f)
+            f.close()
+    except FileNotFoundError:
+        # Read .out file to find error
+        try:
+            with open(pyscf_output_filepath / f"{molObj.Identifier}.out", "r") as f:
+                pyscf_out_str = f.read()
+                f.close()
+        except FileNotFoundError:
+            molObj.error_code = "json, log file, and out file not found"
+            return molObj
+        if len(pyscf_out_str.split("oom_kill event")) > 1:
+            molObj.error_code = "Not enough RAM"
+        elif len(pyscf_out_str.split("Electron number %d and spin %d are not consistent")) > 1:
+            molObj.error_code = "Incorrect multiplicity/electron count"
+        else:
+            molObj.error_code = "Unknown Error"
+        return molObj
+    # Check FormalCharge, Multiplicity, and Identifier are the same
+    if (
+        molObj.Identifier != pyscf_json["Identifier"]
+        and molObj.FormalCharge != pyscf_json["Charge"]
+        and molObj.Multiplicity != pyscf_json["Multiplicity"]
+    ):
+        raise ValueError("Inconsistancy between template Molecule and new Molecule")
+    else:
+        molObj.Identifier = pyscf_json["Identifier"]
+        molObj.FormalCharge = pyscf_json["Charge"]
+        molObj.Multiplicity = pyscf_json["Multiplicity"]
+    if "Electronic Energy (Eh)" in pyscf_json.keys():
+        molObj.electronic_energy = pyscf_json["Electronic Energy (Eh)"]
+    if "Time Taken (s)" in pyscf_json.keys():
+        molObj.wallclock_time_sec = pyscf_json["Time Taken (s)"]
+    if "Method" in pyscf_json.keys():
+        molObj.calculation_method = pyscf_json["Method"]
+    if "Basis Set" in pyscf_json.keys():
+        molObj.basisset = str(pyscf_json["Basis Set"])
+    if "Number of Primitive Basis Functions" in pyscf_json.keys():
+        molObj.num_prim_basis_functions = pyscf_json[
+            "Number of Primitive Basis Functions"
+        ]
+    if "Maximum RAM used (MB)" in pyscf_json.keys():
+        molObj.RAM_used = pyscf_json["Maximum RAM used (MB)"]
+    if "CPU cores used" in pyscf_json.keys():
+        molObj.num_CPU_used = pyscf_json["CPU cores used"]
+    if "Coordinates (A)" in pyscf_json.keys():
+        new_coordinates = (
+            np.array(pyscf_json["Coordinates (A)"])
+        )
+        if len(molObj.AtomsList) != len(new_coordinates):
+            raise ValueError(f"Different number of atoms between calculated molecule and old molecule")
+        for atomObj, new_coor in zip(molObj.AtomsList, new_coordinates):
+            atomObj.Coordinates = new_coor
+    return molObj
+    
+
+def _PySCFHelper_ConstructMolObjFromScratch():
+    pass
 
 
 def _RDKitHelper_SanitizeMol(RDKitMolObj: Chem.RWMol) -> Chem.RWMol:
@@ -2829,6 +2910,7 @@ class Molecule:
         self,
         method: str = "g-xTB/MACE-POLAR//MACE-POLAR/PCM(Water)",
         CPU_count: int = 8,
+        pka_fragment_dict: dict | None = None,
     ):
         # For algorithm to work structure provided must be neutral
         # Identify all the different potentially protonatable/deprotonatable sites
@@ -2949,133 +3031,43 @@ class Molecule:
             # TODO: === Basic proton pKb calculations ===
         
         elif method == "SMARTS":
-            protonated_SMARTS = []
-            deprotonated_SMARTS = []
+
             # === Acidic Groups first ===
             for amp_idx in amphoteric_atom_idxs:
                 if amp_idx not in acidic_atom_idxs:
                     acidic_atom_idxs.append(amp_idx)
             for acidic_atom_idx in acidic_atom_idxs:
-                temp_molObj = deepcopy(self)
-                temp_molObj.AtomsList[acidic_atom_idx].SMARTSCentre = True
-                # Identify the framgment by defining where the SMARTS centres are
-                n_atoms_dict = {
-                    temp_molObj.AtomsList[acidic_atom_idx].Label: temp_molObj.AtomsList[acidic_atom_idx]
-                }
-                for n_atom in temp_molObj.GetAtomNeighbours(AtomIndex=acidic_atom_idx):
-                    n_atom.SMARTSCentre = True
-                for _ in range(3-1):
-                    new_n_atoms_dict = {}
-                    for atomLabel in n_atoms_dict:
-                        n_atoms = temp_molObj.GetAtomNeighbours(AtomLabel=atomLabel)
-                        for n_atom in n_atoms:
-                            if n_atom.IsMetal == True:
-                                n_atom.SMARTSCentre = True
-                                continue
-                            if n_atom not in n_atoms_dict:
-                                new_n_atoms_dict[n_atom.Label] = n_atom
-                    n_atoms_dict = n_atoms_dict | new_n_atoms_dict
-                # Define the fragment with SMARTS centres
-                for atomObj in n_atoms_dict.values():
-                    atomObj.SMARTSCentre = True
-                # Check if fragment atom is in aromatic ring
-                # If so include all aromatic ring atoms into the SMARTS Centre
-                ring_temp_molObj = deepcopy(temp_molObj)
-                rings = ring_temp_molObj.GetRingAtoms_V2(max_ring_size=6)
-                fragment_ring_atoms = []
-                for ring in rings:
-                    # is ring organic?
-                    organic = True
-                    for atomObj in ring:
-                        if atomObj.IsMetal == True:
-                            organic = False
-                    # is ring aromatic?
-                    aromatic = True
-                    for atomObj in ring:
-                        if len(temp_molObj.GetAtomNeighbours(AtomObject=atomObj)) > 3:
-                            aromatic = False
-                    # is ring part of fragment?
-                    fragment = False
-                    for atomObj in ring:
-                        if temp_molObj.AtomsDict[atomObj.Label][1].SMARTSCentre == True:
-                            fragment = True
-                            break
-                    if organic == True and aromatic == True and fragment == True:
-                        fragment_ring_atoms += ring
-                        for atomObj in ring:
-                            atomObj.SMARTSCentre = True
-                        for atomObj in ring:
-                            atomObj.SMARTSCentre = False
-                for atomObj in fragment_ring_atoms:
-                    temp_molObj.AtomsDict[atomObj.Label][1].SMARTSCentre = True
+                temp_molObj = self.DefineSMARTSCentresAroundCentre(AtomIndex=acidic_atom_idx)
                 # Write Protonated Species
-                protonated_SMARTS.append(temp_molObj.WriteSMARTSString(HandleAromaticity=False))
+                protonated_SMARTS = temp_molObj.WriteSMARTSString(HandleAromaticity=False)
+                protonated_inchi = Molecule.ReadSMARTSString(
+                    protonated_SMARTS, f"{temp_molObj.Identifier}-AtomIdx{acidic_atom_idx}"
+                ).WriteInchiString()
                 # Write Deprotonates Species
                 temp_molObj.AtomsList[acidic_atom_idx].FormalCharge -= 1
                 for n_atom in temp_molObj.GetAtomNeighbours(AtomIndex=acidic_atom_idx):
                     if n_atom.AtomicSymbol == "H" and n_atom.FormalCharge == 0:
                         temp_molObj.RemoveAtom(AtomObject=n_atom)
                         break
-                deprotonated_SMARTS.append(temp_molObj.WriteSMARTSString(HandleAromaticity=False))
+                deprotonated_SMARTS = temp_molObj.WriteSMARTSString(HandleAromaticity=False)
+                deprotonated_inchi = Molecule.ReadSMARTSString(
+                    deprotonated_SMARTS, f"{temp_molObj.Identifier}-AtomIdx{acidic_atom_idx}"
+                ).WriteInchiString()
+                transformation_inchi = f"{protonated_inchi}>>{deprotonated_inchi}"
+                if transformation_inchi in pka_fragment_dict:
+                    self.AtomsList[acidic_atom_idx].pKa = pka_fragment_dict[transformation_inchi]
+
             # === Takle Basic Groups next ===
             for amp_idx in amphoteric_atom_idxs:
                 if amp_idx not in basic_atom_idxs:
                     basic_atom_idxs.append(amp_idx)
             for basic_atom_idx in basic_atom_idxs:
-                temp_molObj = deepcopy(self)
-                temp_molObj.AtomsList[basic_atom_idx].SMARTSCentre = True
-                # Identify the framgment by defining where the SMARTS centres are
-                n_atoms_dict = {
-                    temp_molObj.AtomsList[basic_atom_idx].Label: temp_molObj.AtomsList[basic_atom_idx]
-                }
-                for n_atom in temp_molObj.GetAtomNeighbours(AtomIndex=basic_atom_idx):
-                    n_atom.SMARTSCentre = True
-                for _ in range(3-1):
-                    new_n_atoms_dict = {}
-                    for atomLabel in n_atoms_dict:
-                        n_atoms = temp_molObj.GetAtomNeighbours(AtomLabel=atomLabel)
-                        for n_atom in n_atoms:
-                            if n_atom.IsMetal == True:
-                                n_atom.SMARTSCentre = True
-                                continue
-                            if n_atom not in n_atoms_dict:
-                                new_n_atoms_dict[n_atom.Label] = n_atom
-                    n_atoms_dict = n_atoms_dict | new_n_atoms_dict
-                # Define the fragment with SMARTS centres
-                for atomObj in n_atoms_dict.values():
-                    atomObj.SMARTSCentre = True
-                # Check if fragment atom is in aromatic ring
-                # If so include all aromatic ring atoms into the SMARTS Centre
-                ring_temp_molObj = deepcopy(temp_molObj)
-                rings = ring_temp_molObj.GetRingAtoms_V2(max_ring_size=6)
-                fragment_ring_atoms = []
-                for ring in rings:
-                    # is ring organic?
-                    organic = True
-                    for atomObj in ring:
-                        if atomObj.IsMetal == True:
-                            organic = False
-                    # is ring aromatic?
-                    aromatic = True
-                    for atomObj in ring:
-                        if len(temp_molObj.GetAtomNeighbours(AtomObject=atomObj)) > 3:
-                            aromatic = False
-                    # is ring part of fragment?
-                    fragment = False
-                    for atomObj in ring:
-                        if temp_molObj.AtomsDict[atomObj.Label][1].SMARTSCentre == True:
-                            fragment = True
-                            break
-                    if organic == True and aromatic == True and fragment == True:
-                        fragment_ring_atoms += ring
-                        for atomObj in ring:
-                            atomObj.SMARTSCentre = True
-                        for atomObj in ring:
-                            atomObj.SMARTSCentre = False
-                for atomObj in fragment_ring_atoms:
-                    temp_molObj.AtomsDict[atomObj.Label][1].SMARTSCentre = True
+                temp_molObj = self.DefineSMARTSCentresAroundCentre(AtomIndex=basic_atom_idx)
                 # Write Deprotonated Species First
-                deprotonated_SMARTS.append(temp_molObj.WriteSMARTSString(HandleAromaticity=False))
+                deprotonated_SMARTS = temp_molObj.WriteSMARTSString(HandleAromaticity=False)
+                deprotonated_inchi = Molecule.ReadSMARTSString(
+                    deprotonated_SMARTS, f"{temp_molObj.Identifier}-AtomIdx{acidic_atom_idx}"
+                ).WriteInchiString()
                 # Add proton and write Protonated Species
                 temp_molObj.AtomsList[basic_atom_idx].FormalCharge += 1
                 temp_molObj.AddAtom(
@@ -3089,8 +3081,16 @@ class Molecule:
                     "H_added"
                 ])
                 temp_molObj.AtomsDict["H_added"][1].SMARTSCentre = True
-                protonated_SMARTS.append(temp_molObj.WriteSMARTSString(HandleAromaticity=False))
-            return (protonated_SMARTS, deprotonated_SMARTS)
+                protonated_SMARTS = temp_molObj.WriteSMARTSString(HandleAromaticity=False)
+                try:
+                    protonated_inchi = Molecule.ReadSMARTSString(
+                        protonated_SMARTS, f"{temp_molObj.Identifier}-AtomIdx{acidic_atom_idx}"
+                    ).WriteInchiString()
+                except Chem.rdchem.AtomValenceException:
+                    continue
+                transformation_inchi = f"{protonated_inchi}>>{deprotonated_inchi}"
+                if transformation_inchi in pka_fragment_dict:
+                    self.AtomsList[basic_atom_idx].pKb = pka_fragment_dict[transformation_inchi]
 
     # === Get atomic descriptors ===
 
@@ -3314,6 +3314,8 @@ class Molecule:
                 mol_str += f" LDS={atomObj.LowdinSpin}"
             if atomObj.pKa is not None:
                 mol_str += f" PKA={atomObj.pKa}"
+            if atomObj.pKb is not None:
+                mol_str += f" PKB={atomObj.pKb}"
             mol_str += "\n"
         # End atom and begin bonds
         mol_str += "M V30 END ATOM\nM V30 BEGIN BOND\n"
@@ -3531,6 +3533,77 @@ class Molecule:
             ]
             SMARTS = SMARTS.replace(old_smarts_pattern, new_smarts_pattern)
         return SMARTS
+
+    def DefineSMARTSCentresAroundCentre(
+        self,
+        AtomIndex: int | None = None,
+        AtomObject: Atom | None = None,
+        AtomLabel: str | None = None,
+        TopologicalRadius: int = 3,
+    ) -> tuple["Molecule", str]:
+        if AtomIndex is not None:
+            pass
+        elif AtomObject is not None:
+            AtomIndex = self.AtomsDict[AtomObject.Label][0]
+        elif AtomLabel is not None:
+            AtomIndex = self.AtomsDict[AtomLabel][0]
+        else:
+            raise ValueError("Must provide AtomLabel, AtomIndex, or AtomObject")
+        if TopologicalRadius <= 1:
+            raise ValueError("TopologicalRadius must be greater than 1")
+        molObj = deepcopy(self)
+        molObj.AtomsList[AtomIndex].SMARTSCentre = True
+        # Identify the framgment by defining where the SMARTS centres are
+        n_atoms_dict = {
+            molObj.AtomsList[AtomIndex].Label: molObj.AtomsList[AtomIndex]
+        }
+        for n_atom in molObj.GetAtomNeighbours(AtomIndex=AtomIndex):
+            n_atom.SMARTSCentre = True
+        for _ in range(TopologicalRadius-1):
+            new_n_atoms_dict = {}
+            for atomLabel in n_atoms_dict:
+                n_atoms = molObj.GetAtomNeighbours(AtomLabel=atomLabel)
+                for n_atom in n_atoms:
+                    if n_atom.IsMetal == True:
+                        n_atom.SMARTSCentre = True
+                        continue
+                    if n_atom not in n_atoms_dict:
+                        new_n_atoms_dict[n_atom.Label] = n_atom
+            n_atoms_dict = n_atoms_dict | new_n_atoms_dict
+        # Define the fragment with SMARTS centres
+        for atomObj in n_atoms_dict.values():
+            atomObj.SMARTSCentre = True
+        # Check if fragment atom is in aromatic ring
+        # If so include all aromatic ring atoms into the SMARTS Centre
+        ring_temp_molObj = deepcopy(molObj)
+        rings = ring_temp_molObj.GetRingAtoms_V2(max_ring_size=6)
+        fragment_ring_atoms = []
+        for ring in rings:
+            # is ring organic?
+            organic = True
+            for atomObj in ring:
+                if atomObj.IsMetal == True:
+                    organic = False
+            # is ring aromatic?
+            aromatic = True
+            for atomObj in ring:
+                if len(molObj.GetAtomNeighbours(AtomObject=atomObj)) > 3:
+                    aromatic = False
+            # is ring part of fragment?
+            fragment = False
+            for atomObj in ring:
+                if molObj.AtomsDict[atomObj.Label][1].SMARTSCentre == True:
+                    fragment = True
+                    break
+            if organic == True and aromatic == True and fragment == True:
+                fragment_ring_atoms += ring
+                for atomObj in ring:
+                    atomObj.SMARTSCentre = True
+                for atomObj in ring:
+                    atomObj.SMARTSCentre = False
+        for atomObj in fragment_ring_atoms:
+            molObj.AtomsDict[atomObj.Label][1].SMARTSCentre = True
+        return molObj
 
     def WriteORCAInput(
         self,
@@ -3825,13 +3898,14 @@ python {job_name}.py > {job_name}.log
         for file_type in file_types_to_save:
             file_type = file_type.replace(".", "")
             slurm_str += f"cp *.{file_type} $INPUT_DIR/\n"
-        slurm_str += """
+        slurm_str += f"""
 # Clean up the scratch directory
-# rm -rf $SCRATCH_DIR
+rm -rf $SCRATCH_DIR
 
 cd $INPUT_DIR
-# Remove slurm.out file
-# rm slurm-$SLURM_JOB_ID.out
+# Remove slurm.out file to the job name for easier identification
+mv slurm-$SLURM_JOB_ID.out {job_name}.out
+rm slurm-$SLURM_JOB_ID.out
 
 """
         return slurm_str
@@ -4764,6 +4838,29 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             return molObj_dict
         else:
             return molObj
+
+    @classmethod
+    def ReadPySCFOutput(
+        cls,
+        pyscf_output_filepath: str,
+        log_file_name: str,
+        json_file_name: str,
+        template_molObj: "Molecule | None" = None,
+    ) -> "Molecule":
+        # Retreive Coordinates, Bonds, Multiplicity, Charge
+        if template_molObj is None:
+            molObj = _PySCFHelper_ConstructMolObjFromScratch()
+            raise NotImplementedError(
+                "PySCF output reading from scratch is not yet implemented. Please provide a template molecule."
+            )
+        else:
+            molObj = _PySCFHelper_ConstructMolObjFromTemplate(
+                pyscf_output_filepath=pyscf_output_filepath,
+                log_file_name=log_file_name,
+                json_file_name=json_file_name,
+                template_molObj=template_molObj,
+            )
+        return molObj
 
     @classmethod
     def ReadORCA6OutputGradients(

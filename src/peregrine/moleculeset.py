@@ -497,7 +497,7 @@ class MoleculeSet:
         grid_density: int = 5,
         prune_grids: None | bool = True,
         optimisation_convergence_settings: dict | None = None,
-        job_scheduler_used: None | str = "SLURM",
+        job_scheduler_used: None | str = "slurm",
         CPU_count: int = 4,
         max_time: int = 2880,
         solvent_model: str | None = None,
@@ -505,8 +505,18 @@ class MoleculeSet:
         scratch_dir: str | None = None,
     ):
         os.makedirs(pyscf_file_directory, exist_ok=True)
+        job_scheduler_used = job_scheduler_used.lower()
         submit_jobs = ""
-        for molObj in self.MoleculesDict.values():
+        # Resubmit previous calculations only if unsuccessful
+        if self.ResultsDF is not None:
+            df = self.ResultsDF
+            #freq6 = pd.to_numeric(df["Vibrational Frequency 6 (cm-1)"], errors="coerce")
+            mask = df["Error Code"].notna()
+            molObj_list = [self.MoleculesDict[i] for i in df.loc[mask, "Identifier"]]
+        else:
+            molObj_list = list(self.MoleculesDict.values())
+        
+        for molObj in molObj_list:
             pyscf_str = molObj.WritePySCFInput(
                 method=method,
                 basisset=basisset,
@@ -526,7 +536,7 @@ class MoleculeSet:
             with open(pyscf_file_directory / f"{molObj.Identifier}.py", "w") as f:
                 f.write(pyscf_str)
                 f.close()
-            if job_scheduler_used == "SLURM":
+            if job_scheduler_used == "slurm":
                 slurm_str = molObj.WriteSLURMStringForPySCF(
                     job_name=molObj.Identifier,
                     CPU_count=CPU_count,
@@ -1024,6 +1034,102 @@ class MoleculeSet:
         return instance
 
     @classmethod
+    def ReadPySCFOutput(
+        cls,
+        pyscf_file_directory: str,
+        output_mol_file_directory: str,
+        template_moleculeset: "MoleculeSet | None" = None,
+    ) -> "MoleculeSet":
+        instance = MoleculeSet()
+        instance.ResultsDF = pd.DataFrame()
+        identifiers = [
+            i.split(".")[0] for i in os.listdir(pyscf_file_directory) if i.split(".")[-1] == "py"
+        ]
+        for identifier in identifiers:
+            try:
+                template_molObj = template_moleculeset.MoleculesDict[identifier]
+                molObj = Molecule.ReadPySCFOutput(
+                    pyscf_output_filepath=pyscf_file_directory,
+                    log_file_name=f"{identifier}.log",
+                    json_file_name=f"{identifier}.meta.json",
+                    template_molObj=template_molObj,
+                )
+                instance.MoleculesDict[molObj.Identifier] = molObj
+            except ValueError as exc:
+                print(exc)
+                molObj = deepcopy(template_molObj)
+                molObj.DeleteCalculatedAttributes()
+                molObj.error_code = exc
+                continue
+        instance.WriteMolFileDirectory(output_mol_file_directory)
+        instance.ResultsDF = pd.DataFrame(
+            {
+                "Identifier": [identifier for identifier in instance.MoleculesDict],
+                "Method": [
+                    molObj.calculation_method
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Dispersion": [
+                    molObj.dispersion for molObj in instance.MoleculesDict.values()
+                ],
+                "Basis set": [
+                    molObj.basisset for molObj in instance.MoleculesDict.values()
+                ],
+                "Number of primitive basis functions": [
+                    molObj.num_prim_basis_functions
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "RAM used per CPU core (MB)": [
+                    molObj.RAM_used for molObj in instance.MoleculesDict.values()
+                ],
+                "Number of CPU cores used": [
+                    molObj.num_CPU_used for molObj in instance.MoleculesDict.values()
+                ],
+                "Charge": [
+                    molObj.FormalCharge for molObj in instance.MoleculesDict.values()
+                ],
+                "Multiplicity": [
+                    molObj.Multiplicity for molObj in instance.MoleculesDict.values()
+                ],
+                "Error Code": [
+                    molObj.error_code for molObj in instance.MoleculesDict.values()
+                ],
+                "wallclock time taken (seconds)": [
+                    molObj.wallclock_time_sec
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Electronic Energy (Eh)": [
+                    molObj.electronic_energy
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Gibbs Free Energy (Eh)": [
+                    molObj.gibbs_free_energy
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Enthalpy (Eh)": [
+                    molObj.enthalpy for molObj in instance.MoleculesDict.values()
+                ],
+                "Entropy (Eh)": [
+                    molObj.entropy for molObj in instance.MoleculesDict.values()
+                ],
+                "Spin Contaimination (<S**2>)": [
+                    molObj.spin_contamination
+                    for molObj in instance.MoleculesDict.values()
+                ],
+                "Vibrational Frequency 6 (cm-1)": [
+                    (
+                        None if molObj.vibrational_frequencies is None
+                        else molObj.vibrational_frequencies[5][1] if len(molObj.vibrational_frequencies) == 6
+                        else molObj.vibrational_frequencies[6][1]
+                    )
+                    for molObj in instance.MoleculesDict.values()
+                ],
+            }
+        )
+        instance.ResultsDF.to_csv(str(output_mol_file_directory) + ".csv")
+        return instance
+        
+    @classmethod
     def ReadCRESTOutput(
         cls,
         crest_file_directory: str,
@@ -1295,7 +1401,7 @@ class MoleculeSet:
         RMSD_df = pd.DataFrame(
             data={
                 "Identifier": identifiers,
-                "RMSD": rmsd_values,
+                "RMSD (A)": rmsd_values,
             }
         )
         RMSD_df.set_index("Identifier", inplace=True)
