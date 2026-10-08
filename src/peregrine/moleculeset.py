@@ -205,6 +205,7 @@ def _MACEHelper_InitWorker():
     torch.set_num_threads(1)
     warnings.filterwarnings("ignore")
 
+
 def _MACEHelper_OptimiseOne(item):
     key, molObj = item
     molObj.OptimiseGeometry_MACE(logfile=None)
@@ -1250,6 +1251,7 @@ class MoleculeSet:
         time_limit: float = 100,
         optimise_geometry: bool = True,
         get_gradients: bool = False,
+        CPU_count: int | None = None,
     ):
         if xtb_binary_path is None:
             xtb_binary_path = _xTBHelper_FindBinary()
@@ -1272,7 +1274,11 @@ class MoleculeSet:
             )
             for molObj in list(self.MoleculesDict.values())
         ]
-        max_workers = max(1, int(os.cpu_count() - 2))
+        if CPU_count is not None:
+            max_workers = CPU_count
+        else:
+            max_workers = max(1, int(os.cpu_count() - 2))
+            
         results = {}
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             futures = {

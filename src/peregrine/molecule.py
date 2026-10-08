@@ -2408,6 +2408,8 @@ class Molecule:
             atomObj.LowdinCharge = None
             atomObj.LowdinSpin = None
             atomObj.Gradient = None
+            atomObj.pKa = None
+            atomObj.pKb = None
 
     def DeriveMoleculeSMILES(self):
         # Split substructuures into their own molecule objects
@@ -2852,9 +2854,9 @@ class Molecule:
 
     def GetNewUnitBondVector(self, AtomObj: Atom) -> np.ndarray:
         """
-        # TODO: /home/samuel.mace/Peregrine/src/peregrine/molecule.py:2514: RuntimeWarning: invalid value encountered in divide
+        # TODO: /<USER>/Peregrine/src/peregrine/molecule.py:2514: RuntimeWarning: invalid value encountered in divide
         new_unit_bond_vector = new_bond_vector * -1 / np.linalg.norm(new_bond_vector)
-        /home/samuel.mace/Peregrine/src/peregrine/molecule.py:2514: RuntimeWarning: invalid value encountered in divide
+        /<USER>/Peregrine/src/peregrine/molecule.py:2514: RuntimeWarning: invalid value encountered in divide
         new_unit_bond_vector = new_bond_vector * -1 / np.linalg.norm(new_bond_vector)
         """
         neighbours = self.GetAtomNeighbours(AtomObject=AtomObj)
@@ -3040,9 +3042,12 @@ class Molecule:
                 temp_molObj = self.DefineSMARTSCentresAroundCentre(AtomIndex=acidic_atom_idx)
                 # Write Protonated Species
                 protonated_SMARTS = temp_molObj.WriteSMARTSString(HandleAromaticity=False)
-                protonated_inchi = Molecule.ReadSMARTSString(
+                protonated_molObj = Molecule.ReadSMARTSString(
                     protonated_SMARTS, f"{temp_molObj.Identifier}-AtomIdx{acidic_atom_idx}"
-                ).WriteInchiString()
+                )
+                if protonated_molObj is None:
+                    continue
+                protonated_inchi = protonated_molObj.WriteInchiString()
                 # Write Deprotonates Species
                 temp_molObj.AtomsList[acidic_atom_idx].FormalCharge -= 1
                 for n_atom in temp_molObj.GetAtomNeighbours(AtomIndex=acidic_atom_idx):
@@ -3050,9 +3055,16 @@ class Molecule:
                         temp_molObj.RemoveAtom(AtomObject=n_atom)
                         break
                 deprotonated_SMARTS = temp_molObj.WriteSMARTSString(HandleAromaticity=False)
-                deprotonated_inchi = Molecule.ReadSMARTSString(
-                    deprotonated_SMARTS, f"{temp_molObj.Identifier}-AtomIdx{acidic_atom_idx}"
-                ).WriteInchiString()
+                try:
+                    deprotonated_molObj = Molecule.ReadSMARTSString(
+                        deprotonated_SMARTS, f"{temp_molObj.Identifier}-AtomIdx{acidic_atom_idx}"
+                    )
+                except Exception as exc:
+                    print(exc)
+                    continue
+                if deprotonated_molObj is None:
+                    continue
+                deprotonated_inchi = deprotonated_molObj.WriteInchiString()
                 transformation_inchi = f"{protonated_inchi}>>{deprotonated_inchi}"
                 if transformation_inchi in pka_fragment_dict:
                     self.AtomsList[acidic_atom_idx].pKa = pka_fragment_dict[transformation_inchi]
@@ -3065,9 +3077,12 @@ class Molecule:
                 temp_molObj = self.DefineSMARTSCentresAroundCentre(AtomIndex=basic_atom_idx)
                 # Write Deprotonated Species First
                 deprotonated_SMARTS = temp_molObj.WriteSMARTSString(HandleAromaticity=False)
-                deprotonated_inchi = Molecule.ReadSMARTSString(
+                deprotonated_molObj = Molecule.ReadSMARTSString(
                     deprotonated_SMARTS, f"{temp_molObj.Identifier}-AtomIdx{acidic_atom_idx}"
-                ).WriteInchiString()
+                )
+                if deprotonated_molObj is None:
+                    continue
+                deprotonated_inchi = deprotonated_molObj.WriteInchiString()
                 # Add proton and write Protonated Species
                 temp_molObj.AtomsList[basic_atom_idx].FormalCharge += 1
                 temp_molObj.AddAtom(
@@ -3083,9 +3098,12 @@ class Molecule:
                 temp_molObj.AtomsDict["H_added"][1].SMARTSCentre = True
                 protonated_SMARTS = temp_molObj.WriteSMARTSString(HandleAromaticity=False)
                 try:
-                    protonated_inchi = Molecule.ReadSMARTSString(
+                    protonated_molObj = Molecule.ReadSMARTSString(
                         protonated_SMARTS, f"{temp_molObj.Identifier}-AtomIdx{acidic_atom_idx}"
-                    ).WriteInchiString()
+                    )
+                    if protonated_molObj is None:
+                        continue
+                    protonated_inchi = protonated_molObj.WriteInchiString()
                 except Chem.rdchem.AtomValenceException:
                     continue
                 transformation_inchi = f"{protonated_inchi}>>{deprotonated_inchi}"
@@ -4704,7 +4722,11 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             RDLogger.DisableLog("rdApp.warning")
             RDLogger.DisableLog("rdApp.error")
 
-        RDKitMolObj = Chem.MolFromSmarts(SMARTS)
+        try:
+            RDKitMolObj = Chem.MolFromSmarts(SMARTS)
+        except TypeError:
+            print(f"Was not able to convert '{SMARTS}' into RDKit object inorder to return Molecule Object\nReturned None")
+            return None
         if RDKitMolObj is None:
             raise ValueError(f"RDKit failed to parse SMILES: {SMARTS}")
         
@@ -5326,6 +5348,21 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             UpdateSubstructureIndices=UpdateSubstructureIndices,
         )
 
+    def RemoveAtoms(
+        self,
+        AtomObjectList: list[Atom],
+    ):
+        for atomObj in AtomObjectList:
+            self.RemoveAtom(
+                AtomObject=atomObj,
+                UpdateSubstructureIndices=False,
+                UpdateAtomLabels=False,
+            )
+        self.DeriveBasicAttributes(
+            UpdateAtomLabels=True,
+            UpdateSubstructureIndices=True,
+        )
+
     def ChangeAtom(
         self,
         NewAtomicSymbol: str,
@@ -5850,6 +5887,50 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             xtb_method=xtb_method,
             xtb_binary_path=xtb_binary_path,
         )
+
+    def AdjustProtonationState(self, pH: int):
+        """
+        Inputted Molecule Object must be neutral
+        """
+        # Deprotonate when pKa is lower than pH
+        protons_to_remove = []
+        for atomObj in self.AtomsList:
+            if atomObj.pKa is not None:
+                if atomObj.pKa <= pH:
+                    n_atoms = self.GetAtomNeighbours(AtomObject=atomObj)
+                    for n_atom in n_atoms:
+                        if n_atom.AtomicSymbol == "H":
+                            protons_to_remove.append(n_atom)
+                            atomObj.FormalCharge -= 1
+                            break
+        self.RemoveAtoms(protons_to_remove)
+        # Protonate when pKb is higher than pH
+        atoms_to_protonate = []
+        for atomObj in self.AtomsList:
+            if atomObj.pKb is not None:
+                if atomObj.pKb >= pH:
+                    # Get atom bonding vector
+                    unit_bond_vector = self.GetNewUnitBondVector(atomObj)
+                    # Get proton coordinates
+                    coordinates = atomObj.Coordinates + unit_bond_vector
+                    atomObj.FormalCharge += 1
+                    atoms_to_protonate.append([atomObj.Label, coordinates])
+        for idx, atomLabel_coor in enumerate(atoms_to_protonate):
+            atomLabel = atomLabel_coor[0]
+            coordinates = atomLabel_coor[1]
+            self.AddAtom(
+                AtomicSymbol="H",
+                Coordinates=coordinates,
+                Label=f"H_added_{idx}",
+                UpdateAtomLabels=False,
+            )
+            self.AddBond(
+                AtomLabels=[
+                    atomLabel,
+                    f"H_added_{idx}",
+                ]
+            )
+        self.DeriveBasicAttributes()
 
     # === Translate and Rotate Molecule, and Geometry Functions ===
 
