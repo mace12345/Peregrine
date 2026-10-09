@@ -1,6 +1,8 @@
 import os
 import re
 import shutil
+import zipfile
+from pathlib import Path
 import subprocess
 import glob
 import warnings
@@ -307,6 +309,45 @@ class MoleculeSet:
                 ):
                     self.MoleculesDict[molObj.Identifier] = molObj
             return self
+
+    @classmethod
+    def ReadZippedMolFileDirectory(
+        cls,
+        zip_file_path: str,
+        do_not_read_opt_traj_files: bool = False,
+        parallel: bool = False,
+    ) -> "MoleculeSet":
+        zip_file_path = Path(zip_file_path)
+        if not zipfile.is_zipfile(zip_file_path):
+            raise ValueError(f"{zip_file_path} is not a valid zip file")
+
+        with zipfile.ZipFile(zip_file_path) as zf, tempfile.TemporaryDirectory() as tmpdir:
+            seen = set()
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                name = Path(info.filename).name
+                # skip non-mol files and macOS zip junk (__MACOSX/, ._file.mol)
+                if (
+                    not name.endswith(".mol")
+                    or name.startswith("._")
+                    or "__MACOSX" in info.filename
+                ):
+                    continue
+                if name in seen:
+                    raise ValueError(
+                        f"Duplicate file name '{name}' in different folders inside {zip_file_path}"
+                    )
+                seen.add(name)
+                # write by base name only: flattens subfolders and blocks ../ path tricks
+                with zf.open(info) as src, open(Path(tmpdir) / name, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+
+            return cls.ReadMolFileDirectory(
+                tmpdir,
+                do_not_read_opt_traj_files=do_not_read_opt_traj_files,
+                parallel=parallel,
+            )
 
     @classmethod
     def ReadMol2File(cls, mol2_file: str) -> "MoleculeSet":
@@ -1278,7 +1319,7 @@ class MoleculeSet:
             max_workers = CPU_count
         else:
             max_workers = max(1, int(os.cpu_count() - 2))
-            
+
         results = {}
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             futures = {

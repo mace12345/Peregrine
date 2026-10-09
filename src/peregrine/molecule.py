@@ -5730,10 +5730,11 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
     def ChangeMetalCentreCoordination(
         self,
         BondLengthDict: dict,
-        max_coor_num: int = 8,
+        max_coor_num: int | None = None,
         MetalAtomObject: Atom | None = None,
         MetalAtomLabel: str | None = None,
         MetalAtomIndex: int | None = None,
+        MetalAtomicSymbol: str | None = None,
         ExcludeAtomSMARTS: dict[str, list[int]] | None = None,
     ):
         if MetalAtomObject is not None:
@@ -5742,9 +5743,14 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             MetalAtomObject = self.AtomsDict[MetalAtomLabel][1]
         elif MetalAtomIndex is not None:
             MetalAtomObject = self.AtomsList[MetalAtomIndex]
+        elif MetalAtomicSymbol is not None:
+            for atomObj in self.AtomsList:
+                if atomObj.AtomicSymbol == MetalAtomicSymbol:
+                    MetalAtomObject = atomObj
+                    break
         else:
             raise ValueError(
-                "Requires MetalAtomObject, MetalAtomLabel, or MetalAtomIndex"
+                "Requires MetalAtomObject, MetalAtomLabel, MetalAtomIndex, or MetalAtomicSymbol"
             )
         # Exclude atoms based on SMARTS if provided
         excluded_atom_indices = []
@@ -5787,9 +5793,8 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
             ):
                 self.AddBond(AtomLabels=[MetalAtomObject.Label, atomLabel], BondOrder=1)
                 coor_num += 1
-                if coor_num >= max_coor_num:
+                if max_coor_num is not None and coor_num >= max_coor_num:
                     break
-                pass
 
     def SolvateMetalCentre(
         self,
