@@ -121,6 +121,8 @@ ATOMIC_NUMBERS = {
     "Og": 118,
 }
 
+ATOMIC_NUMBERS_TO_SYMBOLS = {ATOMIC_NUMBERS[symbol]: symbol for symbol in ATOMIC_NUMBERS}
+
 ATOMIC_MASSES = {
     "H": 1.008,
     "He": 4.0026,

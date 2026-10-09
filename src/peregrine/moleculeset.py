@@ -14,10 +14,13 @@ from functools import partial
 import itertools
 import traceback
 import tempfile
+import h5py
 
 
 from .atom import Atom
 from .molecule import Molecule
+
+from .molecule import BohrRad_to_Angstrom
 
 import pandas as pd
 
@@ -419,6 +422,70 @@ class MoleculeSet:
                 instance.MoleculesDict[molObj.Identifier] = molObj
 
         return instance
+
+    @classmethod
+    def ReadHDF5File(
+        cls,
+        hdf5_file_path: str,
+        group_name: str = "Molecules",
+        convert_coords_units: str = "Bohr_to_Ang",
+        convert_grad_units: str = "Eh/Bohr_to_Eh/Ang",
+    ) -> "MoleculeSet":
+        """
+        Reads a HDF5 file containing serialized Molecule objects and returns a MoleculeSet.
+
+        Args:
+            hdf5_file_path (str): Path to the HDF5 file.
+            group_name (str): Name of the group in the HDF5 file where molecules are stored.
+
+        # TODO: need to take into account formal charges and assign them
+        # TODO: need to take into accound formal multiplcities
+        # TODO: proper treatment of mayers bond orders
+        """
+        from .atom import ATOMIC_NUMBERS_TO_SYMBOLS
+        with h5py.File(hdf5_file_path) as hdf5_file:
+            group = hdf5_file[group_name]
+            atomic_numbers = group["atomic_numbers"][()].astype(int)
+            conformations = group["conformations"][()]
+            elec_ens = group["dft_total_energy"][()]
+            gradients = group["dft_total_gradient"][()]
+            mayer_BOs = group["mayer_indices"][()]
+            chargess = group["mbis_charges"][()]
+        # Conversion for before making Molecule Objects
+        atomic_symbols = [ATOMIC_NUMBERS_TO_SYMBOLS[atomic_number] for atomic_number in atomic_numbers]
+        if convert_coords_units == "Bohr_to_Ang":
+            conformations = conformations * BohrRad_to_Angstrom
+        if convert_grad_units == "Eh/Bohr_to_Eh/Ang":
+            gradients = gradients * (1 / BohrRad_to_Angstrom)
+        instance = cls()
+        idx = 0
+        for (
+            elec_en,
+            mayer_BO,
+            gradient,
+            conformation,
+            charges
+        ) in zip(
+            elec_ens,
+            mayer_BOs,
+            gradients,
+            conformations,
+            chargess,
+        ):
+            molObj = Molecule.MoleculeFromScratch(
+                AtomicSymbols=atomic_symbols,
+                FormalCharges=[0 for _ in atomic_symbols],
+                FormalMultiplicities=[1 for _ in atomic_symbols],
+                Coordinates=conformation,
+                Gradients=gradient,
+                BondOrderMatrix=mayer_BO,
+                Identifier=f"{group_name}_{idx}"
+            )
+            idx += 1
+            molObj.electronic_energy = elec_en
+            instance.MoleculesDict[molObj.Identifier] = molObj
+        return instance
+        
 
     def ReadORCA6OutputDirectory(
         self,

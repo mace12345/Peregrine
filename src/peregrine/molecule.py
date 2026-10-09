@@ -4290,6 +4290,35 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
     # === Read molecule files ===
 
     @classmethod
+    def MoleculeFromScratch(
+        cls, 
+        AtomicSymbols: list[str],
+        FormalCharges: list[int],
+        FormalMultiplicities: list[int],
+        Coordinates: list[np.ndarray],
+        Gradients: list[np.ndarray],
+        BondOrderMatrix: np.ndarray,
+        Identifier: str,
+    ) -> "Molecule":
+        AtomsList = []
+        for AtomicSymbol, FormalCharge, FormalMultiplicity, Coordinate, Gradient in zip(
+            AtomicSymbols, FormalCharges, FormalMultiplicities, Coordinates, Gradients
+        ):
+            AtomsList.append(
+                Atom(
+                    AtomicSymbol=AtomicSymbol,
+                    Coordinates=Coordinate,
+                    Gradient=Gradient,
+                    Multiplicity=FormalMultiplicity,
+                    FormalCharge=FormalCharge
+                )
+            )
+        BondOrderMatrix = BondOrderMatrix.round(0)
+        molObj = cls(Identifier, AtomsList, BondOrderMatrix)
+        return molObj
+
+
+    @classmethod
     def ReadMolString(cls, mol_string: str) -> "Molecule":
         """
         Parse a V3000 .MOL file string and create a Molecule object.
