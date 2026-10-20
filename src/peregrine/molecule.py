@@ -2111,6 +2111,60 @@ def _CRESTHelper_GetConfomers(
     return molObj_list
 
 
+def _CRESTHelper_WriteTOMLInput(
+    molObj: "Molecule",
+    CPU_count: int = 4,
+    method: str = "gfn2",
+    runtype: str = "imtd-gc",
+    energy_window: float = 6,
+    rmsd_threshold: float = 0.125,
+    reference_topo: bool = False,
+    constraints_file: bool = False,
+    MD_length_ps: float = 100.0,
+    tstep: float = 1.0,
+    dump: float = 100.0,
+    temp: float = 300.0,
+    shake: int = 0,
+    hmass: float = 1.0,
+) -> str:
+    # Initiate toml string
+    toml_str = f"""# CREST 3 input file
+input='{molObj.Identifier}.xyz'
+runtype='{runtype}'
+threads={CPU_count}
+topo={str(reference_topo).lower()}
+"""
+    if constraints_file == True:
+        toml_str += "constraints='constraints.inp'\n\n"
+    else:
+        toml_str += "\n"
+    # Define calculation and molecule
+    toml_str += f"""[[calculation.level]]
+method='{method}'
+chrg={molObj.GetFormalCharge()}
+uhf={molObj.GetMultiplicity()-1}
+
+"""
+    # If run type is finding conformers
+    if runtype == "imtd-gc":
+        toml_str += f"""[cregen]
+ewin={energy_window}
+rthr={rmsd_threshold}
+
+"""
+    elif runtype == "dynamics":
+        toml_str += f"""[dynamics]
+length_ps={MD_length_ps}
+tstep={tstep}
+dump={dump}
+T={temp}
+shake={shake}
+hmass={hmass}
+
+"""
+    return toml_str
+
+
 def _MACEHelper_SetThreads(n: int = 1):
     """Call once, before anything imports torch."""
     n = n or os.cpu_count()
@@ -4093,12 +4147,18 @@ python {self.Identifier}.py"""
             sche_str = None
         return (psi4_str, sche_str)
 
-    def WriteConstraintsStringForCREST(self):
-        example = """$constrain
-  force constant=0.05 # Eh/Bohr^2
-  distance: 2, 12, 1.85
-  distance: 2, 4, auto
-$end"""
+    def WriteConstraintsStringForCREST(
+        self,
+        atomIdxs_and_bondlength: list[list[int, int, float]],
+        second_derivertive_force_constant: float = 112,
+    ) -> str:
+        fc = round(second_derivertive_force_constant / 2240, 2)
+        fixed_bonds_string = "$constrain\n"
+        fixed_bonds_string += f"    force constant={fc}\n"
+        for item in atomIdxs_and_bondlength:
+            fixed_bonds_string += f"    distance: {int(item[0]+1)}, {int(item[1]+1)}, {round(item[2], 2)}\n"
+        fixed_bonds_string += "$end\n"
+        return fixed_bonds_string
 
     def WriteTOMLStringForCREST(
         self,
@@ -4107,28 +4167,31 @@ $end"""
         runtype: str = "imtd-gc",
         energy_window: float = 6,
         rmsd_threshold: float = 0.125,
-        no_reference_topo: bool = True,
+        reference_topo: bool = False,
         constraints_file: bool = False,
+        MD_length_ps: float = 100.0,
+        tstep: float = 1.0,
+        dump: float = 100.0,
+        temp: float = 300.0,
+        shake: int = 0,
+        hmass: float = 1.0,
     ) -> str:
-        toml_str = f"""# CREST 3 input file
-input='{self.Identifier}.xyz'
-runtype='{runtype}'
-threads={CPU_count}
-topo={str(no_reference_topo).lower()}
-"""
-        if constraints_file == True:
-            toml_str += "constraints='constraints.inp'"
-        toml_str += f"""
-
-[[calculation.level]]
-method='{method}'
-chrg={self.GetFormalCharge()}
-uhf={self.GetMultiplicity()-1}
-
-[cregen]
-ewin={energy_window}
-rthr={rmsd_threshold}
-"""
+        toml_str = _CRESTHelper_WriteTOMLInput(
+            molObj=self,
+            CPU_count=CPU_count,
+            method=method,
+            runtype=runtype,
+            energy_window=energy_window,
+            rmsd_threshold=rmsd_threshold,
+            reference_topo=reference_topo,
+            constraints_file=constraints_file,
+            MD_length_ps=MD_length_ps,
+            tstep=tstep,
+            dump=dump,
+            temp=temp,
+            shake=shake,
+            hmass=hmass,
+        )
         return toml_str
 
     def WriteSLURMStringForCREST(
@@ -4161,6 +4224,7 @@ cp $INPUT_DIR/{self.Identifier}.xyz $SCRATCH_DIR
 
 cp *.xyz $INPUT_DIR
 cp *.out $INPUT_DIR
+cp *.trj $INPUT_DIR
 
 rm -rf $SCRATCH_DIR
 cd $INPUT_DIR
@@ -4177,19 +4241,57 @@ rm slurm-$SLURM_JOB_ID.out
         max_memory: int = 1000,
         method: str = "gfn2",
         runtype: str = "imtd-gc",
+        energy_window: float = 6,
+        rmsd_threshold: float = 0.125,
+        reference_topo: bool = False,
         job_scheduler_used: None | str = "slurm",
         max_time: int = 2880,
+        restrict_metal_ligand_bonds: bool = False,
+        MD_length_ps: float = 100.0,
+        tstep: float = 1.0,
+        dump: float = 100.0,
+        temp: float = 300.0,
+        shake: int = 0,
+        hmass: float = 1.0,
     ):
+        constraints_file = False
         os.makedirs(f"{str(crest_file_directory)}/{self.Identifier}", exist_ok=True)
         crest_command = f"""{activate_CREST}
 
-crest {self.Identifier}.toml > {self.Identifier}.out"""
+crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         # Write .XYZ input file
         with open(
             f"{str(crest_file_directory)}/{self.Identifier}/{self.Identifier}.xyz", "w"
         ) as f:
             f.write(self.WriteXYZString())
             f.close()
+        # Add constraints to metal ligand bonds
+        if restrict_metal_ligand_bonds == True:
+            constraints_file = True
+            constraints_list = []
+            for idx1, atomObj in enumerate(self.AtomsList):
+                if BOOL_METAL[atomObj.AtomicSymbol] == True:
+                    n_atoms = self.GetAtomNeighbours(AtomObject=atomObj)
+                    for n_atom in n_atoms:
+                        constraints_list.append(
+                            [
+                                idx1,
+                                self.AtomsDict[n_atom.Label][0],
+                                np.linalg.norm(
+                                    atomObj.Coordinates - n_atom.Coordinates
+                                )
+                            ]
+                        )
+                    break
+            with open(
+                f"{crest_file_directory}/{self.Identifier}/constraints.inp", "w"
+            ) as f:
+                f.write(
+                    self.WriteConstraintsStringForCREST(
+                        atomIdxs_and_bondlength=constraints_list,
+                        second_derivertive_force_constant=200,
+                    )
+                )
         # Write .TOML command file
         with open(
             f"{str(crest_file_directory)}/{self.Identifier}/{self.Identifier}.toml", "w"
@@ -4199,6 +4301,16 @@ crest {self.Identifier}.toml > {self.Identifier}.out"""
                     CPU_count=CPU_count,
                     method=method,
                     runtype=runtype,
+                    energy_window=energy_window,
+                    rmsd_threshold=rmsd_threshold,
+                    reference_topo=reference_topo,
+                    constraints_file=constraints_file,
+                    MD_length_ps=MD_length_ps,
+                    tstep=tstep,
+                    dump=dump,
+                    temp=temp,
+                    shake=shake,
+                    hmass=hmass,
                 )
             )
             f.close()

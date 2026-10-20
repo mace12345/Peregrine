@@ -899,9 +899,19 @@ class MoleculeSet:
         max_memory: int = 1000,
         method: str = "gfn2",
         runtype: str = "imtd-gc",
+        energy_window: float = 6,
+        rmsd_threshold: float = 0.125,
+        reference_topo: bool = False,
         job_scheduler_used: None | str = "slurm",
         scratch_dir: str | None = None,
         max_time: int = 2880,
+        restrict_metal_ligand_bonds: bool = False,
+        MD_length_ps: float = 100.0,
+        tstep: float = 1.0,
+        dump: float = 100.0,
+        temp: float = 300.0,
+        shake: int = 0,
+        hmass: float = 1.0,
     ):
         os.makedirs(crest_file_directory, exist_ok=True)
         submit_jobs = ""
@@ -913,8 +923,19 @@ class MoleculeSet:
                 max_memory=max_memory,
                 method=method,
                 runtype=runtype,
+                energy_window=energy_window,
+                rmsd_threshold=rmsd_threshold,
+                reference_topo=reference_topo,
                 job_scheduler_used=job_scheduler_used,
                 scratch_dir=scratch_dir,
+                max_time=max_time,
+                restrict_metal_ligand_bonds=restrict_metal_ligand_bonds,
+                MD_length_ps=MD_length_ps,
+                tstep=tstep,
+                dump=dump,
+                temp=temp,
+                shake=shake,
+                hmass=hmass,
             )
             if job_scheduler_used == "slurm":
                 submit_jobs += (
