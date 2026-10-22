@@ -38,3 +38,4 @@ dependencies:
     - black
     - pyddx
     - meson
+    - kmedoids

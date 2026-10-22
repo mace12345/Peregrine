@@ -2472,7 +2472,7 @@ class Molecule:
         self.AssociatedMoleculeSMILES = self.WriteSMILESString()
 
     def SplitMoleculeIntoComponents(self, UpdateAtomLabels: bool = True) -> list[Self]:
-        # Split substructuures into their own molecule objects
+        # Split substructures into their own molecule objects
         new_Molecules = []
         substructure_dict = {i + 1: [] for i in range(self.NumberOfSubstructures)}
         for atomObj in self.AtomsList:
@@ -4198,12 +4198,13 @@ python {self.Identifier}.py"""
         self,
         crest_command: str,
         scratch_dir: str,
+        runtype: str,
         CPU_count: int = 4,
         max_memory: int = 1000,
         max_time: int = 2880,
     ):
         time = _GeneralHelper_MinutesToHHMMSS(max_time)
-        return f"""#!/bin/bash
+        bash_str =  f"""#!/bin/bash
 #SBATCH --job-name=CREST_{self.Identifier}
 #SBATCH --time={time}
 #SBATCH --mem={max_memory}
@@ -4219,18 +4220,31 @@ cd $SCRATCH_DIR
 
 cp $INPUT_DIR/{self.Identifier}.toml $SCRATCH_DIR
 cp $INPUT_DIR/{self.Identifier}.xyz $SCRATCH_DIR
+cp $INPUT_DIR/constraints.inp $SCRATCH_DIR
 
 {crest_command}
 
 cp *.xyz $INPUT_DIR
 cp *.out $INPUT_DIR
 cp *.trj $INPUT_DIR
+cp *.inp $INPUT_DIR
 
 rm -rf $SCRATCH_DIR
 cd $INPUT_DIR
 rm slurm-$SLURM_JOB_ID.out
 
 """
+        if runtype == "dynamics":
+            bash_str += """python - << 'EOF'
+from pathlib import Path
+from peregrine.moleculeset import MoleculeSet
+trj_ms = MoleculeSet.ReadTRJFile(Path(__file__).parent / "crest_dynamics.trj")
+sampled = trj_ms.RMSDClusterAndSelect()
+sampled.WriteXYZFileDirectory(Path(__file__).parent / "sampled_conformers")
+EOF
+
+"""
+        return bash_str
 
     def WriteCRESTInput(
         self,
@@ -4324,6 +4338,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
                     self.WriteSLURMStringForCREST(
                         CPU_count=CPU_count,
                         max_memory=max_memory,
+                        runtype=runtype,
                         max_time=max_time,
                         crest_command=crest_command,
                         scratch_dir=scratch_dir,

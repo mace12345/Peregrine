@@ -14,8 +14,13 @@ from functools import partial
 import itertools
 import traceback
 import tempfile
+
 import h5py
 
+from sklearn.manifold import MDS
+from sklearn.cluster import DBSCAN
+
+import kmedoids
 
 from .atom import Atom
 from .molecule import Molecule
@@ -236,7 +241,7 @@ class MoleculeSet:
             for molObj in MoleculeObject:
                 del self.MoleculesDict[molObj.Identifier]
         else:
-            del self.MoleculesDict[molObj.Identifier]
+            del self.MoleculesDict[MoleculeObject.Identifier]
 
     def RemoveDuplicateMolecules(self):
         if self.ResultsDF is None:
@@ -323,6 +328,47 @@ class MoleculeSet:
                     self.MoleculesDict[molObj.Identifier] = molObj
             return self
 
+    @classmethod
+    def ReadTRJFile(cls, trj_file: str) -> "MoleculeSet":
+        with open(trj_file, "r") as f:
+            trj_str = f.read()
+            f.close()
+        # Split file up into molecule objects
+        trj_list = trj_str.split("\n")
+        if trj_list[-1] == "":
+            del trj_list[-1]
+        NumberOfAtoms = int(trj_list[0])
+        xyz_file_length = NumberOfAtoms + 2
+        number_of_mols = len(trj_list) / xyz_file_length
+        instance = cls()
+        conf_id = 0
+        for idx in range(0, len(trj_list), xyz_file_length):
+            AtomsList = []
+            for atom_coords in trj_list[idx+2:idx+xyz_file_length]:
+                atom_coords = [i for i in atom_coords.split(" ") if i != ""]
+                AtomsList.append(
+                    Atom(
+                        AtomicSymbol=atom_coords[0],
+                        Coordinates=np.array(
+                            [
+                                float(atom_coords[1]),
+                                float(atom_coords[2]),
+                                float(atom_coords[3]),
+                            ]
+                        ),
+                        FormalCharge=0,
+                        Multiplicity=1,
+                    )
+                )
+            molObj = Molecule(
+                Identifier=f"conf{conf_id}",
+                BondOrderMatrix=np.zeros((NumberOfAtoms, NumberOfAtoms)),
+                AtomsList=AtomsList,
+            )
+            conf_id += 1
+            instance.AddMolecule(molObj)
+        return instance
+            
     @classmethod
     def ReadZippedMolFileDirectory(
         cls,
@@ -1584,3 +1630,27 @@ class MoleculeSet:
             )
             self.MoleculesDict[identifier] = new_molObj
 
+    def ReturnInvalidMolecules(self):
+        invalid_molecules = []
+        # Remove Complexes with np.nan values
+        for molObj in self.MoleculesDict.values():
+            for atomObj in molObj.AtomsList:
+                if True == bool(np.isnan(atomObj.Coordinates[0])):
+                    invalid_molecules.append(molObj)
+                    break
+        return invalid_molecules
+
+    def RMSDClusterAndSelect(self) -> "MoleculeSet":
+        RMSD_matrix = np.zeros((len(self.MoleculesDict), len(self.MoleculesDict)))
+        molecules_list = list(self.MoleculesDict.values())
+        for idx1, molObj1 in enumerate(molecules_list):
+            for idx2, molObj2 in enumerate(molecules_list[idx1+1:]):
+                RMSD = molObj1.CalculateRMSD(molObj2)
+                RMSD_matrix[idx1][idx2+idx1+1] = RMSD
+                RMSD_matrix[idx2+idx1+1][idx1] = RMSD
+        res = kmedoids.fasterpam(RMSD_matrix, 5)
+        kmedoids_molObj_set = MoleculeSet()
+        for idx in res.medoids:
+            molObj = molecules_list[idx]
+            kmedoids_molObj_set.MoleculesDict[molObj.Identifier] = molObj
+        return kmedoids_molObj_set
