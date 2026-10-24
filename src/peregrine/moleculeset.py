@@ -14,6 +14,7 @@ from functools import partial
 import itertools
 import traceback
 import tempfile
+import shutil
 
 import h5py
 
@@ -227,9 +228,18 @@ class MoleculeSet:
         self.ResultsDF: pd.DataFrame | None = None
         self.MoleculesDict: dict[str, Molecule] = {}
 
-    def AddMolecule(self, MoleculeObject: Molecule | list[Molecule]):
+    def UpdateDictionaryNames(self):
+        new_dict = {}
+        for molObj in self.MoleculesDict.values():
+            new_dict[molObj.Identifier] = molObj
+        self.MoleculesDict = new_dict
+
+    def AddMolecule(self, MoleculeObject: "Molecule | list[Molecule] | MoleculeSet"):
         if type(MoleculeObject) == list:
             for molObj in MoleculeObject:
+                self.MoleculesDict[molObj.Identifier] = molObj
+        elif type(MoleculeObject) == MoleculeSet:
+            for molObj in MoleculeObject.MoleculesDict.values():
                 self.MoleculesDict[molObj.Identifier] = molObj
         else:
             self.MoleculesDict[MoleculeObject.Identifier] = MoleculeObject
@@ -286,9 +296,6 @@ class MoleculeSet:
 
     # === Read in molecule information (mainly from directories) ===
 
-    def ReadXYZFileDirectory(self):
-        pass
-
     def WriteXYZFileDirectory(self, xyz_file_directory: str):
         os.makedirs(xyz_file_directory, exist_ok=True)
 
@@ -301,6 +308,40 @@ class MoleculeSet:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             # list() forces iteration, so exceptions propagate instead of being swallowed
             list(executor.map(write, self.MoleculesDict.items()))
+
+    @classmethod
+    def ReadXYZFileDirectory(
+        cls,
+        xyz_directory_path: str,
+        template_MoleculeSet: "MoleculeSet | None" = None,
+        template_Molecule: "Molecule | None" = None,
+    ) -> "MoleculeSet":
+        xyz_dir = os.listdir(xyz_directory_path)
+        instance = cls()
+        if template_Molecule is not None:
+            for xyz_file in xyz_dir:
+                with open(f"{xyz_directory_path}/{xyz_file}", "r") as f:
+                    xyz_str = f.read()
+                    f.close()
+                AtomsList = Molecule.XYZFileToAtomsList(
+                    xyz_file=f"{xyz_directory_path}/{xyz_file}"
+                )
+                if len(AtomsList) != len(template_Molecule.AtomsList):
+                    raise ValueError("AtomLists lengths not matching")
+                for atomObj, template_atomObj in zip(
+                    AtomsList, template_Molecule.AtomsList
+                ):
+                    atomObj.FormalCharge = template_atomObj.FormalCharge
+                    atomObj.Multiplicity = template_atomObj.Multiplicity
+                molObj = deepcopy(template_Molecule)
+                molObj.AtomsList = AtomsList
+                molObj.Identifier = f"{molObj.Identifier}_{xyz_file.split(".")[0]}"
+                instance.AddMolecule(molObj)
+        elif template_MoleculeSet is not None:
+            raise ValueError("Write some code here!")
+        else:
+            raise ValueError("Also write some code here!")
+        return instance
 
     @classmethod
     def ReadMolFileDirectory(
@@ -1346,8 +1387,7 @@ class MoleculeSet:
                 "crest_conformers.xyz" in file_list
                 and os.path.getsize(
                     f"{crest_file_directory}/{identifier}/crest_conformers.xyz"
-                )
-                != 0
+                ) != 0
             ):
                 for molObj in Molecule.ReadCRESTOutput(
                     xyz_file=f"{crest_file_directory}/{identifier}/crest_conformers.xyz",
@@ -1388,6 +1428,45 @@ class MoleculeSet:
         instance.WriteMolFileDirectory(output_mol_file_directory)
         instance.ResultsDF.to_csv(f"{output_mol_file_directory}.csv")
         return instance
+
+    @classmethod
+    def ReadCRESTOutput_v2(
+        cls,
+        crest_file_directory: str,
+        output_mol_file_directory: str | None = None,
+        output_mol_file_directory_zipped: str | None = None,
+        template_moleculeset: "MoleculeSet | None" = None,
+    ) -> "MoleculeSet":
+        instance = MoleculeSet()
+        dir_list = [
+            i for i in os.listdir(crest_file_directory) if len(i.split(".")) == 1
+        ]
+        for dir in dir_list:
+            crest_contents = os.listdir(crest_file_directory / dir)
+            # Processing MD simulation samples
+            if "sampled_conformers" in crest_contents:
+                sampled_confs = MoleculeSet.ReadXYZFileDirectory(
+                    xyz_directory_path=f"{crest_file_directory}/{dir}/sampled_conformers",
+                    template_Molecule=template_moleculeset.MoleculesDict[dir],
+                )
+                instance.AddMolecule(sampled_confs)
+            # Processing CREST conformer search
+        if template_moleculeset is not None:
+            instance.AddMolecule(template_moleculeset)
+        if output_mol_file_directory is not None:
+            instance.WriteMolFileDirectory(output_mol_file_directory)
+        elif output_mol_file_directory_zipped is not None:
+            instance.WriteMolFileDirectory(output_mol_file_directory_zipped)
+            shutil.make_archive(
+                output_mol_file_directory_zipped,
+                "zip",
+                output_mol_file_directory_zipped,
+            )
+            shutil.rmtree(output_mol_file_directory_zipped)
+        else:
+            raise ValueError("Need to specify output file directory for CREST results")
+        return instance
+
 
     # === Execute a workflow of some kind ===
 

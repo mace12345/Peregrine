@@ -4231,19 +4231,24 @@ cp *.inp $INPUT_DIR
 
 rm -rf $SCRATCH_DIR
 cd $INPUT_DIR
-rm slurm-$SLURM_JOB_ID.out
 
 """
         if runtype == "dynamics":
-            bash_str += """python - << 'EOF'
+            bash_str += """conda deactivate crest-env
+conda activate chem-env
+python - << 'EOF'
 from pathlib import Path
 from peregrine.moleculeset import MoleculeSet
-trj_ms = MoleculeSet.ReadTRJFile(Path(__file__).parent / "crest_dynamics.trj")
+workdir = Path.cwd()
+trj_ms = MoleculeSet.ReadTRJFile(workdir / "crest_dynamics.trj")
 sampled = trj_ms.RMSDClusterAndSelect()
-sampled.WriteXYZFileDirectory(Path(__file__).parent / "sampled_conformers")
+sampled.WriteXYZFileDirectory(workdir / "sampled_conformers")
 EOF
 
+rm crest_dynamics.trj
+
 """
+        bash_str += "rm slurm-$SLURM_JOB_ID.out"
         return bash_str
 
     def WriteCRESTInput(
@@ -4792,7 +4797,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
 
     @classmethod
     def ReadXYZFile(
-        cls, xyz_string: str, identifier: str, charge: int, multiplicity: int, guess_atom_multiplicities: bool = False
+        cls, xyz_string: str, identifier: str, charge: int, multiplicity: int, guess_atom_multiplicities: bool = False,
     ) -> "Molecule":
         G_full = build_graph(
             atoms=xyz_string,
@@ -5167,7 +5172,8 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             for line in xyz_string.split("\n")[2:]
         ]
 
-    def XYZFileToAtomsList(self, xyz_file: str) -> list[Atom]:
+    @classmethod
+    def XYZFileToAtomsList(cls, xyz_file: str) -> list[Atom]:
         with open(xyz_file, "r") as f:
             xyz_file = f.read()
             f.close()
@@ -5175,6 +5181,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             [coor for coor in line.split(" ") if coor != ""]
             for line in xyz_file.split("\n")[2:]
         ]
+        coors = [i for i in coors if len(i) == 4]
         return [
             Atom(
                 AtomicSymbol=coor[0],
