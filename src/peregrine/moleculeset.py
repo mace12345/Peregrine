@@ -964,7 +964,7 @@ class MoleculeSet:
                 scratch_dir=scratch_dir,
             )
 
-            with open(psi4_file_directory / f"{molObj.Identifier}.py", "w") as f:
+            with open(f"{psi4_file_directory}/{molObj.Identifier}.py", "w") as f:
                 f.write(psi4_inp)
                 f.close()
             if job_scheduler_used == "slurm":
@@ -974,7 +974,7 @@ class MoleculeSet:
                     f.close()
             elif job_scheduler_used is None:
                 submit_jobs += f"python {molObj.Identifier}.py\n"
-        with open(psi4_file_directory / "submit_jobs.sh", "w") as f:
+        with open(f"{psi4_file_directory}/submit_jobs.sh", "w") as f:
             f.write(submit_jobs)
             f.close()
 
@@ -1466,7 +1466,6 @@ class MoleculeSet:
         else:
             raise ValueError("Need to specify output file directory for CREST results")
         return instance
-
 
     # === Execute a workflow of some kind ===
 

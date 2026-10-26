@@ -18,13 +18,13 @@ def get_max_rss_mb():
 
 psi4.set_output_file('Benzene.out', False)
 psi4.set_memory('1000 MB')
-psi4.set_num_threads(4)
+psi4.set_num_threads(14)
 
 metadata = {
 'Identifier': 'Benzene',
 'Charge': 0,
 'Multiplicity': 1,
-'CPU cores used': 4
+'CPU cores used': 14
 }
 with open('Benzene.meta.json', 'w') as f:
     json.dump(metadata, f, indent=2)
@@ -88,8 +88,8 @@ psi4.set_options({
 })
 
 # Set the shell restriction
-psi4.set_options({'reference': 'uhf'})
-metadata['Method'] = 'uhf wb97m-d3bj'
+psi4.set_options({'reference': 'rhf'})
+metadata['Method'] = 'rhf wb97m-d3bj'
 
 # Set up and run calculation
 try:
@@ -151,7 +151,6 @@ psi4.oeprop(
     'QUADRUPOLE',
     'MULLIKEN_CHARGES',
     'LOWDIN_CHARGES',
-    'LOWDIN_SPINS',
     'WIBERG_LOWDIN_INDICES',
     'MAYER_INDICES',
 )
@@ -159,7 +158,6 @@ metadata['Dipole'] = np.array(wfn.variable('CURRENT DIPOLE')).tolist()
 metadata['Quadrupole'] = np.array(wfn.variable('QUADRUPOLE')).tolist()
 metadata['Mulliken Charges'] = np.array(wfn.variable('MULLIKEN CHARGES')).tolist()
 metadata['Lowdin Charges'] = np.array(wfn.variable('LOWDIN CHARGES')).tolist()
-metadata['Lowdin Spin Populations'] = np.array(wfn.variable('LOWDIN SPINS')).tolist()
 metadata['Wiberg Bond Orders'] = np.array(wfn.array_variable('WIBERG LOWDIN INDICES')).tolist()
 metadata['Mayer Bond Orders']  = np.array(wfn.array_variable('MAYER INDICES')).tolist()
 # Get HOMO and LUMO energies
@@ -169,26 +167,9 @@ eps_a = wfn.epsilon_a_subset("AO", "ALL").np
 metadata['HOMO Energy (Eh)'] = float(eps_a[homo_idx])
 metadata['LUMO Energy (Eh)'] = float(eps_a[lumo_idx])
 # Save Fock matricies
-Fa_ao = np.array(wfn.Fa_subset('AO'))
-Fb_ao = np.array(wfn.Fb_subset('AO'))
-metadata['Alpha Fock Matrix File Name'] = 'Benzene.alpha.fock'
-metadata['Beta Fock Matrix File Name'] = 'Benzene.beta.fock'
-np.savetxt('Benzene.alpha.fock', Fa_ao, fmt='%.16e')
-np.savetxt('Benzene.beta.fock', Fb_ao, fmt='%.16e')
-# Get spin contaimination
-mints = psi4.core.MintsHelper(wfn.basisset())
-S_ao = np.array(mints.ao_overlap())                # AO-basis overlap, not symmetry-blocked
-Ca_occ = np.array(wfn.Ca_subset("AO", "OCC"))   # occupied alpha MO coeffs (AO basis)
-Cb_occ = np.array(wfn.Cb_subset("AO", "OCC"))   # occupied beta MO coeffs (AO basis)
-nalpha = wfn.nalpha()
-nbeta  = wfn.nbeta()
-mo_overlap = Ca_occ.T @ S_ao @ Cb_occ
-overlap_sq_sum = np.sum(mo_overlap**2)
-Sz = (nalpha - nbeta) / 2.0
-S2_exact = Sz * (Sz + 1.0)
-S2_observed = S2_exact + nbeta - overlap_sq_sum
-spin_deviation = S2_observed - S2_exact
-metadata['Spin Contaimination (<S**2>)'] = spin_deviation
+F_ao = np.array(wfn.Fa_subset('AO'))
+metadata['Fock Matrix File Name'] = 'Benzene.fock'
+np.savetxt('Benzene.fock', F_ao, fmt='%.16e')
 
 RAM = int(get_max_rss_mb())
 end = time.time()

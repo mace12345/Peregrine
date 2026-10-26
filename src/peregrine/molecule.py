@@ -12,6 +12,7 @@ import json
 import shutil
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import ast
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -1733,7 +1734,7 @@ psi4.set_options({
     ):
         psi4_str += f"""
 {calculate_gradient_general}
-{save_properties_rhf}
+{save_properties_uhf}
 {save_fock_matrix_uhf}
 {calculate_spin_contaim_uhf}
 {save_HOMO_LUMO_general}
@@ -1953,7 +1954,7 @@ def _Psi4Helper_ConstructMolObjFromTemplate(
     if "Method" in psi4_out_json.keys():
         molObj.calculation_method = psi4_out_json["Method"]
     if "Basis Set" in psi4_out_json.keys():
-        molObj.basisset = str(psi4_out_json["Basis Set"])
+        molObj.basisset = ast.literal_eval(str(psi4_out_json["Basis Set"]))
     if "Number of Primitive Basis Functions" in psi4_out_json.keys():
         molObj.num_prim_basis_functions = psi4_out_json[
             "Number of Primitive Basis Functions"
@@ -4622,6 +4623,13 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             "> <Gibbs Free Energy (Eh)>": "gibbs_free_energy",
             "> <Enthalpy (Eh)>": "enthalpy",
             "> <Entropy (Eh)>": "entropy",
+            "> <HOMO Energy (Eh)>": "HOMO_energy",
+            "> <LUMO Energy (Eh)>": "LUMO_energy",
+            "> <RAM used per CPU core (MB)>": "RAM_used",
+            "> <Wallclock time taken (seconds)>": "wallclock_time_sec",
+            "> <Number of CPU cores used>": "num_CPU_used",
+            "> <Number of primitive basis functions>": "num_prim_basis_functions",
+            "> <Spin contaimination (S**2)>": "spin_contamination"
         }
         for idx, line in enumerate(lines):
             attr = property_map.get(line.strip())
@@ -4634,6 +4642,13 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             attr = property_map.get(line.strip())
             if attr is not None and idx + 1 < len(lines):
                 setattr(molObj, attr, lines[idx + 1].strip())
+        property_map_basis_set = {
+            "> <Basis Set>": "basisset",
+        }
+        for idx, line in enumerate(lines):
+            attr = property_map_basis_set.get(line.strip())
+            if attr is not None and idx + 1 < len(lines):
+                setattr(molObj, attr, ast.literal_eval(lines[idx + 1]))
 
         return molObj
 
@@ -5022,10 +5037,10 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         template_molObj: "Molecule | None" = None,
     ) -> "Molecule | dict[str, Molecule]":
         molObj_dict = None
-        with open(psi4_output_filepath / out_file_name, "r") as f:
+        with open(f"{str(psi4_output_filepath)}/{str(out_file_name)}", "r") as f:
             out_file = f.read()
             f.close()
-        with open(psi4_output_filepath / json_file_name, "r") as f:
+        with open(f"{str(psi4_output_filepath)}/{str(json_file_name)}", "r") as f:
             out_json = json.load(f)
             f.close()
         # Retreive Coordinates, Bonds, Multiplicity, Charge
