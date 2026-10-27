@@ -229,6 +229,33 @@ def _GeneralHelper_FindCondaEnvPython(env_name: str) -> str:
     )
 
 
+def _GeneralHelper_GetRotationMatrix(rotation_axis: np.array, theta: float):
+    """
+    pass for now
+    """
+    x, y, z = rotation_axis[0], rotation_axis[1], rotation_axis[2]
+    rotation_matrix = np.array(
+        [
+            [
+                np.cos(theta) + (x**2) * (1 - np.cos(theta)),
+                x * y * (1 - np.cos(theta)) - z * np.sin(theta),
+                x * z * (1 - np.cos(theta)) + y * np.sin(theta),
+            ],
+            [
+                y * x * (1 - np.cos(theta)) + z * np.sin(theta),
+                np.cos(theta) + (y**2) * (1 - np.cos(theta)),
+                y * z * (1 - np.cos(theta)) - x * np.sin(theta),
+            ],
+            [
+                z * x * (1 - np.cos(theta)) - y * np.sin(theta),
+                z * y * (1 - np.cos(theta)) + x * np.sin(theta),
+                np.cos(theta) + (z**2) * (1 - np.cos(theta)),
+            ],
+        ]
+    ).reshape((3, 3))
+    return rotation_matrix
+
+
 def _ORCAHelper_XYZBlockToAtomsList(
     xyz_block: str, template_molObj: "Molecule | None" = None
 ) -> tuple[list[Atom], int]:
@@ -6147,6 +6174,20 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             )
         self.DeriveBasicAttributes()
 
+    def RattleAtomCoordinates(self, sigma: float, rng: np.random.Generator | None = None,
+                            seed: int | None = None) -> np.ndarray:
+        if rng is None:
+            rng = np.random.default_rng(seed)
+        n = len(self.coords)                                   # (N, 3) array
+        # Uniform random direction per atom
+        directions = rng.normal(size=(self.NumberOfAtoms, 3))
+        directions /= np.linalg.norm(directions, axis=1, keepdims=True)
+        # Half-normal distance per atom
+        distances = np.abs(rng.normal(0.0, sigma, size=self.NumberOfAtoms))
+        displacement = directions * distances[:, None]
+        self.coords = self.coords + displacement
+        return displacement
+
     # === Translate and Rotate Molecule, and Geometry Functions ===
 
     def TranslateMolecule(
@@ -6158,32 +6199,6 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         TranslationVector = TranslationVector * abs(Displacement)
         for atomObj in self.AtomsList:
             atomObj.Coordinates = atomObj.Coordinates + TranslationVector
-
-    def GetRotationMatrix(self, rotation_axis: np.array, theta: float):
-        """
-        pass for now
-        """
-        x, y, z = rotation_axis[0], rotation_axis[1], rotation_axis[2]
-        rotation_matrix = np.array(
-            [
-                [
-                    np.cos(theta) + (x**2) * (1 - np.cos(theta)),
-                    x * y * (1 - np.cos(theta)) - z * np.sin(theta),
-                    x * z * (1 - np.cos(theta)) + y * np.sin(theta),
-                ],
-                [
-                    y * x * (1 - np.cos(theta)) + z * np.sin(theta),
-                    np.cos(theta) + (y**2) * (1 - np.cos(theta)),
-                    y * z * (1 - np.cos(theta)) - x * np.sin(theta),
-                ],
-                [
-                    z * x * (1 - np.cos(theta)) - y * np.sin(theta),
-                    z * y * (1 - np.cos(theta)) + x * np.sin(theta),
-                    np.cos(theta) + (z**2) * (1 - np.cos(theta)),
-                ],
-            ]
-        ).reshape((3, 3))
-        return rotation_matrix
 
     def RotateMolecule(
         self,
@@ -6199,7 +6214,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         for atomObj in self.AtomsList:
             atomObj.Coordinates = atomObj.Coordinates - geometric_midpoint
         # Rotate molecule atom by atom
-        RotationMatrix = self.GetRotationMatrix(
+        RotationMatrix = self._GeneralHelper_GetRotationMatrix(
             rotation_axis=RotationVector / np.linalg.norm(RotationVector),
             theta=RotationAngle,
         )

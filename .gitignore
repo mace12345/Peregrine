@@ -19,3 +19,4 @@ src/peregrine/__pycache__/molecule.cpython-312.pyc
 __pycache__/
 *.pyc
 .DS_Store
+data/testing_data/.DS_Store
