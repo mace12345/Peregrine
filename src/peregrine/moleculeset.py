@@ -851,7 +851,7 @@ class MoleculeSet:
                 file_types_to_save=file_types_to_save,
             )
             submit_lines += [f"sbatch {s}" for s in scripts]
-        write_submit_script(pyscf_file_directory, submit_lines)
+        write_submit_script(pyscf_file_directory, submit_lines, cfg)
         if scheduler is not None:
             cfg.dump_json(pyscf_file_directory / "peregrine_resolved.json")
 
@@ -967,7 +967,7 @@ class MoleculeSet:
                 ORCA_commands=ORCA_commands,
             )
             submit_lines += [f"sbatch {s}" for s in scripts]
-        write_submit_script(orca_file_directory, submit_lines)
+        write_submit_script(orca_file_directory, submit_lines, cfg)
         if scheduler is not None:
             cfg.dump_json(orca_file_directory / "peregrine_resolved.json")
 
@@ -1135,7 +1135,7 @@ class MoleculeSet:
                 psi4_command=psi4_command,
             )
             submit_lines += [f"sbatch {s}" for s in scripts]
-        write_submit_script(psi4_file_directory, submit_lines)
+        write_submit_script(psi4_file_directory, submit_lines, cfg)
         if scheduler is not None:
             cfg.dump_json(psi4_file_directory / "peregrine_resolved.json")
         with open(f"{psi4_file_directory}_resrc_est.csv", "w") as f:
@@ -1231,7 +1231,7 @@ class MoleculeSet:
                 crest_setup=activate_CREST,
             )
             submit_lines += [f"sbatch {s}" for s in scripts]
-        write_submit_script(crest_file_directory, submit_lines)
+        write_submit_script(crest_file_directory, submit_lines, cfg)
         if scheduler is not None:
             cfg.dump_json(crest_file_directory / "peregrine_resolved.json")
 

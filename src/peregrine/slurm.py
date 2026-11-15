@@ -405,11 +405,71 @@ def write_job_arrays(
     return scripts
 
 
-def write_submit_script(directory: str | Path, lines: list[str]) -> None:
-    """Write submit_jobs.sh; it always runs from its own directory."""
+def _on_complete_job(cfg: ClusterConfig, commands: list[str]) -> str:
+    """
+    Lines that submit one small job running ``commands`` in the submit
+    directory once every job in ``$JOB_IDS`` has ended (afterany: whether it
+    succeeded or not). A dependency on an array's job ID waits for all of its
+    tasks.
+    """
+    sched = cfg.scheduler
+    log_dir = sched.get("log_dir") or "."
+    opts = [
+        "--job-name=peregrine-on-complete",
+        f"--time={minutes_to_hhmmss(int(sched.get('on_complete_time_min') or 60))}",
+        "--ntasks=1",
+        "--cpus-per-task=1",
+        "--mem=500",
+        f"--output={log_dir}/%x_%j.out",
+    ]
+    # Scheduler-level partition/account/qos only: an engine partition such as
+    # psi4's high-mem would start a large node just to run a few shell commands
+    partition = sched.get("on_complete_partition") or sched.get("partition")
+    if partition:
+        opts.append(f"--partition={partition}")
+    for key in ("account", "qos"):
+        if value := sched.get(key):
+            opts.append(f"--{key}={value}")
+    wrap = shlex.quote("\n".join(str(c) for c in commands))
+    return (
+        "\n# Run [scheduler].on_complete once every job above has ended\n"
+        'if [ "${#JOB_IDS[@]}" -gt 0 ]; then\n'
+        f"    mkdir -p {shlex.quote(log_dir)}\n"
+        f"    sbatch {' '.join(opts)} \\\n"
+        '        --dependency=afterany:"$(IFS=:; echo "${JOB_IDS[*]}")" \\\n'
+        f"        --wrap={wrap}\n"
+        "fi\n"
+    )
+
+
+def write_submit_script(
+    directory: str | Path, lines: list[str], cfg: ClusterConfig | None = None
+) -> None:
+    """
+    Write submit_jobs.sh; it always runs from its own directory.
+
+    If ``cfg`` sets ``[scheduler].on_complete``, every ``sbatch`` line records
+    its job ID and one extra job, dependent on all of them, runs those commands
+    in this directory after the last job has ended.
+    """
     if not lines:
         return
-    content = '#!/bin/bash\ncd "$(dirname "$0")" || exit 1\n' + "\n".join(lines) + "\n"
+    on_complete = list(cfg.scheduler.get("on_complete") or []) if cfg else []
+    submits = [line for line in lines if line.startswith("sbatch ")]
+    if on_complete and submits:
+        body = ["JOB_IDS=()"]
+        for line in lines:
+            if line.startswith("sbatch "):
+                args = line[len("sbatch ") :]
+                body += [
+                    f"JOB_ID=$(sbatch --parsable {args}) || {{ echo \"sbatch {args} failed\" >&2; exit 1; }}",
+                    'JOB_IDS+=("${JOB_ID%%;*}")   # --parsable prints <id>[;cluster]',
+                ]
+            else:
+                body.append(line)
+        content = "\n".join(body) + "\n" + _on_complete_job(cfg, on_complete)
+    else:
+        content = "\n".join(lines) + "\n"
     path = Path(directory) / "submit_jobs.sh"
-    path.write_text(content)
+    path.write_text('#!/bin/bash\ncd "$(dirname "$0")" || exit 1\n' + content)
     path.chmod(0o755)

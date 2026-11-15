@@ -21,9 +21,21 @@ max_array = 1000            # keep <= MaxArraySize - 1  (scontrol show config)
 max_concurrent = 200        # %N throttle on each array; 0 = unlimited
 log_dir = "logs"
 keep_logs = false           # logs of failed tasks are always kept
+# Shell commands run by one small job, in the input directory, once every job in
+# submit_jobs.sh has ended (succeeded or not). Empty = no extra job.
+# Example: mark the directory for an FSx -> S3 export (fsx-export skips
+# .export-ready while .export-pending exists, so wait for an export in flight):
+# on_complete = [
+#   "while [ -e .export-pending ]; do sleep 60; done",
+#   "rm -f .exported .export-failed",
+#   "touch .export-ready",
+# ]
+on_complete = []
+on_complete_partition = ""  # empty = partition above; avoid big-node partitions
+on_complete_time_min = 60
 
 [profiles.parallelcluster.paths]
-scratch = "/scratch/$USER"  # expanded on the compute node, not when writing inputs
+scratch = "/scratch-fsx/$USER"  # FSx for Lustre; expanded on the compute node, not when writing inputs
 conda_sh = "~/miniforge3/etc/profile.d/conda.sh"
 orca_bin = ""               # directory containing `orca`; empty = `which orca`
 xtb_bin = ""

@@ -32,7 +32,7 @@ Example::
     max_concurrent = 200
 
     [profiles.parallelcluster.paths]
-    scratch = "/scratch/$USER"
+    scratch = "/scratch-fsx/$USER"
 
     [profiles.parallelcluster.engines.psi4]
     partition = "high-mem"
@@ -67,6 +67,11 @@ BUILTIN_DEFAULTS: dict[str, Any] = {
         "max_concurrent": 0,  # 0 = no %N throttle
         "log_dir": "logs",
         "keep_logs": False,  # remove the Slurm log of tasks that exit 0
+        # Shell commands run by one extra job, in the input directory, after
+        # every job in submit_jobs.sh has ended (succeeded or not). Empty = off.
+        "on_complete": [],
+        "on_complete_partition": None,  # None = [scheduler].partition
+        "on_complete_time_min": 60,
     },
     "paths": {
         "scratch": None,

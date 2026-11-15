@@ -71,6 +71,7 @@ calc_dir/
 - On a rerun, only failed molecules are written to the new manifests.
 - Pass `use_job_array=False` (or set `use_job_array = false` in the config) to get the old one-script-per-molecule behaviour.
 - `job_scheduler_used=None` still writes plain local commands.
+- Set `[scheduler] on_complete` to a list of shell commands to have `submit_jobs.sh` queue one extra job that runs them in the calculation directory after every array has ended (`--dependency=afterany`), for example to mark the directory for export. It uses the scheduler-level `partition` (or `on_complete_partition`), never an engine one such as Psi4's `high-mem`.
 - Any explicit argument, such as `scratch_dir=`, `slurm_partition=` or `CPU_count=`, overrides the config.
 
 # Description of Dependencies

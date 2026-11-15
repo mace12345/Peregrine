@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from peregrine.config import BUILTIN_DEFAULTS, load_config
-from peregrine.slurm import render_single_job, sbatch_header, write_job_arrays
+from peregrine.slurm import (
+    render_single_job,
+    sbatch_header,
+    write_job_arrays,
+    write_submit_script,
+)
 
 DATA = Path(__file__).parent.parent / "data" / "testing_data" / "InitialTests"
 
@@ -390,3 +395,100 @@ def test_orca_maxcore_fraction(site_cfg):
     assert BUILTIN_DEFAULTS["engines"]["orca"]["maxcore_fraction"] == 0.95
     for mem, cpus in [(16000, 4), (1000, 3), (60000, 16), (7777, 7)]:
         assert int((mem / cpus) * frac) * cpus <= mem * 75 // 100
+
+
+def test_submit_script_without_on_complete(cfg_file, tmp_path):
+    cfg = load_config(cfg_file)
+    write_submit_script(tmp_path, ["sbatch array_a.sh", "sbatch array_b.sh"], cfg)
+    text = (tmp_path / "submit_jobs.sh").read_text()
+    assert text == (
+        '#!/bin/bash\ncd "$(dirname "$0")" || exit 1\n'
+        "sbatch array_a.sh\nsbatch array_b.sh\n"
+    )
+    assert "--parsable" not in text and "dependency" not in text
+
+
+EXPORT_COMMANDS = [
+    "while [ -e .export-pending ]; do sleep 60; done",
+    "rm -f .exported .export-failed",
+    "touch .export-ready",
+]
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+def test_submit_script_on_complete(cfg_file, tmp_path):
+    """Run submit_jobs.sh with a fake sbatch, then run the wrapped commands."""
+    cfg = load_config(cfg_file)
+    cfg.data["scheduler"]["on_complete"] = EXPORT_COMMANDS
+    work = tmp_path / "work"
+    work.mkdir()
+    write_submit_script(work, ["sbatch array_a.sh", "sbatch array_b.sh"], cfg)
+    assert subprocess.run(["bash", "-n", str(work / "submit_jobs.sh")]).returncode == 0
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls"
+    sbatch = fake_bin / "sbatch"
+    # Prints a new ID (with a cluster suffix, as --parsable can) and records argv
+    sbatch.write_text(
+        "#!/bin/bash\n"
+        f'n=$(( $(ls {calls} 2>/dev/null | wc -l) + 1 ))\n'
+        f'mkdir -p {calls}; printf "%s\\0" "$@" > {calls}/$n\n'
+        'echo "$((100 + n));cluster"\n'
+    )
+    sbatch.chmod(sbatch.stat().st_mode | stat.S_IEXEC)
+    env = os.environ | {"PATH": f"{fake_bin}:{os.environ['PATH']}"}
+    res = subprocess.run(
+        ["bash", str(work / "submit_jobs.sh")], env=env, capture_output=True, text=True
+    )
+    assert res.returncode == 0, res.stderr
+
+    first, second, final = (
+        (calls / str(i)).read_text().split("\0")[:-1] for i in (1, 2, 3)
+    )
+    assert first == ["--parsable", "array_a.sh"]
+    assert second == ["--parsable", "array_b.sh"]
+    assert "--dependency=afterany:101:102" in final
+    assert "--partition=compute" in final  # scheduler partition, not psi4's bigmem
+    assert "--account=chem123" in final
+    assert "--time=01:00:00" in final
+    assert (work / "logs").is_dir()
+    wrap = next(a for a in final if a.startswith("--wrap="))[len("--wrap=") :]
+    assert wrap.splitlines() == EXPORT_COMMANDS
+
+    # The wrapped commands mark the directory and clear an old export state
+    (work / ".exported").write_text("")
+    subprocess.run(["bash", "-c", wrap], cwd=work, check=True)
+    assert (work / ".export-ready").exists() and not (work / ".exported").exists()
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+def test_submit_script_on_complete_stops_on_sbatch_failure(cfg_file, tmp_path):
+    cfg = load_config(cfg_file)
+    cfg.data["scheduler"]["on_complete"] = ["touch done"]
+    write_submit_script(tmp_path, ["sbatch array_a.sh"], cfg)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "sbatch").write_text("#!/bin/bash\nexit 1\n")
+    (fake_bin / "sbatch").chmod(0o755)
+    env = os.environ | {"PATH": f"{fake_bin}:{os.environ['PATH']}"}
+    res = subprocess.run(
+        ["bash", str(tmp_path / "submit_jobs.sh")], env=env, capture_output=True, text=True
+    )
+    assert res.returncode == 1 and "sbatch array_a.sh failed" in res.stderr
+
+
+def test_on_complete_partition_override(cfg_file, tmp_path):
+    cfg = load_config(cfg_file)
+    cfg.data["scheduler"]["on_complete"] = ["true"]
+    cfg.data["scheduler"]["on_complete_partition"] = "general"
+    write_submit_script(tmp_path, ["sbatch array_a.sh"], cfg)
+    text = (tmp_path / "submit_jobs.sh").read_text()
+    assert "--partition=general" in text and "--partition=compute" not in text
+
+
+def test_example_config_loads():
+    example = Path(__file__).parent.parent / "examples" / "peregrine.toml"
+    cfg = load_config(example, "parallelcluster")
+    assert cfg.get("psi4", "scratch") == "/scratch-fsx/$USER"
+    assert cfg.scheduler["on_complete"] == []
