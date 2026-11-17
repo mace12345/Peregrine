@@ -13,6 +13,7 @@ import shutil
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import ast
+import time
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -5059,7 +5060,16 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         AddHydrogens: bool = True,
         SuppressRDKitWarnings: bool = True,
         OptimiseGeometry: bool = False,
+        Ignore3DEmbeddingError: bool = True,
+        EmbedTimeout: int = 1,
+        TotalTimeBudget: float = 1,
+        MaxEmbedAttempts: int = 5,
     ) -> "Molecule":
+        
+        t0 = time.perf_counter()
+        def out_of_time():
+            return TotalTimeBudget is not None and time.perf_counter() - t0 > TotalTimeBudget
+
         if SuppressRDKitWarnings == True:
             RDLogger.DisableLog("rdApp.warning")
             RDLogger.DisableLog("rdApp.error")
@@ -5068,24 +5078,32 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             raise ValueError(f"RDKit failed to parse SMILES: {SMILES}")
         if AddHydrogens == True:
             RDKitMolObj = Chem.AddHs(RDKitMolObj)
-        embed_result = AllChem.EmbedMolecule(RDKitMolObj)
+
+        params = AllChem.ETKDGv3()
+        params.timeout = int(EmbedTimeout)
+        params.randomSeed = 0xF00D
+        embed_result = AllChem.EmbedMolecule(RDKitMolObj, params)
+        attempt = 0
+        while embed_result != 0 and attempt < MaxEmbedAttempts and not out_of_time():
+            params.useRandomCoords = True
+            params.randomSeed = 1000 + attempt     # deterministic, differs per attempt
+            embed_result = AllChem.EmbedMolecule(RDKitMolObj, params)
+            attempt += 1
+
         if embed_result != 0:
-            for _ in range(10):
-                embed_result = AllChem.EmbedMolecule(
-                    RDKitMolObj,
-                    useRandomCoords=True,
-                    randomSeed=np.random.randint(0, 1001),
-                )
-                if embed_result == 0:
-                    break
-            if embed_result != 0:
-                raise ValueError(f"3D embedding failed for SMILES: {SMILES}")
+            reason = "timed out" if out_of_time() else "failed"
+            if not Ignore3DEmbeddingError:
+                raise ValueError(f"3D embedding {reason} for SMILES: {SMILES}")
+            return None
+            
         molObj = cls.RDKitMolToMolecule(
             RDKitMolObj,
             Identifier,
         )
+
         if OptimiseGeometry == True:
             molObj.OptimiseGeometry_UFF()
+            
         return molObj
 
     @classmethod

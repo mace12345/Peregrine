@@ -15,6 +15,7 @@ import itertools
 import traceback
 import tempfile
 import shutil
+import time
 
 import h5py
 
@@ -507,6 +508,7 @@ class MoleculeSet:
         Identifier_List: list,
         AddHydrogens: bool = True,
         chunksize: int | None = None,
+        print_every: int | None = None,
     ) -> "MoleculeSet":
         instance = cls()
 
@@ -519,15 +521,38 @@ class MoleculeSet:
         args = [
             (SMILES, Identifier, AddHydrogens)
             for SMILES, Identifier in zip(SMILES_list, Identifier_List)
-        ]
-        chunksize = chunksize or max(1, len(args) // (max_workers))
+        ][:10_000]
+        n_total = len(args)
+        chunksize = chunksize or max(1, n_total // (max_workers))
+        print_every = print_every or max(1, n_total // 10_000)
 
+        print(
+            f"[ReadSMILESList] {n_total} molecules | {max_workers} workers | "
+            f"chunksize={chunksize}",
+            flush=True,
+        )
+
+        t0 = time.perf_counter()
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            for molObj in executor.map(
-                _GeneralHelper_ReadSMILESStrings, args, chunksize=chunksize
+            for i, molObj in enumerate(
+                executor.map(
+                    _GeneralHelper_ReadSMILESStrings, args, chunksize=chunksize
+                ),
+                start=1,
             ):
-                instance.MoleculesDict[molObj.Identifier] = molObj
+                if molObj is not None:
+                    instance.MoleculesDict[molObj.Identifier] = molObj
 
+                if i % print_every == 0 or i == n_total:
+                    elapsed = time.perf_counter() - t0
+                    rate = i / elapsed if elapsed > 0 else 0.0
+                    eta = (n_total - i) / rate if rate > 0 else float("nan")
+
+        print(
+            f"[ReadSMILESList] Done: {len(instance.MoleculesDict)} molecules in "
+            f"{time.perf_counter() - t0:.1f}s",
+            flush=True,
+        )
         return instance
 
     @classmethod
