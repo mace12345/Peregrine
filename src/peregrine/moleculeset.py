@@ -509,14 +509,17 @@ class MoleculeSet:
         AddHydrogens: bool = True,
         chunksize: int | None = None,
         print_every: int | None = None,
+        max_workers: int | None = None,
     ) -> "MoleculeSet":
         instance = cls()
 
-        # Respect Slurm/cgroup CPU allocation rather than the whole node's core count
-        try:
-            max_workers = len(os.sched_getaffinity(0))
-        except AttributeError:  # not available on macOS
-            max_workers = max(1, os.cpu_count() - 2)
+        if max_workers is not None:
+            pass
+        else:
+            try:
+                max_workers = len(os.sched_getaffinity(0))
+            except AttributeError:  # not available on macOS
+                max_workers = max(1, os.cpu_count() - 2)
 
         args = [
             (SMILES, Identifier, AddHydrogens)
