@@ -521,7 +521,7 @@ class MoleculeSet:
         args = [
             (SMILES, Identifier, AddHydrogens)
             for SMILES, Identifier in zip(SMILES_list, Identifier_List)
-        ][:10_000]
+        ]
         n_total = len(args)
         chunksize = chunksize or max(1, n_total // (max_workers))
         print_every = print_every or max(1, n_total // 10_000)
