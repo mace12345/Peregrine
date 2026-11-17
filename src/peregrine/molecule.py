@@ -4227,6 +4227,7 @@ rm slurm-$SLURM_JOB_ID.out
         max_time: None | int = 2880,
         file_types_to_save: list[str] = [".out", ".json", ".fock"],
         slurm_partition: None | str = "high-mem",
+        output_dir: str | None = None,
     ) -> str:
         time = _GeneralHelper_MinutesToHHMMSS(max_time)
         slurm_str = f"""#!/bin/bash
@@ -4258,9 +4259,14 @@ export MALLOC_ARENA_MAX=2
 
 # Copy results back to permanent storage
 """
+        if output_dir is None:
+            output_dir = "$INPUT_DIR"
+        else:
+            slurm_str += f"mkdir -p {output_dir}\n\n"
         for file_type in file_types_to_save:
             file_type = file_type.replace(".", "")
-            slurm_str += f"cp *.{file_type} $INPUT_DIR/\n"
+            slurm_str += f"cp *.{file_type} {output_dir}/\n"
+        slurm_str += f"cp *.py {output_dir}/\n"
         slurm_str += """
 # Clean up the scratch directory
 rm -rf $SCRATCH_DIR
@@ -4291,6 +4297,7 @@ rm slurm-$SLURM_JOB_ID.out
         file_types_to_save: list[str] = [".out", ".json"],
         psi4_command: str | None = None,
         scratch_dir: str | None = None,
+        output_dir: str | None = None,
     ) -> tuple[str, str]:
         psi4_str = self.WritePsi4String(
             method=method,
@@ -4320,6 +4327,7 @@ python {self.Identifier}.py"""
                 max_time=max_time,
                 file_types_to_save=file_types_to_save,
                 slurm_partition=slurm_partition,
+                output_dir=output_dir,
             )
         else:
             sche_str = None

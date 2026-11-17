@@ -590,9 +590,14 @@ class MoleculeSet:
             conformations,
             chargess,
         ):
+            print(int(round(np.array(charges).sum(), 0)))
             molObj = Molecule.MoleculeFromScratch(
                 AtomicSymbols=atomic_symbols,
-                FormalCharges=[0 for _ in atomic_symbols],
+                FormalCharges=[
+                    0
+                    for _ in [int(round(np.array(charges).sum(), 0))]
+                    + atomic_symbols[1:]
+                ],
                 FormalMultiplicities=[1 for _ in atomic_symbols],
                 Coordinates=conformation,
                 Gradients=gradient,
@@ -894,6 +899,7 @@ class MoleculeSet:
         scratch_dir: str | None = None,
         remove_negative_frequencies: bool = True,
         resource_estimation: bool = False,
+        output_dir: str | None = None,
     ):
         os.makedirs(psi4_file_directory, exist_ok=True)
         if job_scheduler_used is not None:
@@ -998,6 +1004,7 @@ class MoleculeSet:
                 file_types_to_save=file_types_to_save,
                 psi4_command=psi4_command,
                 scratch_dir=scratch_dir,
+                output_dir=output_dir,
             )
             if resource_estimation == True:
                 rec_str += f"{molObj.Identifier},{memory},{num_basisset_funcs},\n"
@@ -1225,25 +1232,38 @@ class MoleculeSet:
                 and f"{identifier}.meta.json" not in json_list
             ):
                 id_dict[identifier] = [f"{identifier}.out", None]
+            elif (
+                f"{identifier}.out" not in out_list
+                and f"{identifier}.meta.json" not in json_list
+            ):
+                id_dict[identifier] = [None, None]
         # Read Psi4 .out and .meta.json files
         instance = MoleculeSet()
         for identifier in id_dict:
             out_file_name = id_dict[identifier][0]
             json_file_name = id_dict[identifier][1]
+
             if template_moleculeset is None:
                 template_molObj = None
             else:
                 template_molObj = template_moleculeset.MoleculesDict[identifier]
-            molObj = Molecule.ReadPsi4Output(
-                psi4_file_directory,
-                out_file_name=out_file_name,
-                json_file_name=json_file_name,
-                template_molObj=template_molObj,
-            )
+
+            if out_file_name is not None and json_file_name is not None:
+                molObj = Molecule.ReadPsi4Output(
+                    psi4_file_directory,
+                    out_file_name=out_file_name,
+                    json_file_name=json_file_name,
+                    template_molObj=template_molObj,
+                )
+            elif out_file_name is None and json_file_name is None:
+                molObj = template_molObj
+                molObj.DeleteCalculatedAttributes()
+                molObj.error_code = "Did not run"
             if type(molObj) is dict:
                 instance.MoleculesDict = instance.MoleculesDict | molObj
             else:
                 instance.MoleculesDict[molObj.Identifier] = molObj
+        # Read .py files in calse
         # Construct Results DataFrame
         instance.ResultsDF = pd.DataFrame(
             {
