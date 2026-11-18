@@ -204,8 +204,14 @@ def _solvate_worker(key, molObj, kwargs):
 
 
 def _GeneralHelper_ReadSMILESStrings(args):
-    SMILES, Identifier, AddHydrogens = args
-    return Molecule.ReadSMILESString(SMILES, Identifier, AddHydrogens=AddHydrogens)
+    SMILES, Identifier, AddHydrogens, mol_file_directory = args
+    molObj = Molecule.ReadSMILESString(SMILES, Identifier, AddHydrogens=AddHydrogens)
+    if mol_file_directory is None:
+        return molObj
+    else:
+        with open(f"{str(mol_file_directory)}/{molObj.Identifier}.mol", "w") as f:
+            f.write(molObj.WriteMolString())
+            f.close()
 
 
 def _GeneralHelper_LoadMolFile(mol_file_directory: str, mol_file: str) -> "Molecule":
@@ -510,8 +516,13 @@ class MoleculeSet:
         chunksize: int | None = None,
         print_every: int | None = None,
         max_workers: int | None = None,
+        mol_file_directory: str | None = None,
     ) -> "MoleculeSet":
-        instance = cls()
+
+        if mol_file_directory is None:
+            instance = cls()
+        else:
+            os.makedirs(mol_file_directory, exist_ok=True)
 
         if max_workers is not None:
             pass
@@ -522,41 +533,24 @@ class MoleculeSet:
                 max_workers = max(1, os.cpu_count() - 2)
 
         args = [
-            (SMILES, Identifier, AddHydrogens)
+            (SMILES, Identifier, AddHydrogens, mol_file_directory)
             for SMILES, Identifier in zip(SMILES_list, Identifier_List)
         ]
         n_total = len(args)
         chunksize = chunksize or max(1, n_total // (max_workers))
         print_every = print_every or max(1, n_total // 10_000)
 
-        print(
-            f"[ReadSMILESList] {n_total} molecules | {max_workers} workers | "
-            f"chunksize={chunksize}",
-            flush=True,
-        )
-
-        t0 = time.perf_counter()
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            for i, molObj in enumerate(
-                executor.map(
-                    _GeneralHelper_ReadSMILESStrings, args, chunksize=chunksize
-                ),
-                start=1,
+            for molObj in executor.map(
+                _GeneralHelper_ReadSMILESStrings, args, chunksize=chunksize
             ):
-                if molObj is not None:
+                if molObj is not None and mol_file_directory is None:
                     instance.MoleculesDict[molObj.Identifier] = molObj
 
-                if i % print_every == 0 or i == n_total:
-                    elapsed = time.perf_counter() - t0
-                    rate = i / elapsed if elapsed > 0 else 0.0
-                    eta = (n_total - i) / rate if rate > 0 else float("nan")
-
-        print(
-            f"[ReadSMILESList] Done: {len(instance.MoleculesDict)} molecules in "
-            f"{time.perf_counter() - t0:.1f}s",
-            flush=True,
-        )
-        return instance
+        if mol_file_directory is None:
+            return instance
+        else:
+            return None
 
     @classmethod
     def ReadHDF5File(
