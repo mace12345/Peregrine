@@ -2842,6 +2842,7 @@ class Molecule:
                 "S_v2.0_bo2.0_fc0": 2,
                 "S_v2.0_bo3.0_fc0": 2,
                 "S_v4.0_bo6.0_fc0": None,
+                "S_v3.0_bo3.0_fc1": None,
                 "Se_v2.0_bo3.0_fc0": 2,
                 "P_v4.0_bo5.0_fc0": None,
                 "B_v4.0_bo4.0_fc-1": None,

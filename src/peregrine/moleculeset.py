@@ -206,6 +206,8 @@ def _solvate_worker(key, molObj, kwargs):
 def _GeneralHelper_ReadSMILESStrings(args):
     SMILES, Identifier, AddHydrogens, mol_file_directory = args
     molObj = Molecule.ReadSMILESString(SMILES, Identifier, AddHydrogens=AddHydrogens)
+    if molObj is None:
+        return None
     if mol_file_directory is None:
         return molObj
     else:
@@ -358,7 +360,7 @@ class MoleculeSet:
         cls,
         mol_file_directory: str,
         do_not_read_opt_traj_files: bool = False,
-        parallel: bool = False,
+        n_workers: int | bool = False,
     ) -> "MoleculeSet":
         mol_file_list = [
             i for i in os.listdir(mol_file_directory) if i.endswith(".mol")
@@ -366,16 +368,15 @@ class MoleculeSet:
         if do_not_read_opt_traj_files == True:
             mol_file_list = [i for i in mol_file_list if "_TRAJ" not in i]
 
-        if parallel == False:
+        if n_workers == False:
             self = cls()
             for mol_file in mol_file_list:
                 molObj = _GeneralHelper_LoadMolFile(mol_file_directory, mol_file)
                 self.MoleculesDict[molObj.Identifier] = molObj
             return self
         else:
-            max_workers = max(1, os.cpu_count() - 2)
             self = cls()
-            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            with ProcessPoolExecutor(max_workers=n_workers) as executor:
                 for molObj in executor.map(
                     partial(_GeneralHelper_LoadMolFile, mol_file_directory),
                     mol_file_list,
@@ -463,7 +464,7 @@ class MoleculeSet:
             return cls.ReadMolFileDirectory(
                 tmpdir,
                 do_not_read_opt_traj_files=do_not_read_opt_traj_files,
-                parallel=parallel,
+                n_workers=parallel,
             )
 
     @classmethod
