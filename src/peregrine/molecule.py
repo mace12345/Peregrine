@@ -2459,6 +2459,8 @@ class Molecule:
         # Derived Basic Attributes
         if DeriveAttributes == True:
             self.DeriveBasicAttributes(UpdateAtomLabels=UpdateAtomLabels)
+        self.RingAtoms: list[list[Atom]] | None = None
+        self.AromaticAtomsDerived: bool = False
 
         # Optional SMILES Attributes
         self.AssociatedMoleculeSMILES = None
@@ -2765,66 +2767,142 @@ class Molecule:
         hull = ConvexHull(points)
         return round(hull.volume, 2)
 
-    def GetAromaticAtoms(
+    def GetAromaticAtomsSlow(
         self,
         MolecularMechanicsPreOpt: bool = False,
         SemiEmpiricalxTBPreOpt: bool = False,
         SemiEmpiricaltblitePreOpt: bool = True,
     ):
-        components = self.SplitMoleculeIntoComponents(UpdateAtomLabels=False)
-        for component in components:
-            if component.NumberOfAtoms < 6:
-                continue
-            # Optimse component so xyzgraph correctly identifies aromatic atoms
-            if MolecularMechanicsPreOpt == True:
-                component.OptimiseGeometry(
-                    MolecularMechanics=MolecularMechanicsPreOpt,
+        if self.AromaticAtomsDerived == False:
+            components = self.SplitMoleculeIntoComponents(UpdateAtomLabels=False)
+            for component in components:
+                if component.NumberOfAtoms < 6:
+                    continue
+                # Optimse component so xyzgraph correctly identifies aromatic atoms
+                if MolecularMechanicsPreOpt == True:
+                    component.OptimiseGeometry(
+                        MolecularMechanics=MolecularMechanicsPreOpt,
+                    )
+                if SemiEmpiricalxTBPreOpt == True:
+                    component.OptimiseGeometry(
+                        xTB_bin=SemiEmpiricalxTBPreOpt,
+                    )
+                if SemiEmpiricaltblitePreOpt == True:
+                    component.OptimiseGeometry_tblite()
+                # Convert to xyz file
+                xyz_string = component.WriteXYZString()
+                with open(
+                    f"{Path(__file__).parent}/{component.Identifier}_temp.xyz", "w"
+                ) as f:
+                    f.write(xyz_string)
+                    f.close()
+                G_full = build_graph(
+                    atoms=f"{Path(__file__).parent}/{component.Identifier}_temp.xyz",
+                    charge=component.FormalCharge,
+                    multiplicity=component.Multiplicity,
                 )
-            if SemiEmpiricalxTBPreOpt == True:
-                component.OptimiseGeometry(
-                    xTB_bin=SemiEmpiricalxTBPreOpt,
-                )
-            if SemiEmpiricaltblitePreOpt == True:
-                component.OptimiseGeometry_tblite()
-            # Convert to xyz file
-            xyz_string = component.WriteXYZString()
-            with open(
-                f"{Path(__file__).parent}/{component.Identifier}_temp.xyz", "w"
-            ) as f:
-                f.write(xyz_string)
-                f.close()
-            G_full = build_graph(
-                atoms=f"{Path(__file__).parent}/{component.Identifier}_temp.xyz",
-                charge=component.FormalCharge,
-                multiplicity=component.Multiplicity,
-            )
-            os.remove(f"{Path(__file__).parent}/{component.Identifier}_temp.xyz")
-            # Flatten all aromatic rings into a single set of atom indices
-            aromatic_atoms = {
-                idx for ring in G_full.graph.get("aromatic_rings", []) for idx in ring
-            }
-            # Get atom label from atom indices
-            # call main AtomsDict and set atom to aromatic
-            for aromatic_index in aromatic_atoms:
-                self.AtomsDict[component.AtomsList[aromatic_index].Label][
-                    1
-                ].IsAromatic = True
-        for atomObj in self.AtomsList:
-            if atomObj.IsAromatic is None:
-                atomObj.IsAromatic = False
+                os.remove(f"{Path(__file__).parent}/{component.Identifier}_temp.xyz")
+                # Flatten all aromatic rings into a single set of atom indices
+                aromatic_atoms = {
+                    idx for ring in G_full.graph.get("aromatic_rings", []) for idx in ring
+                }
+                # Get atom label from atom indices
+                # call main AtomsDict and set atom to aromatic
+                for aromatic_index in aromatic_atoms:
+                    self.AtomsDict[component.AtomsList[aromatic_index].Label][
+                        1
+                    ].IsAromatic = True
+            for atomObj in self.AtomsList:
+                if atomObj.IsAromatic is None:
+                    atomObj.IsAromatic = False
+            self.AromaticAtomsDerived = True
+        else:
+            pass
 
-    def GetRingAtoms(self) -> list[list[Atom]]:
+    def GetAromaticAtomsFast(self):
+        if self.AromaticAtomsDerived == False:
+            rings = self.GetRingAtomsFast()
+            p_elec_count_dict = {
+                "C_v3.0_bo4.0_fc0": 1,
+                "C_v3.0_bo3.0_fc-1": 2,
+                "C_v3.0_bo4.5_fc0": 1,
+                "C_v4.0_bo4.0_fc0": None,
+                "C_v3.0_bo5.0_fc0": 1,
+                "N_v2.0_bo3.0_fc0": 1,
+                "N_v3.0_bo4.0_fc0": 2,
+                "N_v3.0_bo4.5_fc0": 2,
+                "P_v2.0_bo3.0_fc0": 1,
+                "N_v3.0_bo3.0_fc0": 2,
+                "P_v3.0_bo3.0_fc0": 2,
+                "N_v2.0_bo2.0_fc-1": 2,
+                "N_v4.0_bo4.0_fc1": None,
+                "N_v3.0_bo4.0_fc1": 1,
+                "O_v2.0_bo2.0_fc0": 2,
+                "O_v2.0_bo3.0_fc0": 2,
+                "S_v2.0_bo2.0_fc0": 2,
+                "S_v2.0_bo3.0_fc0": 2,
+                "S_v4.0_bo6.0_fc0": None,
+                "Se_v2.0_bo3.0_fc0": 2,
+                "P_v4.0_bo5.0_fc0": None,
+                "B_v4.0_bo4.0_fc-1": None,
+            }
+            for ring in rings:
+                total_p_elec_count = 0
+                ring_is_atomatic = False
+                for atomObj in ring:
+                    atomIdx = self.AtomsDict[atomObj.Label][0]
+                    valence = self.ConnectivityMatrix[atomIdx].sum()
+                    bondorder = self.BondOrderMatrix[atomIdx].sum()
+                    try:
+                        p_elec_count = p_elec_count_dict[
+                            f"{atomObj.AtomicSymbol}_v{valence}_bo{bondorder}_fc{atomObj.FormalCharge}"
+                        ]
+                    except KeyError:
+                        print(self.BondOrderMatrix[atomIdx])
+                        raise KeyError(f"{self.Identifier}, {self.AtomsDict[atomObj.Label][0]}: {atomObj.AtomicSymbol}_v{valence}_bo{bondorder}_fc{atomObj.FormalCharge}")
+                    if p_elec_count is None:
+                        # If there is an aliphatic atom ring is not aromatic
+                        total_p_elec_count = None
+                        break
+                    else:
+                        total_p_elec_count += p_elec_count
+                # Check that ring is aromatic
+                if total_p_elec_count is None:
+                    continue
+                else:
+                    if ((total_p_elec_count - 2) / 4) % 1 == 0:
+                        ring_is_atomatic = True
+                if ring_is_atomatic == True:
+                    for atomObj in ring:
+                        atomObj.IsAromatic = True
+            for atomObj in self.AtomsList:
+                if atomObj.IsAromatic is None:
+                    atomObj.IsAromatic = False
+            self.AromaticAtomsDerived = True
+        else:
+            pass
+
+    def GetRingAtomsFast(self) -> list[list[Atom]]:
         """
         conn_matrix: NxN adjacency matrix (symmetric). Nonzero entry [i,j]
                     means point i connects to point j.
         Returns a list of rings, each a list of point indices in cycle order.
         """
-        G = nx.from_numpy_array(self.ConnectivityMatrix)
-        rings = nx.cycle_basis(G)
-        atomObj_rings = [[self.AtomsList[idx] for idx in ring] for ring in rings]
-        return atomObj_rings
+        if self.RingAtoms is None:
+            G = nx.from_numpy_array(self.ConnectivityMatrix)
+            rings = nx.cycle_basis(G)
+            self.RingAtoms = [[self.AtomsList[idx] for idx in ring] for ring in rings]
+            for ring in self.RingAtoms:
+                for atomObj in ring:
+                    atomObj.IsInRing = True
+            for atomObj in self.AtomsList:
+                if atomObj.IsInRing is None:
+                    atomObj.IsInRing = False
+            return self.RingAtoms
+        else:
+            return self.RingAtoms
 
-    def GetRingAtoms_V2(
+    def GetRingAtomsSlow(
         self,
         max_ring_size: int | None = None,
         all_rings: bool = False,
@@ -2836,33 +2914,47 @@ class Molecule:
         all_rings=True  : every simple ring up to max_ring_size (includes envelope
                         rings, e.g. the 6-ring in norbornane); requires max_ring_size
         """
-        A = (np.asarray(self.ConnectivityMatrix) != 0).astype(int)
-        np.fill_diagonal(A, 0)  # no self-loops
-        G = nx.from_numpy_array(A)
-        if all_rings:
-            if max_ring_size is None:
-                raise ValueError("all_rings=True needs max_ring_size")
-            rings = list(
-                nx.simple_cycles(G, length_bound=max_ring_size)
-            )  # already ordered
+        if self.RingAtoms is None:
+            A = (np.asarray(self.ConnectivityMatrix) != 0).astype(int)
+            np.fill_diagonal(A, 0)  # no self-loops
+            G = nx.from_numpy_array(A)
+            if all_rings:
+                if max_ring_size is None:
+                    raise ValueError("all_rings=True needs max_ring_size")
+                rings = list(
+                    nx.simple_cycles(G, length_bound=max_ring_size)
+                )  # already ordered
+            else:
+                rings = []
+                for ring_nodes in nx.minimum_cycle_basis(G):
+                    # Walk round the ring so consecutive indices are bonded
+                    sub = G.subgraph(ring_nodes)
+                    start = ring_nodes[0]
+                    order, prev, cur = [start], None, start
+                    while True:
+                        nxt = next(n for n in sub.neighbors(cur) if n != prev)
+                        if nxt == start:
+                            break
+                        order.append(nxt)
+                        prev, cur = cur, nxt
+                    rings.append(order)
+                if max_ring_size is not None:
+                    rings = [r for r in rings if len(r) <= max_ring_size]
+            rings.sort(key=len)
+            self.RingAtoms = [[self.AtomsList[i] for i in ring] for ring in rings]
+            return self.RingAtoms
         else:
-            rings = []
-            for ring_nodes in nx.minimum_cycle_basis(G):
-                # Walk round the ring so consecutive indices are bonded
-                sub = G.subgraph(ring_nodes)
-                start = ring_nodes[0]
-                order, prev, cur = [start], None, start
-                while True:
-                    nxt = next(n for n in sub.neighbors(cur) if n != prev)
-                    if nxt == start:
-                        break
-                    order.append(nxt)
-                    prev, cur = cur, nxt
-                rings.append(order)
-            if max_ring_size is not None:
-                rings = [r for r in rings if len(r) <= max_ring_size]
-        rings.sort(key=len)
-        return [[self.AtomsList[i] for i in ring] for ring in rings]
+            return self.RingAtoms
+
+    def GetListOfBonds(self) -> list[list[Atom, Atom]]:
+        bonds = np.argwhere(np.triu(self.ConnectivityMatrix, k=1) == 1).tolist()
+        bonds = [
+            [
+                self.AtomsList[i[0]],
+                self.AtomsList[i[1]],
+            ] for i in bonds
+        ]
+        return bonds
 
     def GetBondAngle(
         self,
@@ -3482,16 +3574,22 @@ class Molecule:
         SMARTS_pattern = Chem.MolFromSmarts(SMARTS_str)
         rdkitMolObj = self.MoleculeToRDKitMol()
         matches = rdkitMolObj.GetSubstructMatches(SMARTS_pattern)
+        # scrub aromatic bonds to avoid confusion
+        SMARTS_str = SMARTS_str.replace("]:", "]-")
+        SMARTS_str = SMARTS_str.replace(":[", "-[")
+        try:
+            SMARTS_idx = [int(i.split("[")[1].split(":")[1]) for i in SMARTS_str.split("]")[:-1]]
+        except ValueError:
+            # TODO: Need regex solution to this problem
+            raise ValueError(SMARTS_str)
         if len(matches) == 1:
             matches = matches[0]
-            SMARTS_idx = [int(i.split("]")[0]) for i in SMARTS_str.split(":")[1:]]
             atomIdx_to_SMARTSIdx = {i: j for i, j in zip(matches, SMARTS_idx)}
             SMARTS_idx_to_atomIdx = {i: j for i, j in zip(SMARTS_idx, matches)}
             return ((atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx),)
         elif len(matches) > 1:
             dict_list = []
             for match in matches:
-                SMARTS_idx = [int(i.split("]")[0]) for i in SMARTS_str.split(":")[1:]]
                 atomIdx_to_SMARTSIdx = {i: j for i, j in zip(match, SMARTS_idx)}
                 SMARTS_idx_to_atomIdx = {i: j for i, j in zip(SMARTS_idx, match)}
                 dict_list.append((atomIdx_to_SMARTSIdx, SMARTS_idx_to_atomIdx))
@@ -3651,6 +3749,7 @@ class Molecule:
         if SuppressRDKitWarnings == True:
             RDLogger.DisableLog("rdApp.warning")
             RDLogger.DisableLog("rdApp.error")
+        
         # Create initial SMARTS string
         # Convert molObj to rdKitMolObj
         rdkitMolObj = Chem.EditableMol(Chem.Mol())
@@ -3681,6 +3780,7 @@ class Molecule:
         for rdkitAtomObj in rdkitMolObj.GetAtoms():
             rdkitAtomObj.SetAtomMapNum(rdkitAtomObj.GetIdx())
         SMARTS = Chem.MolToSmarts(rdkitMolObj)
+        
         # Add 0th index to smarts
         for sub_SMARTS in SMARTS.split("]"):
             if ":" not in sub_SMARTS:
@@ -3718,7 +3818,7 @@ class Molecule:
         # Make new SMARTS patterns based on the molObj atoms
         New_rdkitAtomObjIdx_to_SMARTS_pattern_dict = {}
         if HandleAromaticity == True:
-            self.GetAromaticAtoms()
+            self.GetAromaticAtomsFast()
         for rdkitAtomObj_idx in rdkitMolObj_to_molObj_atomIdx_dict:
 
             atomObj_idx = rdkitMolObj_to_molObj_atomIdx_dict[rdkitAtomObj_idx]
@@ -3791,6 +3891,7 @@ class Molecule:
         AtomObject: Atom | None = None,
         AtomLabel: str | None = None,
         TopologicalRadius: int = 3,
+        FindRingAtomsFast: bool = False,
     ) -> "Molecule":
         if AtomIndex is not None:
             pass
@@ -3824,8 +3925,12 @@ class Molecule:
             atomObj.SMARTSCentre = True
         # Check if fragment atom is in aromatic ring
         # If so include all aromatic ring atoms into the SMARTS Centre
+        # Use pre-defined ring to improve speed of function
         ring_temp_molObj = deepcopy(molObj)
-        rings = ring_temp_molObj.GetRingAtoms_V2(max_ring_size=6)
+        if FindRingAtomsFast == True:
+            rings = ring_temp_molObj.GetRingAtomsFast()
+        else:
+            rings = ring_temp_molObj.GetRingAtomsSlow(max_ring_size=6)
         fragment_ring_atoms = []
         for ring in rings:
             # is ring organic?
@@ -4576,6 +4681,9 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
                 idx, atomObj.Coordinates
             )  # substitute your actual xyz attribute(s)
         rdkit_mol.AddConformer(conf, assignId=True)
+        # Clean up molecule
+        rdkit_mol.UpdatePropertyCache(strict=False)
+        Chem.SanitizeMol(rdkit_mol, sanitizeOps=Chem.SANITIZE_SYMMRINGS | Chem.SANITIZE_SETAROMATICITY)
         return rdkit_mol
 
     @classmethod
@@ -4798,7 +4906,6 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
 
                 # Convert bond type 4 (aromatic) to 1.5
                 bond_order = 1.5 if bond_type == 4 else float(bond_type)
-
                 bond_order_matrix[atom1_idx][atom2_idx] = bond_order
                 bond_order_matrix[atom2_idx][atom1_idx] = bond_order
 
@@ -5103,7 +5210,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
 
         if OptimiseGeometry == True:
             molObj.OptimiseGeometry_UFF()
-            
+
         return molObj
 
     @classmethod
@@ -5918,7 +6025,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         rings = [ring for ring in rings if len(ring) <= 8]
         # Determine aromatic atoms if there are rings
         if len(rings) > 0:
-            self.GetAromaticAtoms(SemiEmpiricaltblitePreOpt=False)
+            self.GetAromaticAtomsSlow(SemiEmpiricaltblitePreOpt=False)
         # Adjust charges of heteroaromatic atoms
         for idx, atomObj in enumerate(self.AtomsList):
             bond_valence = self.BondOrderMatrix[idx].sum()

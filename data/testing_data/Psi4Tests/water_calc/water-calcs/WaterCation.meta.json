@@ -7,7 +7,7 @@
     "H": "def2-tzvppd",
     "O": "def2-tzvppd"
   },
-  "Method": "uhf wb97m-d3bj",
+  "Method": "rhf wb97m-d3bj",
   "Electronic Energy (Eh)": -76.70878359983399,
   "One Electron Energy (Eh)": -126.90636241326965,
   "Two Electron Energy (Eh)": 43.755973392245885,

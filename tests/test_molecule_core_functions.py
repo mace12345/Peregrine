@@ -596,7 +596,7 @@ def test_AtomIsAromatic():
         molObj_str = f.read()
         f.close()
     molObj = Molecule.ReadMolString(molObj_str)
-    molObj.GetAromaticAtoms(MolecularMechanicsPreOpt=True)
+    molObj.GetAromaticAtomsSlow(MolecularMechanicsPreOpt=True)
     assert molObj.AtomsList[1].IsAromatic == True
     assert molObj.AtomsList[7].IsAromatic == False
 
@@ -695,7 +695,7 @@ def test_OptimiseGeometry():
     aromatic_sandwich.OptimiseGeometry(
         MolecularMechanics=True,
     )
-    aromatic_sandwich.GetAromaticAtoms()
+    aromatic_sandwich.GetAromaticAtomsSlow()
     assert (
         round(np.rad2deg(aromatic_sandwich.GetBondAngle(AtomIndices=[11, 10, 12])), 0)
         == 120

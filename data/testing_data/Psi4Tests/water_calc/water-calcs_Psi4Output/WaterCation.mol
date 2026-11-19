@@ -17,7 +17,7 @@ M V30 END BOND
 M V30 END CTAB
 M END
 > <Calculation Method>
-uhf wb97m-d3bj
+rhf wb97m-d3bj
 > <Basis Set>
 {'H': 'def2-tzvppd', 'O': 'def2-tzvppd'}
 > <Number of primitive basis functions>

@@ -17,8 +17,10 @@ def get_max_rss_mb():
         return raw / (1024 * 1024)
     return raw / 1024
 
-if platform.system().lower() == 'linux':
+try:
     psi4.core.IOManager.shared_object().set_default_path(os.environ["PSI_SCRATCH"])
+except KeyError:
+    pass
 psi4.set_output_file('WaterTriplet.out', False)
 psi4.set_memory('4430 MB')
 psi4.set_num_threads(4)
@@ -48,8 +50,8 @@ nocom
 
 # Define basis sets
 element_basis_map = {
-    'O': 'def2-tzvppd',
     'H': 'def2-tzvppd',
+    'O': 'def2-tzvppd',
 }
 combined_basis = '\n'.join(
     bse.get_basis(basisname, elements=[symbol], fmt='psi4', header=False)
@@ -63,8 +65,8 @@ spherical
 ''', name='mybasis', key='BASIS')
 metadata['Basis Set'] = element_basis_map
 jkfit_basis_map = {
-    'O': 'def2-universal-jkfit',
     'H': 'def2-universal-jkfit',
+    'O': 'def2-universal-jkfit',
 }
 combined_jkfit = '\n'.join(
     bse.get_basis(basisname, elements=[symbol], fmt='psi4', header=False)
