@@ -2804,7 +2804,9 @@ class Molecule:
                 os.remove(f"{Path(__file__).parent}/{component.Identifier}_temp.xyz")
                 # Flatten all aromatic rings into a single set of atom indices
                 aromatic_atoms = {
-                    idx for ring in G_full.graph.get("aromatic_rings", []) for idx in ring
+                    idx
+                    for ring in G_full.graph.get("aromatic_rings", [])
+                    for idx in ring
                 }
                 # Get atom label from atom indices
                 # call main AtomsDict and set atom to aromatic
@@ -2860,7 +2862,9 @@ class Molecule:
                         ]
                     except KeyError:
                         print(self.BondOrderMatrix[atomIdx])
-                        raise KeyError(f"{self.Identifier}, {self.AtomsDict[atomObj.Label][0]}: {atomObj.AtomicSymbol}_v{valence}_bo{bondorder}_fc{atomObj.FormalCharge}")
+                        raise KeyError(
+                            f"{self.Identifier}, {self.AtomsDict[atomObj.Label][0]}: {atomObj.AtomicSymbol}_v{valence}_bo{bondorder}_fc{atomObj.FormalCharge}"
+                        )
                     if p_elec_count is None:
                         # If there is an aliphatic atom ring is not aromatic
                         total_p_elec_count = None
@@ -2953,7 +2957,8 @@ class Molecule:
             [
                 self.AtomsList[i[0]],
                 self.AtomsList[i[1]],
-            ] for i in bonds
+            ]
+            for i in bonds
         ]
         return bonds
 
@@ -3442,10 +3447,8 @@ class Molecule:
             periodic -- Is the ASE Atoms object structure periodic or not (default = False)
         """
         if AtomicSymbols is None:
-            AtomicSymbols = list(
-                {atomObj.AtomicSymbol for atomObj in self.AtomsList}
-            )
-        if soap is None:    
+            AtomicSymbols = list({atomObj.AtomicSymbol for atomObj in self.AtomsList})
+        if soap is None:
             soap = SOAP(
                 species=AtomicSymbols,
                 r_cut=RadiusCutOff,
@@ -3464,7 +3467,9 @@ class Molecule:
             for idx, atomObj in enumerate(self.AtomsList):
                 if atomObj.AtomicSymbol in IndivdualAtomsOnly:
                     centres.append(idx)
-        soap_descriptors = soap.create(self.MoleculeToASEMolecule(), centers=centres, n_jobs=1)
+        soap_descriptors = soap.create(
+            self.MoleculeToASEMolecule(), centers=centres, n_jobs=1
+        )
         for atom_idx, soap_des in zip(centres, soap_descriptors):
             self.AtomsList[atom_idx].SOAPDescriptor = soap_des
 
@@ -3579,9 +3584,12 @@ class Molecule:
         SMARTS_str = SMARTS_str.replace("]:", "]-")
         SMARTS_str = SMARTS_str.replace(":[", "-[")
         try:
-            SMARTS_idx = [int(i.split("[")[1].split(":")[1]) for i in SMARTS_str.split("]")[:-1]]
+            SMARTS_idx = [
+                int(i.split("[")[1].split(":")[1]) for i in SMARTS_str.split("]")[:-1]
+            ]
         except ValueError:
             # TODO: Need regex solution to this problem
+            print("# TODO: Need regex solution to this problem")
             raise ValueError(SMARTS_str)
         if len(matches) == 1:
             matches = matches[0]
@@ -3750,7 +3758,7 @@ class Molecule:
         if SuppressRDKitWarnings == True:
             RDLogger.DisableLog("rdApp.warning")
             RDLogger.DisableLog("rdApp.error")
-        
+
         # Create initial SMARTS string
         # Convert molObj to rdKitMolObj
         rdkitMolObj = Chem.EditableMol(Chem.Mol())
@@ -3781,7 +3789,7 @@ class Molecule:
         for rdkitAtomObj in rdkitMolObj.GetAtoms():
             rdkitAtomObj.SetAtomMapNum(rdkitAtomObj.GetIdx())
         SMARTS = Chem.MolToSmarts(rdkitMolObj)
-        
+
         # Add 0th index to smarts
         for sub_SMARTS in SMARTS.split("]"):
             if ":" not in sub_SMARTS:
@@ -4684,7 +4692,10 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         rdkit_mol.AddConformer(conf, assignId=True)
         # Clean up molecule
         rdkit_mol.UpdatePropertyCache(strict=False)
-        Chem.SanitizeMol(rdkit_mol, sanitizeOps=Chem.SANITIZE_SYMMRINGS | Chem.SANITIZE_SETAROMATICITY)
+        Chem.SanitizeMol(
+            rdkit_mol,
+            sanitizeOps=Chem.SANITIZE_SYMMRINGS | Chem.SANITIZE_SETAROMATICITY,
+        )
         return rdkit_mol
 
     @classmethod
@@ -5173,10 +5184,14 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         TotalTimeBudget: float = 1,
         MaxEmbedAttempts: int = 5,
     ) -> "Molecule":
-        
+
         t0 = time.perf_counter()
+
         def out_of_time():
-            return TotalTimeBudget is not None and time.perf_counter() - t0 > TotalTimeBudget
+            return (
+                TotalTimeBudget is not None
+                and time.perf_counter() - t0 > TotalTimeBudget
+            )
 
         if SuppressRDKitWarnings == True:
             RDLogger.DisableLog("rdApp.warning")
@@ -5194,7 +5209,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         attempt = 0
         while embed_result != 0 and attempt < MaxEmbedAttempts and not out_of_time():
             params.useRandomCoords = True
-            params.randomSeed = 1000 + attempt     # deterministic, differs per attempt
+            params.randomSeed = 1000 + attempt  # deterministic, differs per attempt
             embed_result = AllChem.EmbedMolecule(RDKitMolObj, params)
             attempt += 1
 
@@ -5203,7 +5218,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             if not Ignore3DEmbeddingError:
                 raise ValueError(f"3D embedding {reason} for SMILES: {SMILES}")
             return None
-            
+
         molObj = cls.RDKitMolToMolecule(
             RDKitMolObj,
             Identifier,
@@ -5227,10 +5242,14 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         TotalTimeBudget: float = 1,
         MaxEmbedAttempts: int = 5,
     ) -> "Molecule":
-        
+
         t0 = time.perf_counter()
+
         def out_of_time():
-            return TotalTimeBudget is not None and time.perf_counter() - t0 > TotalTimeBudget
+            return (
+                TotalTimeBudget is not None
+                and time.perf_counter() - t0 > TotalTimeBudget
+            )
 
         if SuppressRDKitWarnings == True:
             RDLogger.DisableLog("rdApp.warning")
@@ -5248,7 +5267,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         attempt = 0
         while embed_result != 0 and attempt < MaxEmbedAttempts and not out_of_time():
             params.useRandomCoords = True
-            params.randomSeed = 1000 + attempt     # deterministic, differs per attempt
+            params.randomSeed = 1000 + attempt  # deterministic, differs per attempt
             embed_result = AllChem.EmbedMolecule(RDKitMolObj, params)
             attempt += 1
 
@@ -5257,7 +5276,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             if not Ignore3DEmbeddingError:
                 raise ValueError(f"3D embedding {reason} for Inchi: {Inchi}")
             return None
-            
+
         molObj = cls.RDKitMolToMolecule(
             RDKitMolObj,
             Identifier,
@@ -6069,6 +6088,53 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         self.BondOrderMatrix[atomIdx1][atomIdx2] = NewBondOrder
         self.BondOrderMatrix[atomIdx2][atomIdx1] = NewBondOrder
 
+    def ChangeBondLength(
+        self,
+        NewBondLength: float,
+        AtomLabels: list[str] | None = None,
+        AtomIndices: list[int] | None = None,
+        AtomObjects: list[Atom] | None = None,
+    ):
+        # Determine atom indices
+        if AtomIndices is not None:
+            if len(AtomIndices) != 2:
+                raise ValueError("AtomIndices must contain exactly 2 indices")
+            atomIdx1, atomIdx2 = AtomIndices
+            if not (
+                0 <= atomIdx1 < self.NumberOfAtoms
+                and 0 <= atomIdx2 < self.NumberOfAtoms
+            ):
+                raise IndexError(f"Atom indices out of bounds: {atomIdx1}, {atomIdx2}")
+        elif AtomLabels is not None:
+            if len(AtomLabels) != 2:
+                raise ValueError("AtomLabels must contain exactly 2 labels")
+            if AtomLabels[0] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[0]}' not found")
+            if AtomLabels[1] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[1]}' not found")
+            atomIdx1 = self.AtomsDict[AtomLabels[0]][0]
+            atomIdx2 = self.AtomsDict[AtomLabels[1]][0]
+        elif AtomObjects is not None:
+            if len(AtomObjects) != 2:
+                raise ValueError("AtomObjects must contain exactly 2 objects")
+            try:
+                atomIdx1 = self.AtomsDict[AtomObjects[0].Label][0]
+                atomIdx2 = self.AtomsDict[AtomObjects[1].Label][0]
+            except KeyError as e:
+                raise ValueError(f"Atom object not found in molecule: {e}")
+        else:
+            raise ValueError(
+                "ChangeBond requires AtomLabels, AtomIndices, or AtomObjects"
+            )
+
+        bond_vector = self.AtomsList[atomIdx1].Coordinates - self.AtomsList[atomIdx2].Coordinates
+        current_bond_length = np.linalg.norm(bond_vector)
+        unit_bond_vector = bond_vector / current_bond_length
+
+        mid_point = self.AtomsList[atomIdx2].Coordinates + (current_bond_length * 0.5 * unit_bond_vector)
+        self.AtomsList[atomIdx1].Coordinates = mid_point + (NewBondLength * 0.5 * unit_bond_vector)
+        self.AtomsList[atomIdx2].Coordinates = mid_point - (NewBondLength * 0.5 * unit_bond_vector)
+
     def CorrectAtomicFormalCharges(self):
         """
         Correct formal charges using L-type ligand rules for metal-ligand bonding (lewis basic)
@@ -6745,7 +6811,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             "[#6D3,#7D3,#8D3,#16D3,#17D3:1]1~[#6D3,#7D2,#8D2,#16D2,#17D2:2]~[#6D3,#7D2,#8D2,#16D2,#17D2:3]~[#6D3,#7D2,#8D2,#16D2,#17D2:4]~[#6D3,#7D2,#8D2,#16D2,#17D2:5]~[#6D3,#7D2,#8D2,#16D2,#17D2:6]~1",  # Bonded to metal
         ],
         tetrahedral_SMARTS: list[str] = [
-            "[SX3,SeX3]",
+            "[SX3,SeX3:1]",
         ],
     ) -> float:
         if suppress_warnings:
@@ -6961,7 +7027,10 @@ $end"""
             with open(workdir / "xtb.out", "r") as f:
                 xtb_out_str = f.read()
                 f.close()
-            self.electronic_energy = _xTBHelper_GetEnergies(xtb_out_str)
+            try:
+                self.electronic_energy = _xTBHelper_GetEnergies(xtb_out_str)
+            except ValueError:
+                self.electronic_energy = None
         elif "xtbopt.log" in os.listdir(workdir):
             with open(workdir / "xtbopt.log", "r") as f:
                 xtb_log_str = f.read()
@@ -6981,7 +7050,7 @@ $end"""
                     if len(i.split()) == 3
                 ]
                 for atomObj, grad in zip(self.AtomsList, grad_list):
-                    atomObj.Gradient = np.array(grad)
+                    atomObj.Gradient = np.array(grad) * BohrRad_to_Angstrom
 
         # Remove all output files
         for stringObj in [
@@ -7012,6 +7081,68 @@ $end"""
                 pass
         os.rmdir(workdir)
         return self
+
+    def CalculateBondPES(
+        self,
+        PES_BondLengths: list[float],
+        AtomLabels: list[str] | None = None,
+        AtomIndices: list[int] | None = None,
+        AtomObjects: list[Atom] | None = None,
+        optimisation_method: None | str = "gxtb",
+        calculation_method: str = "gxtb",
+    ) -> list["Molecule"]:
+        # Determine atom indices
+        if AtomIndices is not None:
+            if len(AtomIndices) != 2:
+                raise ValueError("AtomIndices must contain exactly 2 indices")
+            atomIdx1, atomIdx2 = AtomIndices
+            if not (
+                0 <= atomIdx1 < self.NumberOfAtoms
+                and 0 <= atomIdx2 < self.NumberOfAtoms
+            ):
+                raise IndexError(f"Atom indices out of bounds: {atomIdx1}, {atomIdx2}")
+        elif AtomLabels is not None:
+            if len(AtomLabels) != 2:
+                raise ValueError("AtomLabels must contain exactly 2 labels")
+            if AtomLabels[0] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[0]}' not found")
+            if AtomLabels[1] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[1]}' not found")
+            atomIdx1 = self.AtomsDict[AtomLabels[0]][0]
+            atomIdx2 = self.AtomsDict[AtomLabels[1]][0]
+        elif AtomObjects is not None:
+            if len(AtomObjects) != 2:
+                raise ValueError("AtomObjects must contain exactly 2 objects")
+            try:
+                atomIdx1 = self.AtomsDict[AtomObjects[0].Label][0]
+                atomIdx2 = self.AtomsDict[AtomObjects[1].Label][0]
+            except KeyError as e:
+                raise ValueError(f"Atom object not found in molecule: {e}")
+        else:
+            raise ValueError(
+                "ChangeBond requires AtomLabels, AtomIndices, or AtomObjects"
+            )
+
+        PES_BondLengths = sorted(PES_BondLengths)
+
+        molObj_list = []
+        new_molObj = deepcopy(self)
+        for bond_length in PES_BondLengths:
+            new_molObj.ChangeBondLength(
+                NewBondLength=bond_length,
+                AtomIndices=[atomIdx1, atomIdx2]
+            )
+            new_molObj.OptimiseGeometry_UFF(
+                fixed_atoms=[atomIdx1, atomIdx2]
+            )
+            if optimisation_method is not None:
+                new_molObj.OptimiseGeometry_xTB_bin(fixed_atoms=[atomIdx1, atomIdx2], xtb_method=optimisation_method)
+            new_molObj.OptimiseGeometry_xTB_bin(optimise_geometry=False, get_gradients=True, xtb_method=calculation_method)
+            molObj_list.append(new_molObj)
+            new_molObj = deepcopy(new_molObj)
+        for idx, molObj in enumerate(molObj_list):
+            molObj.Identifier = f"{molObj.Identifier}_PES{idx}"
+        return molObj_list
 
     def OptimiseGeometry_tblite(
         self,
