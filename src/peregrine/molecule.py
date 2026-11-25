@@ -7090,6 +7090,7 @@ $end"""
         AtomObjects: list[Atom] | None = None,
         optimisation_method: None | str = "gxtb",
         calculation_method: str = "gxtb",
+        xtb_binary_path: str | None = None,
     ) -> list["Molecule"]:
         # Determine atom indices
         if AtomIndices is not None:
@@ -7136,8 +7137,8 @@ $end"""
                 fixed_atoms=[atomIdx1, atomIdx2]
             )
             if optimisation_method is not None:
-                new_molObj.OptimiseGeometry_xTB_bin(fixed_atoms=[atomIdx1, atomIdx2], xtb_method=optimisation_method)
-            new_molObj.OptimiseGeometry_xTB_bin(optimise_geometry=False, get_gradients=True, xtb_method=calculation_method)
+                new_molObj.OptimiseGeometry_xTB_bin(fixed_atoms=[atomIdx1, atomIdx2], xtb_method=optimisation_method, xtb_binary_path=xtb_binary_path)
+            new_molObj.OptimiseGeometry_xTB_bin(optimise_geometry=False, get_gradients=True, xtb_method=calculation_method, xtb_binary_path=xtb_binary_path)
             molObj_list.append(new_molObj)
             new_molObj = deepcopy(new_molObj)
         for idx, molObj in enumerate(molObj_list):
