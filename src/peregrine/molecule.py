@@ -6819,26 +6819,12 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
     ) -> float:
         if suppress_warnings:
             ob.obErrorLog.SetOutputLevel(0)
-        # Define tempory work directory
-        if use_temp_folder == True:
-            workdir = Path(
-                tempfile.mkdtemp(
-                    prefix=f"{self.Identifier}_",
-                    dir=os.environ.get("TMPDIR", "/tmp"),
-                )
-            )
-        else:
-            workdir = Path(__file__).parent / f"{self.Identifier}_TempDir"
         # Read pybel file
         temp_mol_str = self.WriteMolString()
-        with open(workdir / f"{self.Identifier}_temp.mol", "w") as f:
-            f.write(temp_mol_str)
-            f.close()
         molPybelObj = pybel.readfile(
-            "mol", f"{str(workdir)}/{self.Identifier}_temp.mol"
+            "mol", temp_mol_str
         )
         molPybelObj = next(molPybelObj)
-        shutil.rmtree(workdir, ignore_errors=True)
         # define which bonds and atoms are aromatic
         obmol = molPybelObj.OBMol
         obmol.PerceiveBondOrders()
