@@ -14,6 +14,8 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import ast
 import time
+import tempfile
+import shutil
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -6908,6 +6910,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         time_limit: float = 10000,
         optimise_geometry: bool = True,
         get_gradients: bool = False,
+        use_temp_folder: bool = True,
     ):
         if xtb_binary_path is None:
             xtb_binary_path = _xTBHelper_FindBinary()
@@ -6920,7 +6923,15 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             self.calculation_method += f"/{solvent_model}({solvent})"
 
         # Define tempory work directory
-        workdir = Path(__file__).parent / f"{self.Identifier}_TempDir"
+        if use_temp_folder == True:
+            workdir = Path(
+                tempfile.mkdtemp(
+                    prefix=f"{self.Identifier}_",
+                    dir=os.environ.get("TMPDIR", "/tmp"),
+                )
+            )
+        else:
+            workdir = Path(__file__).parent / f"{self.Identifier}_TempDir"
         os.makedirs(workdir, exist_ok=True)
 
         # Write input xyz string
@@ -7079,7 +7090,10 @@ $end"""
                 os.remove(workdir / stringObj)
             except (FileNotFoundError, PermissionError):
                 pass
-        os.rmdir(workdir)
+        if use_temp_folder == True:
+            shutil.rmtree(workdir, ignore_errors=True)
+        else:
+            os.rmdir(workdir)
         return self
 
     def CalculateBondPES(
