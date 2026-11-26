@@ -1,4 +1,4 @@
-# fmt: on
+# fmt: off
 from typing import Self
 from copy import deepcopy
 from pathlib import Path
@@ -16,6 +16,7 @@ import ast
 import time
 import tempfile
 import shutil
+from itertools import combinations
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -2963,6 +2964,47 @@ class Molecule:
             for i in bonds
         ]
         return bonds
+
+    def GetListOfBondAngles(self) -> list[list[Atom, Atom, Atom]]:
+        angles = []
+        for j in range(self.ConnectivityMatrix.shape[0]):
+            # Atoms bonded to the central atom j (excluding j itself)
+            neighbours = [
+                n for n in np.flatnonzero(self.ConnectivityMatrix[j] == 1) if n != j
+            ]
+            # Every unique pair of neighbours forms an i-j-k angle
+            for i, k in combinations(neighbours, 2):
+                angles.append(
+                    [
+                        self.AtomsList[i],
+                        self.AtomsList[j],
+                        self.AtomsList[k],
+                    ]
+                )
+        return angles
+
+    def GetListOfTorsionalAngles(self) -> list[list[Atom, Atom, Atom, Atom]]:
+        torsions = []
+        # Each central bond j-k once (upper triangle, as in GetListOfBonds)
+        central_bonds = np.argwhere(np.triu(self.ConnectivityMatrix, k=1) == 1)
+        for j, k in central_bonds:
+            # Neighbours of j (excluding k) and neighbours of k (excluding j)
+            neighbours_j = [n for n in np.flatnonzero(self.ConnectivityMatrix[j] == 1) if n not in (j, k)]
+            neighbours_k = [n for n in np.flatnonzero(self.ConnectivityMatrix[k] == 1) if n not in (j, k)]
+            for i in neighbours_j:
+                for l in neighbours_k:
+                    # Skip 3-membered rings, where i and l are the same atom
+                    if i == l:
+                        continue
+                    torsions.append(
+                        [
+                            self.AtomsList[i],
+                            self.AtomsList[j],
+                            self.AtomsList[k],
+                            self.AtomsList[l],
+                        ]
+                    )
+        return torsions
 
     def GetBondAngle(
         self,

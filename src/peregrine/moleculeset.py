@@ -434,6 +434,7 @@ class MoleculeSet:
         zip_file_path: str,
         do_not_read_opt_traj_files: bool = False,
         parallel: bool = False,
+        read_n_mol_files: int | None = None,
     ) -> "MoleculeSet":
         zip_file_path = Path(zip_file_path)
         if not zipfile.is_zipfile(zip_file_path):
@@ -443,6 +444,7 @@ class MoleculeSet:
             zipfile.ZipFile(zip_file_path) as zf,
             tempfile.TemporaryDirectory() as tmpdir,
         ):
+            file_counter = 0
             seen = set()
             for info in zf.infolist():
                 if info.is_dir():
@@ -463,6 +465,9 @@ class MoleculeSet:
                 # write by base name only: flattens subfolders and blocks ../ path tricks
                 with zf.open(info) as src, open(Path(tmpdir) / name, "wb") as dst:
                     shutil.copyfileobj(src, dst)
+                    file_counter += 1
+                if read_n_mol_files is not None and file_counter == read_n_mol_files:
+                    break
 
             return cls.ReadMolFileDirectory(
                 tmpdir,
