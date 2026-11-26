@@ -1,4 +1,4 @@
-# fmt: off
+# fmt: on
 from typing import Self
 from copy import deepcopy
 from pathlib import Path
@@ -6129,13 +6129,21 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
                 "ChangeBond requires AtomLabels, AtomIndices, or AtomObjects"
             )
 
-        bond_vector = self.AtomsList[atomIdx1].Coordinates - self.AtomsList[atomIdx2].Coordinates
+        bond_vector = (
+            self.AtomsList[atomIdx1].Coordinates - self.AtomsList[atomIdx2].Coordinates
+        )
         current_bond_length = np.linalg.norm(bond_vector)
         unit_bond_vector = bond_vector / current_bond_length
 
-        mid_point = self.AtomsList[atomIdx2].Coordinates + (current_bond_length * 0.5 * unit_bond_vector)
-        self.AtomsList[atomIdx1].Coordinates = mid_point + (NewBondLength * 0.5 * unit_bond_vector)
-        self.AtomsList[atomIdx2].Coordinates = mid_point - (NewBondLength * 0.5 * unit_bond_vector)
+        mid_point = self.AtomsList[atomIdx2].Coordinates + (
+            current_bond_length * 0.5 * unit_bond_vector
+        )
+        self.AtomsList[atomIdx1].Coordinates = mid_point + (
+            NewBondLength * 0.5 * unit_bond_vector
+        )
+        self.AtomsList[atomIdx2].Coordinates = mid_point - (
+            NewBondLength * 0.5 * unit_bond_vector
+        )
 
     def CorrectAtomicFormalCharges(self):
         """
@@ -6821,9 +6829,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             ob.obErrorLog.SetOutputLevel(0)
         # Read pybel file
         temp_mol_str = self.WriteMolString()
-        molPybelObj = pybel.readfile(
-            "mol", temp_mol_str
-        )
+        molPybelObj = pybel.readfile("mol", temp_mol_str)
         molPybelObj = next(molPybelObj)
         # define which bonds and atoms are aromatic
         obmol = molPybelObj.OBMol
@@ -6936,7 +6942,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         xyz_path = workdir / f"{self.Identifier}_temp.xyz"
         with open(xyz_path, "w") as f:
             f.write(xyz_string)
-        cmd = [f"{xtb_binary_path}xtb", str(xyz_path), "--parallel 1"]
+        cmd = [f"{xtb_binary_path}xtb", str(xyz_path), "--parallel", "1"]
 
         # Define fixed atoms
         if fixed_atoms:
@@ -7141,15 +7147,21 @@ $end"""
         new_molObj = deepcopy(self)
         for bond_length in PES_BondLengths:
             new_molObj.ChangeBondLength(
-                NewBondLength=bond_length,
-                AtomIndices=[atomIdx1, atomIdx2]
+                NewBondLength=bond_length, AtomIndices=[atomIdx1, atomIdx2]
             )
-            new_molObj.OptimiseGeometry_UFF(
-                fixed_atoms=[atomIdx1, atomIdx2]
-            )
+            new_molObj.OptimiseGeometry_UFF(fixed_atoms=[atomIdx1, atomIdx2])
             if optimisation_method is not None:
-                new_molObj.OptimiseGeometry_xTB_bin(fixed_atoms=[atomIdx1, atomIdx2], xtb_method=optimisation_method, xtb_binary_path=xtb_binary_path)
-            new_molObj.OptimiseGeometry_xTB_bin(optimise_geometry=False, get_gradients=True, xtb_method=calculation_method, xtb_binary_path=xtb_binary_path)
+                new_molObj.OptimiseGeometry_xTB_bin(
+                    fixed_atoms=[atomIdx1, atomIdx2],
+                    xtb_method=optimisation_method,
+                    xtb_binary_path=xtb_binary_path,
+                )
+            new_molObj.OptimiseGeometry_xTB_bin(
+                optimise_geometry=False,
+                get_gradients=True,
+                xtb_method=calculation_method,
+                xtb_binary_path=xtb_binary_path,
+            )
             molObj_list.append(new_molObj)
             new_molObj = deepcopy(new_molObj)
         for idx, molObj in enumerate(molObj_list):
