@@ -51,8 +51,8 @@ nocom
 
 # Define basis sets
 element_basis_map = {
-    'H': 'def2-tzvppd',
     'O': 'def2-tzvppd',
+    'H': 'def2-tzvppd',
 }
 combined_basis = '\n'.join(
     bse.get_basis(basisname, elements=[symbol], fmt='psi4', header=False)
@@ -66,8 +66,8 @@ spherical
 ''', name='mybasis', key='BASIS')
 metadata['Basis Set'] = element_basis_map
 jkfit_basis_map = {
-    'H': 'def2-universal-jkfit',
     'O': 'def2-universal-jkfit',
+    'H': 'def2-universal-jkfit',
 }
 combined_jkfit = '\n'.join(
     bse.get_basis(basisname, elements=[symbol], fmt='psi4', header=False)

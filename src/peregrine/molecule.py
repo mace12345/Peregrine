@@ -6829,8 +6829,7 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
             ob.obErrorLog.SetOutputLevel(0)
         # Read pybel file
         temp_mol_str = self.WriteMolString()
-        molPybelObj = pybel.readfile("mol", temp_mol_str)
-        molPybelObj = next(molPybelObj)
+        molPybelObj = pybel.readstring("mol", temp_mol_str)
         # define which bonds and atoms are aromatic
         obmol = molPybelObj.OBMol
         obmol.PerceiveBondOrders()
