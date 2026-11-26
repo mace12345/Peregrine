@@ -361,10 +361,13 @@ class MoleculeSet:
         mol_file_directory: str,
         do_not_read_opt_traj_files: bool = False,
         n_workers: int | bool = False,
+        read_n_mol_files: int | None = None,
     ) -> "MoleculeSet":
         mol_file_list = [
             i for i in os.listdir(mol_file_directory) if i.endswith(".mol")
         ]
+        if read_n_mol_files is not None:
+            mol_file_list = mol_file_list[:read_n_mol_files]
         if do_not_read_opt_traj_files == True:
             mol_file_list = [i for i in mol_file_list if "_TRAJ" not in i]
 
