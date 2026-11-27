@@ -3025,8 +3025,16 @@ class Molecule:
         central_bonds = np.argwhere(np.triu(self.ConnectivityMatrix, k=1) == 1)
         for j, k in central_bonds:
             # Neighbours of j (excluding k) and neighbours of k (excluding j)
-            neighbours_j = [n for n in np.flatnonzero(self.ConnectivityMatrix[j] == 1) if n not in (j, k)]
-            neighbours_k = [n for n in np.flatnonzero(self.ConnectivityMatrix[k] == 1) if n not in (j, k)]
+            neighbours_j = [
+                n
+                for n in np.flatnonzero(self.ConnectivityMatrix[j] == 1)
+                if n not in (j, k)
+            ]
+            neighbours_k = [
+                n
+                for n in np.flatnonzero(self.ConnectivityMatrix[k] == 1)
+                if n not in (j, k)
+            ]
             for i in neighbours_j:
                 for l in neighbours_k:
                     # Skip 3-membered rings, where i and l are the same atom
@@ -6881,6 +6889,9 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
         self,
         fixed_atoms: list[int] | None = None,
         constrain_bonds: list[list[int, int, float]] | None = None,
+        constrain_angles: list[list[int, int, int, float]] | None = None,
+        constrain_torsions: list[list[int, int, int, int, float]] | None = None,
+        constraint_factor: float | None = None,
         max_steps: int = 700,
         energy_tol: float = 1e-6,
         force_field: str = "UFF",
@@ -6938,25 +6949,39 @@ crest {self.Identifier}.toml --T {CPU_count} > {self.Identifier}.out"""
                     ob_atom.GetHyb()
                     ob_atom.SetType(f"{self.AtomsList[atomIdx].AtomicSymbol}2")
                     ob_atom.GetType()
-        # Set up fixed atom constraints
-        if fixed_atoms is not None:
+        # intiate constraints object
+        constrs = None
+        if any(
+            c
+            for c in (
+                fixed_atoms,
+                constrain_bonds,
+                constrain_angles,
+                constrain_torsions,
+            )
+        ):
             constrs = ob.OBFFConstraints()
-        elif constrain_bonds is not None:
-            constrs = ob.OBFFConstraints()
-        else:
-            pass
+            if constraint_factor is not None:
+                constrs.SetFactor(constraint_factor)
+        # Define constraints
         if fixed_atoms:
             for atom_idx in fixed_atoms:
                 constrs.AddAtomConstraint(atom_idx + 1)
         if constrain_bonds:
             for bond in constrain_bonds:
                 constrs.AddDistanceConstraint(bond[0] + 1, bond[1] + 1, bond[2])
+        if constrain_angles:
+            for i, j, k, angle in constrain_angles:
+                constrs.AddAngleConstraint(i + 1, j + 1, k + 1, angle)
+        if constrain_torsions:
+            for i, j, k, l, torsion in constrain_torsions:
+                constrs.AddTorsionConstraint(i + 1, j + 1, k + 1, l + 1, torsion)
         # Set up force field
         ff = ob.OBForceField.FindForceField(force_field)
         if not ff:
             raise ValueError(f"Could not find {force_field} forcefield")
         # Setup minimization
-        if fixed_atoms:
+        if constrs is not None:
             ff.Setup(molPybelObj.OBMol, constrs)
             ff.SetConstraints(constrs)
         else:
@@ -7176,7 +7201,7 @@ $end"""
             os.rmdir(workdir)
         return self
 
-    def CalculateBondPES(
+    def CalculateBondLengthPES(
         self,
         PES_BondLengths: list[float],
         AtomLabels: list[str] | None = None,
@@ -7244,6 +7269,124 @@ $end"""
         for idx, molObj in enumerate(molObj_list):
             molObj.Identifier = f"{molObj.Identifier}_PES{idx}"
         return molObj_list
+
+    def CalculateBondAnglePES(
+        self,
+        PES_BondAngles: list[float],
+        AtomLabels: list[str] | None = None,
+        AtomIndices: list[int] | None = None,
+        AtomObjects: list[Atom] | None = None,
+        optimisation_method: None | str = "gxtb",
+        calculation_method: str = "gxtb",
+        xtb_binary_path: str | None = None,
+    ) -> list["Molecule"]:
+        # Determine atom indices
+        if AtomIndices is not None:
+            if len(AtomIndices) != 3:
+                raise ValueError("AtomIndices must contain exactly 3 indices")
+            atomIdx1, atomIdx2, atomIdx3 = AtomIndices
+            if not (
+                0 <= atomIdx1 < self.NumberOfAtoms
+                and 0 <= atomIdx2 < self.NumberOfAtoms
+                and 0 <= atomIdx3 < self.NumberOfAtoms
+            ):
+                raise IndexError(
+                    f"Atom indices out of bounds: {atomIdx1}, {atomIdx2}, {atomIdx3}"
+                )
+        elif AtomLabels is not None:
+            if len(AtomLabels) != 3:
+                raise ValueError("AtomLabels must contain exactly 3 labels")
+            if AtomLabels[0] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[0]}' not found")
+            if AtomLabels[1] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[1]}' not found")
+            if AtomLabels[2] not in self.AtomsDict:
+                raise ValueError(f"Atom label '{AtomLabels[2]}' not found")
+            atomIdx1 = self.AtomsDict[AtomLabels[0]][0]
+            atomIdx2 = self.AtomsDict[AtomLabels[1]][0]
+            atomIdx3 = self.AtomsDict[AtomLabels[2]][0]
+        elif AtomObjects is not None:
+            if len(AtomObjects) != 3:
+                raise ValueError("AtomObjects must contain exactly 3 objects")
+            try:
+                atomIdx1 = self.AtomsDict[AtomObjects[0].Label][0]
+                atomIdx2 = self.AtomsDict[AtomObjects[1].Label][0]
+                atomIdx3 = self.AtomsDict[AtomObjects[2].Label][0]
+            except KeyError as e:
+                raise ValueError(f"Atom object not found in molecule: {e}")
+        else:
+            raise ValueError(
+                "ChangeBond requires AtomLabels, AtomIndices, or AtomObjects"
+            )
+
+        PES_BondAngles = sorted([np.deg2rad(i) for i in PES_BondAngles])
+
+        if optimisation_method is not None:
+            self.OptimiseGeometry_xTB_bin(
+                optimise_geometry=True,
+                xtb_method=optimisation_method,
+                xtb_binary_path=xtb_binary_path,
+            )
+        # Translate molecule so atomIdx1 is at origin
+        displacement = np.linalg.norm(self.AtomsList[atomIdx2].Coordinates)
+        unit_vector = self.AtomsList[atomIdx2].Coordinates / displacement
+        self.TranslateMolecule(
+            TranslationVector=-unit_vector,
+            Displacement=displacement,
+        )
+        # Define rotation axis
+        rot_axis = np.cross(
+            self.AtomsList[atomIdx1].Coordinates
+            / np.linalg.norm(self.AtomsList[atomIdx1].Coordinates),
+            self.AtomsList[atomIdx3].Coordinates
+            / np.linalg.norm(self.AtomsList[atomIdx3].Coordinates),
+        )
+        rot_axis = rot_axis / np.linalg.norm(rot_axis)
+        # Rotate atomIdx1 and atomIdx3 to mid point along their respective arcs
+        theta = self.GetBondAngle(AtomIndices=[atomIdx1, atomIdx2, atomIdx3])
+        rot_theta = theta / 2
+        base_coordinates_1 = (
+            _GeneralHelper_GetRotationMatrix(rotation_axis=rot_axis, theta=rot_theta)
+            @ self.AtomsList[atomIdx1].Coordinates
+        )
+        base_coordinates_3 = (
+            _GeneralHelper_GetRotationMatrix(rotation_axis=rot_axis, theta=-rot_theta)
+            @ self.AtomsList[atomIdx3].Coordinates
+        )
+        molObjs = []
+        molObj = deepcopy(self)
+        for idx, bond_angle in enumerate(PES_BondAngles):
+            molObj.Identifier = f"{molObj.Identifier}_PES{idx}"
+            molObj.AtomsList[atomIdx1].Coordinates = (
+                _GeneralHelper_GetRotationMatrix(
+                    rotation_axis=rot_axis, theta=-bond_angle/2
+                )
+                @ base_coordinates_1
+            )
+            molObj.AtomsList[atomIdx3].Coordinates = (
+                _GeneralHelper_GetRotationMatrix(
+                    rotation_axis=rot_axis, theta=bond_angle/2
+                )
+                @ base_coordinates_3
+            )
+            molObj.OptimiseGeometry_UFF(fixed_atoms=[atomIdx1, atomIdx2, atomIdx3])
+            if optimisation_method is not None:
+                molObj.OptimiseGeometry_xTB_bin(
+                    optimise_geometry=True,
+                    xtb_method=optimisation_method,
+                    xtb_binary_path=xtb_binary_path,
+                    fixed_atoms=[atomIdx1, atomIdx2, atomIdx3]
+                )
+            molObj.OptimiseGeometry_xTB_bin(
+                optimise_geometry=False,
+                get_gradients=True,
+                xtb_method=calculation_method,
+                xtb_binary_path=xtb_binary_path,
+            )
+            molObjs.append(molObj)
+            molObj = deepcopy(molObj)
+
+        return molObjs
 
     def OptimiseGeometry_tblite(
         self,
